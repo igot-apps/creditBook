@@ -1,16 +1,28 @@
 import { useState } from "react";
-import { Phone, PlusCircle, Gift, MessageCircle, MessageSquare, FileText } from "lucide-react";
+import { Phone, PlusCircle, Gift, MessageCircle, MessageSquare, FileText, Edit3, Trash2 } from "lucide-react";
 import { useApp } from "../contexts/AppContext";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openSMS, openWhatsApp, openDialer } from "../utils/communication";
 import { CustomerService } from "../services/CustomerService";
 import { PageHeader } from "../components/PageHeader";
 import { InvoiceModal } from "../components/InvoiceModal";
+import { EditCustomerModal } from "../components/EditCustomerModal";
 
 export const ProfilePage = () => {
-  // 👇 Fixed: Changed 'store' to 'currentStore' and added 'setPrefillTransaction'
-  const { currentStore, selectedCustomer, setSelectedCustomer, setView, refreshCustomers, showToast, triggerConfetti, setPrefillTransaction } = useApp();
+  const { 
+    currentStore, 
+    selectedCustomer, 
+    setSelectedCustomer, 
+    setView, 
+    refreshCustomers, 
+    showToast, 
+    triggerConfetti,
+    setPrefillTransaction
+  } = useApp();
+  
   const [viewingInvoice, setViewingInvoice] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   if (!selectedCustomer) return null;
 
@@ -34,17 +46,56 @@ export const ProfilePage = () => {
     showToast("Debt cleared!");
   };
 
+  const handleDelete = async () => {
+    if (!window.confirm(
+      `⚠️ Are you sure you want to delete ${selectedCustomer.name}?\n\n` +
+      `This will permanently remove:\n` +
+      `• Customer details\n` +
+      `• All ${selectedCustomer.history?.length || 0} transaction(s)\n\n` +
+      `This action cannot be undone.`
+    )) {
+      return;
+    }
+
+    // Double confirmation for customers with debt
+    if (selectedCustomer.balance > 0) {
+      if (!window.confirm(
+        `⚠️ WARNING: This customer still owes ${formatCurrency(selectedCustomer.balance)}!\n\n` +
+        `Are you absolutely sure you want to delete them?`
+      )) {
+        return;
+      }
+    }
+
+    setIsDeleting(true);
+    try {
+      await CustomerService.deleteCustomer(currentStore.id, selectedCustomer.id);
+      await refreshCustomers();
+      setSelectedCustomer(null);
+      setView("home");
+      showToast("Customer deleted successfully");
+    } catch (error) {
+      console.error("Failed to delete customer:", error);
+      showToast("Failed to delete customer");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <PageHeader title="Customer Profile" onBack={() => { setView("home"); setSelectedCustomer(null); }} />
       
       <div className="p-4 max-w-lg mx-auto space-y-4">
+        {/* Customer Info Card */}
         <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm text-center border border-gray-100 dark:border-gray-700">
           <div className="w-20 h-20 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-3 flex items-center justify-center text-3xl font-bold text-gray-500 dark:text-gray-400">
             {selectedCustomer.name.charAt(0)}
           </div>
           <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{selectedCustomer.name}</h3>
-          <p className="text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 mt-1"><Phone size={16} /> {selectedCustomer.phone}</p>
+          <p className="text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 mt-1">
+            <Phone size={16} /> {selectedCustomer.phone}
+          </p>
           <div className={`mt-4 text-4xl font-bold ${
             selectedCustomer.balance > 0 ? "text-red-600 dark:text-red-400" : 
             selectedCustomer.balance < 0 ? "text-blue-600 dark:text-blue-400" : 
@@ -57,6 +108,7 @@ export const ProfilePage = () => {
           </p>
         </div>
 
+        {/* Primary Actions */}
         <div className="grid grid-cols-2 gap-3">
           <button 
             onClick={() => {
@@ -74,22 +126,65 @@ export const ProfilePage = () => {
           >
             <PlusCircle size={24} /> Add Purchase
           </button>
-          <button onClick={handleMarkPaid} disabled={selectedCustomer.balance <= 0} className="bg-yellow-400 text-gray-900 font-bold py-4 rounded-xl flex flex-col items-center gap-2 shadow-md disabled:opacity-50 active:scale-95 transition">
+          <button 
+            onClick={handleMarkPaid} 
+            disabled={selectedCustomer.balance <= 0} 
+            className="bg-yellow-400 text-gray-900 font-bold py-4 rounded-xl flex flex-col items-center gap-2 shadow-md disabled:opacity-50 active:scale-95 transition"
+          >
             <Gift size={24} /> Clear Debt
           </button>
-          <button onClick={() => openWhatsApp(selectedCustomer.phone, generateReminderMessage(selectedCustomer))} className="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-bold py-4 rounded-xl flex flex-col items-center gap-2 border border-green-200 dark:border-green-800 shadow-sm active:scale-95 transition">
+          <button 
+            onClick={() => openWhatsApp(selectedCustomer.phone, generateReminderMessage(selectedCustomer))} 
+            className="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-bold py-4 rounded-xl flex flex-col items-center gap-2 border border-green-200 dark:border-green-800 shadow-sm active:scale-95 transition"
+          >
             <MessageCircle size={24} /> WhatsApp
           </button>
-          <button onClick={() => openSMS(selectedCustomer.phone, generateReminderMessage(selectedCustomer))} className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold py-4 rounded-xl flex flex-col items-center gap-2 border border-blue-200 dark:border-blue-800 shadow-sm active:scale-95 transition">
+          <button 
+            onClick={() => openSMS(selectedCustomer.phone, generateReminderMessage(selectedCustomer))} 
+            className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold py-4 rounded-xl flex flex-col items-center gap-2 border border-blue-200 dark:border-blue-800 shadow-sm active:scale-95 transition"
+          >
             <MessageSquare size={24} /> SMS
           </button>
-          <button onClick={() => openDialer(selectedCustomer.phone)} className="col-span-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-xl flex flex-col items-center gap-2 border border-gray-200 dark:border-gray-600 shadow-sm active:scale-95 transition">
+          <button 
+            onClick={() => openDialer(selectedCustomer.phone)} 
+            className="col-span-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-xl flex flex-col items-center gap-2 border border-gray-200 dark:border-gray-600 shadow-sm active:scale-95 transition"
+          >
             <Phone size={24} /> Call Customer
           </button>
         </div>
 
+        {/* Edit & Delete Section */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-          <div className="p-4 border-b border-gray-100 dark:border-gray-700 font-bold text-gray-700 dark:text-gray-300">Transaction History</div>
+          <div className="p-3 border-b border-gray-100 dark:border-gray-700">
+            <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase px-1">Manage Customer</p>
+          </div>
+          <div className="p-3 grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setIsEditing(true)}
+              className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-bold py-3 rounded-xl flex items-center justify-center gap-2 border border-blue-200 dark:border-blue-800 active:scale-95 transition"
+            >
+              <Edit3 size={18} /> Edit Details
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 font-bold py-3 rounded-xl flex items-center justify-center gap-2 border border-red-200 dark:border-red-800 active:scale-95 transition disabled:opacity-50"
+            >
+              {isDeleting ? (
+                <div className="w-4 h-4 border-2 border-red-700 border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <Trash2 size={18} />
+              )}
+              Delete
+            </button>
+          </div>
+        </div>
+
+        {/* Transaction History */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+          <div className="p-4 border-b border-gray-100 dark:border-gray-700 font-bold text-gray-700 dark:text-gray-300">
+            Transaction History
+          </div>
           <div className="divide-y divide-gray-100 dark:divide-gray-700">
             {[...selectedCustomer.history].reverse().map(h => (
               <div key={h.id} className="p-4 flex justify-between items-center">
@@ -118,8 +213,16 @@ export const ProfilePage = () => {
         </div>
       </div>
 
+      {/* Modals */}
       {viewingInvoice && (
         <InvoiceModal onClose={() => setViewingInvoice(null)} transaction={viewingInvoice} />
+      )}
+      
+      {isEditing && (
+        <EditCustomerModal 
+          customer={selectedCustomer} 
+          onClose={() => setIsEditing(false)} 
+        />
       )}
     </div>
   );

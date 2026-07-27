@@ -71,5 +71,16 @@ export const CustomerService = {
     
     const updatedHistory = await TransactionRepository.getByCustomerId(storeId, customerId);
     return { ...customer, history: updatedHistory, balance: 0 };
+  },
+    updateCustomer: async (storeId, customerId, updates) => {
+    await CustomerRepository.update(storeId, customerId, updates);
+    return await CustomerRepository.getById(storeId, customerId);
+  },
+
+  deleteCustomer: async (storeId, customerId) => {
+    // CustomerRepository.delete already handles cascading transaction deletion
+    await CustomerRepository.delete(storeId, customerId);
+    return true;
   }
 };
+
