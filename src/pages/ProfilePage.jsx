@@ -1,0 +1,112 @@
+import { useState } from "react";
+import { Phone, PlusCircle, Gift, MessageCircle, MessageSquare, FileText } from "lucide-react";
+import { useApp } from "../contexts/AppContext";
+import { formatCurrency, formatDate } from "../utils/helpers";
+import { openSMS, openWhatsApp, openDialer } from "../utils/communication";
+import { CustomerService } from "../services/CustomerService";
+import { PageHeader } from "../components/PageHeader";
+import { InvoiceModal } from "../components/InvoiceModal";
+
+export const ProfilePage = () => {
+  const { store, selectedCustomer, setSelectedCustomer, setView, refreshCustomers, showToast, triggerConfetti } = useApp();
+  const [viewingInvoice, setViewingInvoice] = useState(null);
+
+  if (!selectedCustomer) return null;
+
+  const generateReminderMessage = (c) => {
+    if (c.balance < 0) return `Hello ${c.name}, thank you! You have a credit of ${formatCurrency(Math.abs(c.balance))} with ${store.name}.`;
+    if (c.balance === 0) return `Hello ${c.name}, thank you! Your account with ${store.name} is fully settled.`;
+    return `Hello ${c.name}, this is a reminder from ${store.name}. Your current outstanding balance is ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
+  };
+
+  const handleMarkPaid = async () => {
+    if (selectedCustomer.balance <= 0) return;
+    await CustomerService.clearDebt(selectedCustomer.id);
+    const refreshed = await refreshCustomers();
+    const updated = refreshed.find(c => c.id === selectedCustomer.id);
+    setSelectedCustomer(updated);
+    triggerConfetti();
+    showToast("Debt cleared!");
+  };
+
+  const handleAddPurchase = () => {
+    setView("record");
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
+      <PageHeader title="Customer Profile" onBack={() => { setView("home"); setSelectedCustomer(null); }} />
+      
+      <div className="p-4 max-w-lg mx-auto space-y-4">
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm text-center border border-gray-100 dark:border-gray-700">
+          <div className="w-20 h-20 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-3 flex items-center justify-center text-3xl font-bold text-gray-500 dark:text-gray-400">
+            {selectedCustomer.name.charAt(0)}
+          </div>
+          <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{selectedCustomer.name}</h3>
+          <p className="text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 mt-1"><Phone size={16} /> {selectedCustomer.phone}</p>
+          <div className={`mt-4 text-4xl font-bold ${
+            selectedCustomer.balance > 0 ? "text-red-600 dark:text-red-400" : 
+            selectedCustomer.balance < 0 ? "text-blue-600 dark:text-blue-400" : 
+            "text-green-600 dark:text-green-400"
+          }`}>
+            {selectedCustomer.balance < 0 ? `Credit: ${formatCurrency(Math.abs(selectedCustomer.balance))}` : formatCurrency(selectedCustomer.balance)}
+          </div>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+            {selectedCustomer.balance < 0 ? "Customer has an advance balance" : "Current Balance"}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={handleAddPurchase} className="bg-green-700 text-white font-bold py-4 rounded-xl flex flex-col items-center gap-2 shadow-md active:scale-95 transition">
+            <PlusCircle size={24} /> Add Purchase
+          </button>
+          <button onClick={handleMarkPaid} disabled={selectedCustomer.balance <= 0} className="bg-yellow-400 text-gray-900 font-bold py-4 rounded-xl flex flex-col items-center gap-2 shadow-md disabled:opacity-50 active:scale-95 transition">
+            <Gift size={24} /> Clear Debt
+          </button>
+          <button onClick={() => openWhatsApp(selectedCustomer.phone, generateReminderMessage(selectedCustomer))} className="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-bold py-4 rounded-xl flex flex-col items-center gap-2 border border-green-200 dark:border-green-800 shadow-sm active:scale-95 transition">
+            <MessageCircle size={24} /> WhatsApp
+          </button>
+          <button onClick={() => openSMS(selectedCustomer.phone, generateReminderMessage(selectedCustomer))} className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold py-4 rounded-xl flex flex-col items-center gap-2 border border-blue-200 dark:border-blue-800 shadow-sm active:scale-95 transition">
+            <MessageSquare size={24} /> SMS
+          </button>
+          <button onClick={() => openDialer(selectedCustomer.phone)} className="col-span-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-xl flex flex-col items-center gap-2 border border-gray-200 dark:border-gray-600 shadow-sm active:scale-95 transition">
+            <Phone size={24} /> Call Customer
+          </button>
+        </div>
+
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+          <div className="p-4 border-b border-gray-100 dark:border-gray-700 font-bold text-gray-700 dark:text-gray-300">Transaction History</div>
+          <div className="divide-y divide-gray-100 dark:divide-gray-700">
+            {[...selectedCustomer.history].reverse().map(h => (
+              <div key={h.id} className="p-4 flex justify-between items-center">
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-900 dark:text-white">{h.items || "General Purchase"}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(h.date)}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="text-right">
+                    <p className="font-bold text-gray-900 dark:text-white">{formatCurrency(h.amount)}</p>
+                    <p className="text-xs text-green-600 dark:text-green-400">Paid: {formatCurrency(h.paid)}</p>
+                  </div>
+                  <button 
+                    onClick={() => setViewingInvoice(h)}
+                    className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-600 dark:text-gray-300 active:scale-95 transition"
+                  >
+                    <FileText size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {selectedCustomer.history.length === 0 && (
+              <p className="p-4 text-center text-gray-400 dark:text-gray-500">No transactions yet</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {viewingInvoice && (
+        <InvoiceModal onClose={() => setViewingInvoice(null)} transaction={viewingInvoice} />
+      )}
+    </div>
+  );
+};

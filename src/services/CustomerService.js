@@ -32,9 +32,7 @@ export const CustomerService = {
 
     const history = await TransactionRepository.getByCustomerId(targetCustomer.id);
     const prevBalance = history.reduce((sum, t) => sum + (t.amount || 0) - (t.paid || 0), 0);
-    
-    // ALLOW NEGATIVE BALANCE (Credit)
-    const newBalance = prevBalance + amount - paid; 
+    const newBalance = prevBalance + amount - paid; // Allows negative for credit
 
     const newTx = {
       customerId: targetCustomer.id,

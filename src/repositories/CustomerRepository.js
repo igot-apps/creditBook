@@ -4,7 +4,7 @@ export const CustomerRepository = {
   getAll: async () => await db.customers.toArray(),
   
   getById: async (id) => {
-    if (!id) return null; // Prevents Dexie error when ID is null
+    if (!id) return null;
     return await db.customers.get(id);
   },
   
