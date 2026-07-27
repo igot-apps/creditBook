@@ -1,39 +1,94 @@
 import { useState, useEffect } from "react";
-import { Calendar, TrendingUp } from "lucide-react";
+import { Calendar, TrendingUp, Loader2, AlertCircle } from "lucide-react";
 import { useApp } from "../contexts/AppContext";
 import { formatCurrency } from "../utils/helpers";
 import { ReportService } from "../services/ReportService";
 import { PageHeader } from "../components/PageHeader";
 
 export const ReportsPage = () => {
+  const { currentStore } = useApp();
+  const [isLoadingReports, setIsLoadingReports] = useState(true);
+  
   const [dailyReport, setDailyReport] = useState(null);
   const [salesTrend, setSalesTrend] = useState([]);
   const [topCustomers, setTopCustomers] = useState([]);
   const [mostOverdue, setMostOverdue] = useState([]);
 
   useEffect(() => {
-    const load = async () => {
-      const [daily, trend, top, overdue] = await Promise.all([
-        ReportService.getDailySales(),
-        ReportService.getSalesTrend(7),
-        ReportService.getTopCustomers(5),
-        ReportService.getMostOverdue(5)
-      ]);
-      setDailyReport(daily);
-      setSalesTrend(trend);
-      setTopCustomers(top);
-      setMostOverdue(overdue);
+    console.log("🔵 ReportsPage: currentStore is", currentStore);
+    if (!currentStore) {
+      console.log("🟡 ReportsPage: Waiting for currentStore...");
+      return;
+    }
+    
+    const loadReports = async () => {
+      console.log("🔵 ReportsPage: Starting to load reports for storeId:", currentStore.id);
+      setIsLoadingReports(true);
+      try {
+        const storeId = currentStore.id;
+        const [daily, trend, top, overdue] = await Promise.all([
+          ReportService.getDailySales(storeId),
+          ReportService.getSalesTrend(storeId, 7),
+          ReportService.getTopCustomers(storeId, 5),
+          ReportService.getMostOverdue(storeId, 5)
+        ]);
+        
+        console.log("🟢 ReportsPage: Reports loaded successfully!", { daily, trend, top, overdue });
+        setDailyReport(daily);
+        setSalesTrend(trend);
+        setTopCustomers(top);
+        setMostOverdue(overdue);
+      } catch (error) {
+        console.error("🔴 ReportsPage: Failed to load reports:", error);
+      } finally {
+        setIsLoadingReports(false);
+      }
     };
-    load();
-  }, []);
+    
+    loadReports();
+  }, [currentStore]);
 
-  const maxSales = Math.max(...salesTrend.map(d => d.sales), 1);
+  const maxSales = salesTrend.length > 0 ? Math.max(...salesTrend.map(d => d.sales), 1) : 1;
+
+  if (!currentStore || isLoadingReports) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center pb-24">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 text-green-700 animate-spin" />
+          <p className="text-gray-500 dark:text-gray-400 font-medium">Loading business reports...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Check if there is literally zero data
+  const hasNoData = (!dailyReport || dailyReport.totalSales === 0) && topCustomers.length === 0;
+
+  if (hasNoData) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
+        <PageHeader title="Reports & Analytics" subtitle="Your business at a glance" />
+        <div className="p-8 text-center">
+          <AlertCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">No Data Yet</h3>
+          <p className="text-gray-500 dark:text-gray-400 mb-6">
+            You haven't recorded any transactions for <strong>{currentStore.name}</strong> yet.
+          </p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 p-4 rounded-xl">
+            💡 <strong>Note:</strong> When we upgraded the app to SaaS, the database was reset for security. 
+            Please go to <strong>Record Sale</strong> and add a test transaction to see reports appear here!
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <PageHeader title="Reports & Analytics" subtitle="Your business at a glance" />
 
       <div className="p-4 max-w-lg mx-auto space-y-4">
+        {/* Today's Summary */}
         {dailyReport && (
           <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <h3 className="font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
@@ -56,6 +111,7 @@ export const ReportsPage = () => {
           </div>
         )}
 
+        {/* 7-Day Sales Trend */}
         <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
           <h3 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
             <TrendingUp size={18} className="text-green-700 dark:text-green-400" /> Last 7 Days
@@ -76,6 +132,7 @@ export const ReportsPage = () => {
           </div>
         </div>
 
+        {/* Top Customers */}
         <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
           <h3 className="font-bold text-gray-900 dark:text-white mb-3">Top Customers</h3>
           <div className="space-y-3">
@@ -90,21 +147,24 @@ export const ReportsPage = () => {
                       <span className="font-bold text-green-700 dark:text-green-400 text-sm">{formatCurrency(c.totalPurchases)}</span>
                     </div>
                     <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                      <div className="h-full bg-green-600 dark:bg-green-500 rounded-full" style={{ width: `${(c.totalPurchases / maxPurchase) * 100}%` }} />
+                      <div 
+                        className="h-full bg-green-600 dark:bg-green-500 rounded-full transition-all" 
+                        style={{ width: `${(c.totalPurchases / maxPurchase) * 100}%` }} 
+                      />
                     </div>
                   </div>
                 </div>
               );
             })}
-            {topCustomers.length === 0 && <p className="text-center text-gray-400 py-4">No customers yet</p>}
           </div>
         </div>
 
+        {/* Most Overdue */}
         <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
           <h3 className="font-bold text-gray-900 dark:text-white mb-3">Highest Outstanding Debt</h3>
           <div className="space-y-2">
             {mostOverdue.map((c, i) => (
-              <div key={c.id} className="flex justify-between items-center p-2 bg-red-50 dark:bg-red-900/20 rounded-lg">
+              <div key={c.id} className="flex justify-between items-center p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
                 <div>
                   <p className="font-semibold text-gray-900 dark:text-white">{c.name}</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">{c.daysSinceContact} days since contact</p>
@@ -112,7 +172,6 @@ export const ReportsPage = () => {
                 <p className="font-bold text-red-600 dark:text-red-400">{formatCurrency(c.balance)}</p>
               </div>
             ))}
-            {mostOverdue.length === 0 && <p className="text-center text-gray-400 py-4">No outstanding debts!</p>}
           </div>
         </div>
       </div>

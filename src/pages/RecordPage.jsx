@@ -17,19 +17,27 @@ export const RecordPage = () => {
     setPrefillTransaction
   } = useApp();
   
-  const [tx, setTx] = useState({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "" });
+  const [tx, setTx] = useState({ 
+    customerId: null, 
+    name: "", 
+    phone: "", 
+    items: "", 
+    amount: "", 
+    paid: "" 
+  });
   const [isListening, setIsListening] = useState(false);
 
-  // 👇 Load prefill data when coming from ProfilePage
   useEffect(() => {
     if (prefillTransaction) {
       setTx(prefillTransaction);
-      setPrefillTransaction(null); // Clear after loading
+      setPrefillTransaction(null);
     }
   }, [prefillTransaction, setPrefillTransaction]);
 
   const isExistingCustomer = !!tx.customerId;
-  const currentBal = tx.customerId ? (customers.find(c => c.id === tx.customerId)?.balance || 0) : 0;
+  const currentBal = tx.customerId 
+    ? (customers.find(c => c.id === tx.customerId)?.balance || 0) 
+    : 0;
   const amountVal = parseFloat(tx.amount) || 0;
   const paidVal = parseFloat(tx.paid) || 0;
   const totalDue = currentBal + amountVal;
@@ -40,7 +48,14 @@ export const RecordPage = () => {
     setIsListening(true);
     setTimeout(() => {
       setIsListening(false);
-      setTx(prev => ({ ...prev, name: "Akosua Mensah", phone: "024 123 4567", items: "2 bags rice, 1 tin oil", amount: "250", paid: "100" }));
+      setTx(prev => ({ 
+        ...prev, 
+        name: "Akosua Mensah", 
+        phone: "024 123 4567", 
+        items: "2 bags rice, 1 tin oil", 
+        amount: "250", 
+        paid: "100" 
+      }));
     }, 1500);
   };
 
@@ -77,12 +92,15 @@ export const RecordPage = () => {
       <PageHeader title="Record Sale" onBack={() => setView("home")} />
 
       <div className="p-4 space-y-4 max-w-lg mx-auto">
-        <button onClick={simulateVoice} disabled={isListening} className="w-full bg-yellow-400 text-gray-900 font-bold py-4 rounded-2xl flex items-center justify-center gap-3 shadow-md active:scale-95 transition-transform">
+        <button 
+          onClick={simulateVoice} 
+          disabled={isListening} 
+          className="w-full bg-yellow-400 text-gray-900 font-bold py-4 rounded-2xl flex items-center justify-center gap-3 shadow-md active:scale-95 transition-transform"
+        >
           <Mic className={isListening ? "animate-pulse" : ""} size={24} />
           {isListening ? "Listening..." : "Tap mic to simulate voice entry"}
         </button>
 
-        {/* SMART CUSTOMER SECTION: Shows card for existing, form for new */}
         {isExistingCustomer ? (
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-3">
@@ -138,16 +156,33 @@ export const RecordPage = () => {
         <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
           <div>
             <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Items Bought (Optional)</label>
-            <input placeholder="e.g., Rice, Oil, Cloth" value={tx.items} onChange={e => setTx({...tx, items: e.target.value})} className="w-full text-lg mt-1 outline-none dark:text-white bg-transparent" />
+            <input 
+              placeholder="e.g., Rice, Oil, Cloth" 
+              value={tx.items} 
+              onChange={e => setTx({...tx, items: e.target.value})} 
+              className="w-full text-lg mt-1 outline-none dark:text-white bg-transparent" 
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Total Amount</label>
-              <input type="number" placeholder="0.00" value={tx.amount} onChange={e => setTx({...tx, amount: e.target.value})} className="w-full text-2xl font-bold text-gray-900 dark:text-white mt-1 outline-none bg-transparent" />
+              <input 
+                type="number" 
+                placeholder="0.00" 
+                value={tx.amount} 
+                onChange={e => setTx({...tx, amount: e.target.value})} 
+                className="w-full text-2xl font-bold text-gray-900 dark:text-white mt-1 outline-none bg-transparent" 
+              />
             </div>
             <div>
               <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Money Paid</label>
-              <input type="number" placeholder="0.00" value={tx.paid} onChange={e => setTx({...tx, paid: e.target.value})} className="w-full text-2xl font-bold text-green-700 dark:text-green-400 mt-1 outline-none bg-transparent" />
+              <input 
+                type="number" 
+                placeholder="0.00" 
+                value={tx.paid} 
+                onChange={e => setTx({...tx, paid: e.target.value})} 
+                className="w-full text-2xl font-bold text-green-700 dark:text-green-400 mt-1 outline-none bg-transparent" 
+              />
             </div>
           </div>
         </div>
@@ -165,7 +200,6 @@ export const RecordPage = () => {
           </div>
         )}
 
-        {/* SMS PREVIEW WITH "DEBT" TERMINOLOGY */}
         {(amountVal > 0 || paidVal > 0) && (
           <div className="bg-gray-900 text-gray-100 p-5 rounded-2xl shadow-xl relative">
             <div className="absolute top-3 right-3 bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1">
@@ -186,7 +220,11 @@ export const RecordPage = () => {
           </div>
         )}
 
-        <button onClick={saveTransaction} disabled={!tx.amount && !tx.paid} className="w-full bg-green-700 text-white font-bold text-xl py-4 rounded-2xl shadow-lg disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-2">
+        <button 
+          onClick={saveTransaction} 
+          disabled={!tx.amount && !tx.paid} 
+          className="w-full bg-green-700 text-white font-bold text-xl py-4 rounded-2xl shadow-lg disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-2"
+        >
           <Check size={24} /> Save Transaction
         </button>
       </div>
