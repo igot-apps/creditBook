@@ -7,7 +7,8 @@ import { PageHeader } from "../components/PageHeader";
 import { CustomerService } from "../services/CustomerService";
 
 export const FollowUpsPage = () => {
-  const { store, customers, refreshCustomers, showToast, triggerConfetti } = useApp();
+  // 👇 Changed 'store' to 'currentStore'
+  const { currentStore, customers, refreshCustomers, showToast, triggerConfetti } = useApp();
   const [filter, setFilter] = useState("all");
 
   const followUps = useMemo(() => {
@@ -37,14 +38,22 @@ export const FollowUpsPage = () => {
     return followUps.filter(c => c.category === filter);
   }, [followUps, filter]);
 
-  const generateMessage = (c) => 
-    `Hello ${c.name}, this is a reminder from ${store.name}. You have an outstanding debt of ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
-  
+  const generateMessage = (c) =>
+    `Hello ${c.name}, this is a reminder from ${currentStore.name}. You have an outstanding debt of ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
+
   const handleMarkPaid = async (customerId) => {
-    await CustomerService.clearDebt(customerId);
-    await refreshCustomers();
-    triggerConfetti();
-    showToast("Debt cleared!");
+    if (!currentStore) return;
+    
+    try {
+      // 👇 Now passing both storeId and customerId
+      await CustomerService.clearDebt(currentStore.id, customerId);
+      await refreshCustomers();
+      triggerConfetti();
+      showToast("Debt cleared!");
+    } catch (error) {
+      console.error("Failed to clear debt:", error);
+      showToast("Failed to clear debt");
+    }
   };
 
   const filters = [

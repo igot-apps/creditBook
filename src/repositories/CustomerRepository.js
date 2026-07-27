@@ -7,6 +7,14 @@ export const CustomerRepository = {
     if (!id) return null;
     return await db.customers.where({ storeId, id }).first();
   },
+
+  // 👇 NEW: Find customer by phone number (ignores spaces for better matching)
+  getByPhone: async (storeId, phone) => {
+    if (!phone) return null;
+    const cleanPhone = phone.replace(/\s+/g, '').toLowerCase();
+    const customers = await db.customers.where('storeId').equals(storeId).toArray();
+    return customers.find(c => c.phone && c.phone.replace(/\s+/g, '').toLowerCase() === cleanPhone);
+  },
   
   add: async (storeId, customerData) => {
     return await db.customers.add({ storeId, ...customerData });

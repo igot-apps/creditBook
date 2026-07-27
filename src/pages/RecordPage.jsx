@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Mic, Check, MessageSquare, AlertCircle, User } from "lucide-react";
+import { Check, MessageSquare, AlertCircle, User } from "lucide-react";
 import { useApp } from "../contexts/AppContext";
 import { formatDate, formatCurrency } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
@@ -25,7 +25,7 @@ export const RecordPage = () => {
     amount: "", 
     paid: "" 
   });
-  const [isListening, setIsListening] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
 
   useEffect(() => {
     if (prefillTransaction) {
@@ -44,25 +44,13 @@ export const RecordPage = () => {
   const newBal = totalDue - paidVal;
   const isOverpayment = paidVal > totalDue && totalDue > 0;
 
-  const simulateVoice = () => {
-    setIsListening(true);
-    setTimeout(() => {
-      setIsListening(false);
-      setTx(prev => ({ 
-        ...prev, 
-        name: "Akosua Mensah", 
-        phone: "024 123 4567", 
-        items: "2 bags rice, 1 tin oil", 
-        amount: "250", 
-        paid: "100" 
-      }));
-    }, 1500);
-  };
-
   const saveTransaction = async () => {
     const amount = parseFloat(tx.amount) || 0;
     const paid = parseFloat(tx.paid) || 0;
     if (amount === 0 && paid === 0) return;
+
+    // Clear previous errors
+    setPhoneError("");
 
     try {
       await CustomerService.addTransaction(
@@ -83,7 +71,14 @@ export const RecordPage = () => {
       showToast("Transaction saved");
     } catch (error) {
       console.error("Failed to save transaction", error);
-      showToast("Failed to save");
+      
+      // 👇 Handle the specific "already exists" error
+      if (error.message.includes("already exists")) {
+        setPhoneError(error.message);
+        showToast(error.message);
+      } else {
+        showToast("Failed to save transaction");
+      }
     }
   };
 
@@ -92,15 +87,7 @@ export const RecordPage = () => {
       <PageHeader title="Record Sale" onBack={() => setView("home")} />
 
       <div className="p-4 space-y-4 max-w-lg mx-auto">
-        <button 
-          onClick={simulateVoice} 
-          disabled={isListening} 
-          className="w-full bg-yellow-400 text-gray-900 font-bold py-4 rounded-2xl flex items-center justify-center gap-3 shadow-md active:scale-95 transition-transform"
-        >
-          <Mic className={isListening ? "animate-pulse" : ""} size={24} />
-          {isListening ? "Listening..." : "Tap mic to simulate voice entry"}
-        </button>
-
+        {/* Customer Section */}
         {isExistingCustomer ? (
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-3">
@@ -113,7 +100,7 @@ export const RecordPage = () => {
                 <p className="text-sm text-gray-500 dark:text-gray-400">{tx.phone}</p>
               </div>
               <button 
-                onClick={() => setTx({...tx, customerId: null, name: "", phone: ""})} 
+                onClick={() => setTx({...tx, customerId: null, name: "", phone: "", items: "", amount: "", paid: ""})} 
                 className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1"
               >
                 Change
@@ -141,18 +128,28 @@ export const RecordPage = () => {
             <input 
               placeholder="Customer Name" 
               value={tx.name} 
-              onChange={e => setTx({...tx, name: e.target.value})} 
+              onChange={e => { setTx({...tx, name: e.target.value}); setPhoneError(""); }} 
               className="w-full text-lg font-semibold border-b border-gray-200 dark:border-gray-700 pb-2 outline-none focus:border-green-600 dark:text-white bg-transparent" 
             />
-            <input 
-              placeholder="Phone Number (024...)" 
-              value={tx.phone} 
-              onChange={e => setTx({...tx, phone: e.target.value})} 
-              className="w-full text-lg text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700 pb-2 outline-none focus:border-green-600 bg-transparent" 
-            />
+            <div>
+              <input 
+                placeholder="Phone Number (024...)" 
+                value={tx.phone} 
+                onChange={e => { setTx({...tx, phone: e.target.value}); setPhoneError(""); }} 
+                className={`w-full text-lg border-b pb-2 outline-none focus:border-green-600 bg-transparent ${
+                  phoneError ? "text-red-600 dark:text-red-400 border-red-500" : "text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700"
+                }`} 
+              />
+              {phoneError && (
+                <p className="text-xs text-red-600 dark:text-red-400 mt-1 flex items-center gap-1">
+                  <AlertCircle size={12} /> {phoneError}
+                </p>
+              )}
+            </div>
           </div>
         )}
 
+        {/* Transaction Details */}
         <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
           <div>
             <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Items Bought (Optional)</label>
@@ -187,6 +184,7 @@ export const RecordPage = () => {
           </div>
         </div>
 
+        {/* Overpayment Warning */}
         {isOverpayment && (
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-300 p-4 rounded-xl flex items-start gap-3">
             <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
@@ -200,6 +198,7 @@ export const RecordPage = () => {
           </div>
         )}
 
+        {/* SMS Preview */}
         {(amountVal > 0 || paidVal > 0) && (
           <div className="bg-gray-900 text-gray-100 p-5 rounded-2xl shadow-xl relative">
             <div className="absolute top-3 right-3 bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1">
@@ -210,7 +209,7 @@ export const RecordPage = () => {
               {`Balance update (${formatDate(new Date())}):\n`}
               {`Old debt: ${formatCurrency(currentBal)}\n`}
               {amountVal > 0 && `Items bought: ${formatCurrency(amountVal)}\n`}
-              {tx.items && amountVal > 0 && `What she bought: ${tx.items}\n`}
+              {tx.items && amountVal > 0 && `What was bought: ${tx.items}\n`}
               {paidVal > 0 && `Money paid: ${formatCurrency(paidVal)}\n`}
               {newBal < 0 
                 ? `Total debt now: ${formatCurrency(0)}\n(You have a credit of ${formatCurrency(Math.abs(newBal))})`
@@ -220,6 +219,7 @@ export const RecordPage = () => {
           </div>
         )}
 
+        {/* Save Button */}
         <button 
           onClick={saveTransaction} 
           disabled={!tx.amount && !tx.paid} 

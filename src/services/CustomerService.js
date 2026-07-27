@@ -18,10 +18,18 @@ export const CustomerService = {
     let targetCustomer = null;
     
     if (customerId) {
+      // Existing customer selected from search/profile
       targetCustomer = await CustomerRepository.getById(storeId, customerId);
-    }
-    
-    if (!targetCustomer) {
+    } else {
+      // 👇 NEW CUSTOMER FLOW: Check if phone already exists
+      const existingCustomer = await CustomerRepository.getByPhone(storeId, customerPhone);
+      
+      if (existingCustomer) {
+        // Block creation and throw a clear error
+        throw new Error(`A customer with the phone number "${customerPhone}" already exists.`);
+      }
+      
+      // If unique, create the new customer
       const newId = await CustomerRepository.add(storeId, {
         name: customerName,
         phone: customerPhone,
@@ -72,15 +80,14 @@ export const CustomerService = {
     const updatedHistory = await TransactionRepository.getByCustomerId(storeId, customerId);
     return { ...customer, history: updatedHistory, balance: 0 };
   },
-    updateCustomer: async (storeId, customerId, updates) => {
+
+  updateCustomer: async (storeId, customerId, updates) => {
     await CustomerRepository.update(storeId, customerId, updates);
     return await CustomerRepository.getById(storeId, customerId);
   },
 
   deleteCustomer: async (storeId, customerId) => {
-    // CustomerRepository.delete already handles cascading transaction deletion
     await CustomerRepository.delete(storeId, customerId);
     return true;
   }
 };
-

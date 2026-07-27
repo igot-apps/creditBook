@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { X, Save, User, Phone } from "lucide-react";
 import { useApp } from "../contexts/AppContext";
 import { CustomerService } from "../services/CustomerService";
+import { CustomerRepository } from "../repositories/CustomerRepository"; // 👈 Add this import
 
 export const EditCustomerModal = ({ customer, onClose }) => {
   const { currentStore, refreshCustomers, setSelectedCustomer, showToast } = useApp();
@@ -30,6 +31,13 @@ export const EditCustomerModal = ({ customer, onClose }) => {
       return;
     }
 
+    // 👇 CHECK FOR DUPLICATE PHONE NUMBER
+    const existingCustomer = await CustomerRepository.getByPhone(currentStore.id, form.phone);
+    if (existingCustomer && existingCustomer.id !== customer.id) {
+      setError("This phone number is already used by another customer.");
+      return;
+    }
+
     setIsSaving(true);
     try {
       await CustomerService.updateCustomer(currentStore.id, customer.id, {
@@ -37,10 +45,7 @@ export const EditCustomerModal = ({ customer, onClose }) => {
         phone: form.phone.trim()
       });
       
-      // Refresh the customer list
       const refreshed = await refreshCustomers();
-      
-      // Update the selectedCustomer with new data
       const updated = refreshed.find(c => c.id === customer.id);
       if (updated) {
         setSelectedCustomer(updated);
@@ -61,7 +66,6 @@ export const EditCustomerModal = ({ customer, onClose }) => {
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full shadow-2xl">
-        {/* Header */}
         <div className="flex justify-between items-center p-5 border-b border-gray-200 dark:border-gray-700">
           <h3 className="font-bold text-xl text-gray-900 dark:text-white">Edit Customer</h3>
           <button 
@@ -72,7 +76,6 @@ export const EditCustomerModal = ({ customer, onClose }) => {
           </button>
         </div>
 
-        {/* Form */}
         <div className="p-5 space-y-4">
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 p-3 rounded-xl text-sm font-medium">
@@ -81,9 +84,7 @@ export const EditCustomerModal = ({ customer, onClose }) => {
           )}
 
           <div>
-            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">
-              Customer Name
-            </label>
+            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Customer Name</label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
               <input
@@ -98,9 +99,7 @@ export const EditCustomerModal = ({ customer, onClose }) => {
           </div>
 
           <div>
-            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">
-              Phone Number
-            </label>
+            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Phone Number</label>
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
               <input
@@ -114,7 +113,6 @@ export const EditCustomerModal = ({ customer, onClose }) => {
           </div>
         </div>
 
-        {/* Footer */}
         <div className="flex gap-3 p-5 border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={onClose}
