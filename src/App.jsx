@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Home, Users, PlusCircle, BarChart3, Settings, Search, Phone,
-  MessageSquare, Mic, X, Check, Store, ChevronRight, Gift, MessageCircle
+  MessageSquare, Mic, X, Check, Store, ChevronRight, Gift, MessageCircle, 
+  AlertCircle 
 } from "lucide-react";
 import { StoreRepository } from "./repositories/StoreRepository";
 import { CustomerService } from "./services/CustomerService";
@@ -94,7 +95,13 @@ export default function CreditBook() {
   }, [customers]);
 
   const generateReminderMessage = (c) => {
-    // REMOVED "friendly" as requested
+    if (c.balance < 0) {
+      const credit = Math.abs(c.balance);
+      return `Hello ${c.name}, thank you for your payment! You currently have a credit balance of ${formatCurrency(credit)} with ${store.name}. This will be applied to your next purchase.`;
+    }
+    if (c.balance === 0) {
+      return `Hello ${c.name}, thank you! Your account with ${store.name} is fully settled.`;
+    }
     return `Hello ${c.name}, this is a reminder from ${store.name}. Your current outstanding balance is ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
   };
 
@@ -198,7 +205,11 @@ export default function CreditBook() {
 
   if (view === "record") {
     const currentBal = tx.customerId ? (customers.find(c => c.id === tx.customerId)?.balance || 0) : 0;
-    const newBal = Math.max(0, currentBal + (parseFloat(tx.amount) || 0) - (parseFloat(tx.paid) || 0));
+    const amountVal = parseFloat(tx.amount) || 0;
+    const paidVal = parseFloat(tx.paid) || 0;
+    const totalDue = currentBal + amountVal;
+    const newBal = totalDue - paidVal; // Allow negative for credit
+    const isOverpayment = paidVal > totalDue && totalDue > 0;
 
     return (
       <div className="min-h-screen bg-gray-50 pb-24">
@@ -235,16 +246,37 @@ export default function CreditBook() {
             </div>
           </div>
 
-          {(parseFloat(tx.amount) > 0 || parseFloat(tx.paid) > 0) && (
+          {/* OVERPAYMENT WARNING */}
+          {isOverpayment && (
+            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-xl flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-sm">Overpayment Detected</p>
+                <p className="text-sm mt-1">
+                  The amount paid ({formatCurrency(paidVal)}) is greater than the total due ({formatCurrency(totalDue)}). 
+                  This will create a <span className="font-bold">credit balance of {formatCurrency(Math.abs(newBal))}</span> for this customer.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* SMART SMS PREVIEW */}
+          {(amountVal > 0 || paidVal > 0) && (
             <div className="bg-gray-900 text-gray-100 p-5 rounded-2xl shadow-xl relative">
               <div className="absolute top-3 right-3 bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1">
                 <MessageSquare size={12} /> Message Preview
               </div>
               <p className="text-xs text-gray-400 mb-2 uppercase tracking-wider">You can send this to {tx.name || "Customer"}:</p>
               <div className="font-mono text-sm leading-relaxed whitespace-pre-line">
-                {`Balance update (${formatDate(new Date())}):\nOld debt: GHS ${currentBal.toFixed(2)}\n`}
-                {tx.items && `Items: ${tx.items}\n`}
-                {`Paid: GHS ${(parseFloat(tx.paid) || 0).toFixed(2)}\nNew Balance: GHS ${newBal.toFixed(2)}\nThank you! - ${store.name}`}
+                {`Balance update (${formatDate(new Date())}):\n`}
+                {currentBal > 0 && `Old debt: GHS ${currentBal.toFixed(2)}\n`}
+                {tx.items && amountVal > 0 && `Items: ${tx.items}\n`}
+                {amountVal > 0 && `New Purchase: GHS ${amountVal.toFixed(2)}\n`}
+                {paidVal > 0 && `Paid: GHS ${paidVal.toFixed(2)}\n`}
+                {newBal < 0 
+                  ? `New Balance: GHS 0.00\n(You have a credit of GHS ${Math.abs(newBal).toFixed(2)} with us)`
+                  : `New Balance: GHS ${newBal.toFixed(2)}`}
+                {`\nThank you! - ${store.name}`}
               </div>
             </div>
           )}
@@ -271,9 +303,12 @@ export default function CreditBook() {
             </div>
             <h3 className="text-2xl font-bold text-gray-900">{selectedCustomer.name}</h3>
             <p className="text-gray-500 flex items-center justify-center gap-1 mt-1"><Phone size={16} /> {selectedCustomer.phone}</p>
-            <div className={`mt-4 text-4xl font-bold ${selectedCustomer.balance > 0 ? "text-red-600" : "text-green-600"}`}>
-              {formatCurrency(selectedCustomer.balance)}
+                        <div className={`mt-4 text-4xl font-bold ${selectedCustomer.balance > 0 ? "text-red-600" : selectedCustomer.balance < 0 ? "text-blue-600" : "text-green-600"}`}>
+              {selectedCustomer.balance < 0 ? `Credit: ${formatCurrency(Math.abs(selectedCustomer.balance))}` : formatCurrency(selectedCustomer.balance)}
             </div>
+            <p className="text-gray-500 text-sm mt-1">
+              {selectedCustomer.balance < 0 ? "Customer has an advance balance" : "Current Balance"}
+            </p>
             <p className="text-gray-500 text-sm mt-1">Current Balance</p>
           </div>
 
@@ -384,8 +419,11 @@ export default function CreditBook() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className={`font-bold text-lg ${c.balance > 0 ? "text-red-600" : "text-green-600"}`}>{formatCurrency(c.balance)}</p>
+                    <p className={`font-bold text-lg ${c.balance > 0 ? "text-red-600" : c.balance < 0 ? "text-blue-600" : "text-green-600"}`}>
+                      {c.balance < 0 ? `Credit: ${formatCurrency(Math.abs(c.balance))}` : formatCurrency(c.balance)}
+                    </p>
                     {c.balance > 200 && <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold">HIGH DEBT</span>}
+                    {c.balance < 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">CREDIT</span>}
                   </div>
                 </div>
               ))

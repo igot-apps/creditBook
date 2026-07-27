@@ -17,12 +17,10 @@ export const CustomerService = {
   addTransaction: async (customerId, customerName, customerPhone, amount, paid, items) => {
     let targetCustomer = null;
     
-    // 1. Only try to fetch if customerId actually exists
     if (customerId) {
       targetCustomer = await CustomerRepository.getById(customerId);
     }
     
-    // 2. If not found (or if it was null), create a new customer
     if (!targetCustomer) {
       const newId = await CustomerRepository.add({
         name: customerName,
@@ -32,12 +30,12 @@ export const CustomerService = {
       targetCustomer = await CustomerRepository.getById(newId);
     }
 
-    // 3. Calculate balances
     const history = await TransactionRepository.getByCustomerId(targetCustomer.id);
     const prevBalance = history.reduce((sum, t) => sum + (t.amount || 0) - (t.paid || 0), 0);
-    const newBalance = Math.max(0, prevBalance + amount - paid);
+    
+    // ALLOW NEGATIVE BALANCE (Credit)
+    const newBalance = prevBalance + amount - paid; 
 
-    // 4. Save transaction
     const newTx = {
       customerId: targetCustomer.id,
       date: new Date().toISOString(),
@@ -50,7 +48,6 @@ export const CustomerService = {
     
     await TransactionRepository.add(newTx);
 
-    // 5. Return updated customer data
     const updatedHistory = await TransactionRepository.getByCustomerId(targetCustomer.id);
     return { ...targetCustomer, history: updatedHistory, balance: newBalance };
   },
