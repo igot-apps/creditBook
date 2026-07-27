@@ -24,7 +24,7 @@ export const ProfilePage = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   
-  // 👇 NEW: States for Clear Debt Confirmation
+  // States for Clear Debt Confirmation
   const [showClearDebtModal, setShowClearDebtModal] = useState(false);
   const [confirmText, setConfirmText] = useState("");
 
@@ -40,14 +40,14 @@ export const ProfilePage = () => {
     return `Hello ${c.name}, this is a reminder from ${currentStore.name}. You have an outstanding debt of ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
   };
 
-  // 👇 Opens the modal instead of executing immediately
+  // Opens the modal instead of executing immediately
   const handleMarkPaid = () => {
     if (selectedCustomer.balance <= 0) return;
     setShowClearDebtModal(true);
     setConfirmText("");
   };
 
-  // 👇 Executes only after "yes" is typed
+  // Executes only after "yes" is typed
   const executeClearDebt = async () => {
     if (confirmText.toLowerCase().trim() !== "yes") return;
     
@@ -69,7 +69,7 @@ export const ProfilePage = () => {
 
   const handleDelete = async () => {
     if (!window.confirm(
-      `⚠️ Are you sure you want to delete ${selectedCustomer.name}?\n\n` +
+      `️ Are you sure you want to delete ${selectedCustomer.name}?\n\n` +
       `This will permanently remove:\n` +
       `• Customer details\n` +
       `• All ${selectedCustomer.history?.length || 0} transaction(s)\n\n` +
@@ -167,7 +167,6 @@ export const ProfilePage = () => {
             <PlusCircle size={24} /> Add Purchase
           </button>
           
-          {/* 👇 Updated Clear Debt Button to open modal */}
           <button 
             onClick={handleMarkPaid} 
             disabled={selectedCustomer.balance <= 0} 
@@ -246,6 +245,7 @@ export const ProfilePage = () => {
                   </div>
                   
                   <div className="flex flex-col gap-1">
+                    {/* 👇 VIEW INVOICE BUTTON */}
                     <button 
                       onClick={() => setViewingInvoice(h)}
                       className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-600 dark:text-gray-300 active:scale-95 transition"
@@ -253,6 +253,8 @@ export const ProfilePage = () => {
                     >
                       <FileText size={16} />
                     </button>
+                    
+                    {/* 👇 VOID BUTTON */}
                     {!h.isVoid && (
                       <button 
                         onClick={() => handleVoidTransaction(h)}
@@ -273,11 +275,14 @@ export const ProfilePage = () => {
         </div>
       </div>
 
-      {/* Modals */}
+      {/*  MODALS RENDERED AT THE BOTTOM */}
+      
+      {/* Invoice Modal */}
       {viewingInvoice && (
         <InvoiceModal onClose={() => setViewingInvoice(null)} transaction={viewingInvoice} />
       )}
       
+      {/* Edit Customer Modal */}
       {isEditing && (
         <EditCustomerModal 
           customer={selectedCustomer} 
@@ -285,7 +290,7 @@ export const ProfilePage = () => {
         />
       )}
 
-      {/* 👇 NEW: Clear Debt Confirmation Modal */}
+      {/* Clear Debt Confirmation Modal */}
       {showClearDebtModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6 border border-gray-200 dark:border-gray-700">
