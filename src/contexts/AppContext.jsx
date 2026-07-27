@@ -77,11 +77,37 @@ export const AppProvider = ({ children }) => {
     setView("login");
   };
 
+    // Add these two functions inside the AppProvider component:
+  const handleLogin = async (email, password) => {
+    const store = await AuthService.login(email, password);
+    setCurrentStore(store);
+    const loadedCustomers = await CustomerService.getAllWithHistory(store.id);
+    setCustomers(loadedCustomers);
+    setView("home");
+  };
+
+  const handleRegister = async (storeData) => {
+    const store = await AuthService.register(
+      storeData.storeName,
+      storeData.ownerName,
+      storeData.email,
+      storeData.phone,
+      storeData.password
+    );
+    // Auto-login after registration for a seamless mobile experience
+    setCurrentStore(store);
+    setCustomers([]);
+    setView("home");
+  };
+
   const value = {
     view, setView, isLoading, setIsLoading,
     theme, setTheme, toast, showToast, showConfetti, triggerConfetti,
     currentStore, setCurrentStore, customers, setCustomers, refreshCustomers,
-    selectedCustomer, setSelectedCustomer, totalDebt, todaySales, handleLogout
+    selectedCustomer, setSelectedCustomer, totalDebt, todaySales, handleLogout,
+    // 👇 Add these to the exported value:
+    handleLogin,
+    handleRegister
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

@@ -4,20 +4,20 @@ import { useApp } from "../contexts/AppContext";
 import { AuthService } from "../services/AuthService";
 
 export const LoginPage = () => {
-  const { setView, showToast } = useApp();
+  const { setView, showToast, handleLogin: loginAction } = useApp();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = async (e) => {
+  const onSubmit = async (e) => {
     e.preventDefault();
+    if (isLoading) return; // Prevent double-taps on mobile
+    
     setIsLoading(true);
     try {
-      await AuthService.login(email, password);
-      window.location.reload(); // Reload to trigger AppContext auth check
+      await loginAction(email, password);
     } catch (err) {
       showToast("Invalid email or password");
-    } finally {
       setIsLoading(false);
     }
   };
@@ -33,15 +33,19 @@ export const LoginPage = () => {
           <p className="text-gray-500 dark:text-gray-400 mt-2">Sign in to manage your store</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1 block">Email Address</label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
               <input 
-                type="email" required value={email} onChange={e => setEmail(e.target.value)}
+                type="email" 
+                required 
+                value={email} 
+                onChange={e => setEmail(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
                 placeholder="owner@store.com"
+                autoComplete="email"
               />
             </div>
           </div>
@@ -50,16 +54,21 @@ export const LoginPage = () => {
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
               <input 
-                type="password" required value={password} onChange={e => setPassword(e.target.value)}
+                type="password" 
+                required 
+                value={password} 
+                onChange={e => setPassword(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
                 placeholder="••••••••"
+                autoComplete="current-password"
               />
             </div>
           </div>
 
           <button 
-            type="submit" disabled={isLoading}
-            className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-3.5 rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-70"
+            type="submit" 
+            disabled={isLoading}
+            className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-3.5 rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {isLoading ? "Signing in..." : "Sign In"}
           </button>

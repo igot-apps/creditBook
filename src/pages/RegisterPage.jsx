@@ -1,23 +1,22 @@
 import { useState } from "react";
 import { Store, User, Mail, Phone, Lock } from "lucide-react";
 import { useApp } from "../contexts/AppContext";
-import { AuthService } from "../services/AuthService";
 
 export const RegisterPage = () => {
-  const { setView, showToast } = useApp();
+  const { setView, showToast, handleRegister: registerAction } = useApp();
   const [form, setForm] = useState({ storeName: "", ownerName: "", email: "", phone: "", password: "" });
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleRegister = async (e) => {
+  const onSubmit = async (e) => {
     e.preventDefault();
+    if (isLoading) return; // Prevent double-taps on mobile
+    
     setIsLoading(true);
     try {
-      await AuthService.register(form.storeName, form.ownerName, form.email, form.phone, form.password);
-      showToast("Store created successfully! Please log in.");
-      setView("login");
+      await registerAction(form);
+      showToast("Store created successfully!");
     } catch (err) {
-      showToast("Email already exists");
-    } finally {
+      showToast("Email already exists or registration failed");
       setIsLoading(false);
     }
   };
@@ -30,7 +29,7 @@ export const RegisterPage = () => {
           <p className="text-gray-500 dark:text-gray-400 mt-2">Start managing your sales and debts today</p>
         </div>
 
-        <form onSubmit={handleRegister} className="space-y-4">
+        <form onSubmit={onSubmit} className="space-y-4">
           <div className="relative">
             <Store className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             <input required value={form.storeName} onChange={e => setForm({...form, storeName: e.target.value})}
@@ -47,23 +46,23 @@ export const RegisterPage = () => {
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             <input type="email" required value={form.email} onChange={e => setForm({...form, email: e.target.value})}
               className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
-              placeholder="Email Address" />
+              placeholder="Email Address" autoComplete="email" />
           </div>
           <div className="relative">
             <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             <input type="tel" required value={form.phone} onChange={e => setForm({...form, phone: e.target.value})}
               className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
-              placeholder="Business Phone" />
+              placeholder="Business Phone" autoComplete="tel" />
           </div>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             <input type="password" required value={form.password} onChange={e => setForm({...form, password: e.target.value})}
               className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
-              placeholder="Create Password" />
+              placeholder="Create Password" autoComplete="new-password" />
           </div>
 
           <button type="submit" disabled={isLoading}
-            className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-3.5 rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-70">
+            className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-3.5 rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-70 disabled:cursor-not-allowed">
             {isLoading ? "Creating Store..." : "Create Store & Continue"}
           </button>
         </form>
