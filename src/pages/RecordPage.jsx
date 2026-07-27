@@ -1,15 +1,34 @@
-import { useState } from "react";
-import { Mic, Check, MessageSquare, AlertCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Mic, Check, MessageSquare, AlertCircle, User } from "lucide-react";
 import { useApp } from "../contexts/AppContext";
-import { formatDate } from "../utils/helpers";
+import { formatDate, formatCurrency } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
 import { PageHeader } from "../components/PageHeader";
 
 export const RecordPage = () => {
-  const { currentStore, customers, refreshCustomers, showToast, triggerConfetti, setView } = useApp();
+  const { 
+    currentStore, 
+    customers, 
+    refreshCustomers, 
+    showToast, 
+    triggerConfetti, 
+    setView,
+    prefillTransaction,
+    setPrefillTransaction
+  } = useApp();
+  
   const [tx, setTx] = useState({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "" });
   const [isListening, setIsListening] = useState(false);
 
+  // 👇 Load prefill data when coming from ProfilePage
+  useEffect(() => {
+    if (prefillTransaction) {
+      setTx(prefillTransaction);
+      setPrefillTransaction(null); // Clear after loading
+    }
+  }, [prefillTransaction, setPrefillTransaction]);
+
+  const isExistingCustomer = !!tx.customerId;
   const currentBal = tx.customerId ? (customers.find(c => c.id === tx.customerId)?.balance || 0) : 0;
   const amountVal = parseFloat(tx.amount) || 0;
   const paidVal = parseFloat(tx.paid) || 0;
@@ -32,12 +51,12 @@ export const RecordPage = () => {
 
     try {
       await CustomerService.addTransaction(
-        currentStore.id, // 👈 SaaS: pass storeId
-        tx.customerId, 
-        tx.name, 
-        tx.phone, 
-        amount, 
-        paid, 
+        currentStore.id,
+        tx.customerId,
+        tx.name,
+        tx.phone,
+        amount,
+        paid,
         tx.items
       );
       await refreshCustomers();
@@ -63,10 +82,58 @@ export const RecordPage = () => {
           {isListening ? "Listening..." : "Tap mic to simulate voice entry"}
         </button>
 
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
-          <input placeholder="Customer Name" value={tx.name} onChange={e => setTx({...tx, name: e.target.value})} className="w-full text-lg font-semibold border-b border-gray-200 dark:border-gray-700 pb-2 outline-none focus:border-green-600 dark:text-white bg-transparent" />
-          <input placeholder="Phone Number (024...)" value={tx.phone} onChange={e => setTx({...tx, phone: e.target.value})} className="w-full text-lg text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700 pb-2 outline-none focus:border-green-600 bg-transparent" />
-        </div>
+        {/* SMART CUSTOMER SECTION: Shows card for existing, form for new */}
+        {isExistingCustomer ? (
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full flex items-center justify-center font-bold text-lg">
+                {tx.name.charAt(0)}
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Recording for</p>
+                <p className="font-bold text-gray-900 dark:text-white text-lg">{tx.name}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{tx.phone}</p>
+              </div>
+              <button 
+                onClick={() => setTx({...tx, customerId: null, name: "", phone: ""})} 
+                className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1"
+              >
+                Change
+              </button>
+            </div>
+            {currentBal > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center">
+                <p className="text-sm text-gray-500 dark:text-gray-400">Current Debt</p>
+                <p className="text-lg font-bold text-red-600 dark:text-red-400">{formatCurrency(currentBal)}</p>
+              </div>
+            )}
+            {currentBal < 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center">
+                <p className="text-sm text-gray-500 dark:text-gray-400">Credit Balance</p>
+                <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{formatCurrency(Math.abs(currentBal))}</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <User size={16} className="text-gray-400" />
+              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">New Customer</p>
+            </div>
+            <input 
+              placeholder="Customer Name" 
+              value={tx.name} 
+              onChange={e => setTx({...tx, name: e.target.value})} 
+              className="w-full text-lg font-semibold border-b border-gray-200 dark:border-gray-700 pb-2 outline-none focus:border-green-600 dark:text-white bg-transparent" 
+            />
+            <input 
+              placeholder="Phone Number (024...)" 
+              value={tx.phone} 
+              onChange={e => setTx({...tx, phone: e.target.value})} 
+              className="w-full text-lg text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700 pb-2 outline-none focus:border-green-600 bg-transparent" 
+            />
+          </div>
+        )}
 
         <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
           <div>
@@ -79,7 +146,7 @@ export const RecordPage = () => {
               <input type="number" placeholder="0.00" value={tx.amount} onChange={e => setTx({...tx, amount: e.target.value})} className="w-full text-2xl font-bold text-gray-900 dark:text-white mt-1 outline-none bg-transparent" />
             </div>
             <div>
-              <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Amount Paid</label>
+              <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Money Paid</label>
               <input type="number" placeholder="0.00" value={tx.paid} onChange={e => setTx({...tx, paid: e.target.value})} className="w-full text-2xl font-bold text-green-700 dark:text-green-400 mt-1 outline-none bg-transparent" />
             </div>
           </div>
@@ -91,28 +158,30 @@ export const RecordPage = () => {
             <div>
               <p className="font-bold text-sm">Overpayment Detected</p>
               <p className="text-sm mt-1">
-                This creates a <span className="font-bold">credit of GHS {Math.abs(newBal).toFixed(2)}</span>.
+                Money paid ({formatCurrency(paidVal)}) is more than the debt ({formatCurrency(totalDue)}). 
+                This creates a <span className="font-bold">credit of {formatCurrency(Math.abs(newBal))}</span>.
               </p>
             </div>
           </div>
         )}
 
+        {/* SMS PREVIEW WITH "DEBT" TERMINOLOGY */}
         {(amountVal > 0 || paidVal > 0) && (
           <div className="bg-gray-900 text-gray-100 p-5 rounded-2xl shadow-xl relative">
             <div className="absolute top-3 right-3 bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1">
-              <MessageSquare size={12} /> Message Preview
+              <MessageSquare size={12} /> SMS Preview
             </div>
             <p className="text-xs text-gray-400 mb-2 uppercase tracking-wider">Message to {tx.name || "Customer"}:</p>
             <div className="font-mono text-sm leading-relaxed whitespace-pre-line">
               {`Balance update (${formatDate(new Date())}):\n`}
-              {currentBal > 0 && `Old debt: GHS ${currentBal.toFixed(2)}\n`}
-              {tx.items && amountVal > 0 && `Items: ${tx.items}\n`}
-              {amountVal > 0 && `New Purchase: GHS ${amountVal.toFixed(2)}\n`}
-              {paidVal > 0 && `Paid: GHS ${paidVal.toFixed(2)}\n`}
+              {`Old debt: ${formatCurrency(currentBal)}\n`}
+              {amountVal > 0 && `Items bought: ${formatCurrency(amountVal)}\n`}
+              {tx.items && amountVal > 0 && `What she bought: ${tx.items}\n`}
+              {paidVal > 0 && `Money paid: ${formatCurrency(paidVal)}\n`}
               {newBal < 0 
-                ? `New Balance: GHS 0.00\n(Credit: GHS ${Math.abs(newBal).toFixed(2)})`
-                : `New Balance: GHS ${newBal.toFixed(2)}`}
-              {`\nThank you! - ${currentStore?.name || "Store"}`}
+                ? `Total debt now: ${formatCurrency(0)}\n(You have a credit of ${formatCurrency(Math.abs(newBal))})`
+                : `Total debt now: ${formatCurrency(newBal)}`}
+              {`\nThank you! - From ${currentStore?.name || "Store"}`}
             </div>
           </div>
         )}

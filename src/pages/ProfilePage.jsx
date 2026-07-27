@@ -8,29 +8,30 @@ import { PageHeader } from "../components/PageHeader";
 import { InvoiceModal } from "../components/InvoiceModal";
 
 export const ProfilePage = () => {
-  const { store, selectedCustomer, setSelectedCustomer, setView, refreshCustomers, showToast, triggerConfetti } = useApp();
+  // 👇 Fixed: Changed 'store' to 'currentStore' and added 'setPrefillTransaction'
+  const { currentStore, selectedCustomer, setSelectedCustomer, setView, refreshCustomers, showToast, triggerConfetti, setPrefillTransaction } = useApp();
   const [viewingInvoice, setViewingInvoice] = useState(null);
 
   if (!selectedCustomer) return null;
 
   const generateReminderMessage = (c) => {
-    if (c.balance < 0) return `Hello ${c.name}, thank you! You have a credit of ${formatCurrency(Math.abs(c.balance))} with ${store.name}.`;
-    if (c.balance === 0) return `Hello ${c.name}, thank you! Your account with ${store.name} is fully settled.`;
-    return `Hello ${c.name}, this is a reminder from ${store.name}. Your current outstanding balance is ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
+    if (c.balance < 0) {
+      return `Hello ${c.name}, thank you! You have a credit of ${formatCurrency(Math.abs(c.balance))} with ${currentStore.name}. This will be used for your next purchase. Thank you!`;
+    }
+    if (c.balance === 0) {
+      return `Hello ${c.name}, thank you! Your debt with ${currentStore.name} is fully cleared. We appreciate your business!`;
+    }
+    return `Hello ${c.name}, this is a reminder from ${currentStore.name}. You have an outstanding debt of ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
   };
 
   const handleMarkPaid = async () => {
     if (selectedCustomer.balance <= 0) return;
-    await CustomerService.clearDebt(selectedCustomer.id);
+    await CustomerService.clearDebt(currentStore.id, selectedCustomer.id);
     const refreshed = await refreshCustomers();
     const updated = refreshed.find(c => c.id === selectedCustomer.id);
     setSelectedCustomer(updated);
     triggerConfetti();
     showToast("Debt cleared!");
-  };
-
-  const handleAddPurchase = () => {
-    setView("record");
   };
 
   return (
@@ -57,7 +58,20 @@ export const ProfilePage = () => {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={handleAddPurchase} className="bg-green-700 text-white font-bold py-4 rounded-xl flex flex-col items-center gap-2 shadow-md active:scale-95 transition">
+          <button 
+            onClick={() => {
+              setPrefillTransaction({
+                customerId: selectedCustomer.id,
+                name: selectedCustomer.name,
+                phone: selectedCustomer.phone,
+                items: "",
+                amount: "",
+                paid: ""
+              });
+              setView("record");
+            }} 
+            className="bg-green-700 text-white font-bold py-4 rounded-xl flex flex-col items-center gap-2 shadow-md active:scale-95 transition"
+          >
             <PlusCircle size={24} /> Add Purchase
           </button>
           <button onClick={handleMarkPaid} disabled={selectedCustomer.balance <= 0} className="bg-yellow-400 text-gray-900 font-bold py-4 rounded-xl flex flex-col items-center gap-2 shadow-md disabled:opacity-50 active:scale-95 transition">

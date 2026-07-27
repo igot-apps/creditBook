@@ -1,23 +1,60 @@
 import { useState } from "react";
-import { Store, User, Mail, Phone, Lock } from "lucide-react";
+import { Store, User, Mail, Phone, Lock, AlertCircle } from "lucide-react";
 import { useApp } from "../contexts/AppContext";
 
 export const RegisterPage = () => {
   const { setView, showToast, handleRegister: registerAction } = useApp();
   const [form, setForm] = useState({ storeName: "", ownerName: "", email: "", phone: "", password: "" });
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [debugInfo, setDebugInfo] = useState([]);
+
+  const addDebug = (msg) => {
+    setDebugInfo(prev => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${msg}`]);
+  };
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    if (isLoading) return; // Prevent double-taps on mobile
+    setError("");
     
+    if (isLoading) {
+      addDebug("⚠️ Already loading, ignoring click");
+      return;
+    }
+    
+    addDebug(`🔵 Starting registration for: ${form.email}`);
     setIsLoading(true);
+    
     try {
+      addDebug("🔵 Calling registerAction...");
       await registerAction(form);
-      showToast("Store created successfully!");
+      addDebug("🟢 Registration successful!");
+      showToast("Store created successfully on this device!");
     } catch (err) {
-      showToast("Email already exists or registration failed");
+      console.error("Registration error:", err);
+      const errorMsg = err.message || "Registration failed";
+      setError(errorMsg);
+      addDebug(`🔴 Error: ${errorMsg}`);
+      showToast(errorMsg);
       setIsLoading(false);
+    }
+  };
+
+  const testDatabase = async () => {
+    addDebug("🔵 Testing database...");
+    try {
+      const { AuthService } = await import("../services/AuthService");
+      const result = await AuthService.testDatabase();
+      if (result.success) {
+        addDebug("✅ Database is working!");
+        alert("✅ Database is working! You can register.");
+      } else {
+        addDebug("❌ Database failed: " + result.message);
+        alert("❌ Database Error: " + result.message + "\n\nTry:\n1. Close private/incognito mode\n2. Use a different browser\n3. Clear browser data");
+      }
+    } catch (err) {
+      addDebug("❌ Test failed: " + err.message);
+      alert("❌ Test failed: " + err.message);
     }
   };
 
@@ -29,43 +66,77 @@ export const RegisterPage = () => {
           <p className="text-gray-500 dark:text-gray-400 mt-2">Start managing your sales and debts today</p>
         </div>
 
+        {/* Error Alert */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-bold text-red-800 dark:text-red-300 text-sm">Registration Failed</p>
+              <p className="text-red-700 dark:text-red-400 text-sm mt-1">{error}</p>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="relative">
             <Store className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-            <input required value={form.storeName} onChange={e => setForm({...form, storeName: e.target.value})}
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
+            <input required value={form.storeName} onChange={e => setForm({...form, storeName: e.target.value})} disabled={isLoading}
+              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white disabled:opacity-50"
               placeholder="Store Name (e.g., Shalom Cloth)" />
           </div>
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-            <input required value={form.ownerName} onChange={e => setForm({...form, ownerName: e.target.value})}
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
+            <input required value={form.ownerName} onChange={e => setForm({...form, ownerName: e.target.value})} disabled={isLoading}
+              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white disabled:opacity-50"
               placeholder="Your Name" />
           </div>
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-            <input type="email" required value={form.email} onChange={e => setForm({...form, email: e.target.value})}
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
+            <input type="email" required value={form.email} onChange={e => setForm({...form, email: e.target.value})} disabled={isLoading}
+              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white disabled:opacity-50"
               placeholder="Email Address" autoComplete="email" />
           </div>
           <div className="relative">
             <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-            <input type="tel" required value={form.phone} onChange={e => setForm({...form, phone: e.target.value})}
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
+            <input type="tel" required value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} disabled={isLoading}
+              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white disabled:opacity-50"
               placeholder="Business Phone" autoComplete="tel" />
           </div>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-            <input type="password" required value={form.password} onChange={e => setForm({...form, password: e.target.value})}
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
+            <input type="password" required value={form.password} onChange={e => setForm({...form, password: e.target.value})} disabled={isLoading}
+              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white disabled:opacity-50"
               placeholder="Create Password" autoComplete="new-password" />
           </div>
 
           <button type="submit" disabled={isLoading}
-            className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-3.5 rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-70 disabled:cursor-not-allowed">
-            {isLoading ? "Creating Store..." : "Create Store & Continue"}
+            className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-3.5 rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            {isLoading ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Creating Store...
+              </>
+            ) : "Create Store & Continue"}
           </button>
         </form>
+
+        {/* Debug Panel */}
+        {debugInfo.length > 0 && (
+          <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg text-xs font-mono">
+            <p className="font-bold text-gray-700 dark:text-gray-300 mb-2">Debug Log:</p>
+            {debugInfo.map((log, i) => (
+              <p key={i} className="text-gray-600 dark:text-gray-400">{log}</p>
+            ))}
+          </div>
+        )}
+
+        {/* Test Database Button */}
+        <button 
+          onClick={testDatabase}
+          className="w-full mt-4 text-sm text-gray-500 dark:text-gray-400 underline"
+        >
+          Test if database is working
+        </button>
 
         <p className="text-center mt-6 text-gray-600 dark:text-gray-400">
           Already have a store?{" "}

@@ -16,6 +16,7 @@ export const AppProvider = ({ children }) => {
   const [currentStore, setCurrentStore] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [prefillTransaction, setPrefillTransaction] = useState(null);
 
   useEffect(() => {
     if (theme === "dark") document.documentElement.classList.add("dark");
@@ -79,25 +80,38 @@ export const AppProvider = ({ children }) => {
 
     // Add these two functions inside the AppProvider component:
   const handleLogin = async (email, password) => {
-    const store = await AuthService.login(email, password);
-    setCurrentStore(store);
-    const loadedCustomers = await CustomerService.getAllWithHistory(store.id);
-    setCustomers(loadedCustomers);
-    setView("home");
+    console.log("🔵 Attempting login for:", email);
+    try {
+      const store = await AuthService.login(email, password);
+      console.log("🟢 Login successful:", store.name);
+      setCurrentStore(store);
+      const loadedCustomers = await CustomerService.getAllWithHistory(store.id);
+      setCustomers(loadedCustomers);
+      setView("home");
+    } catch (error) {
+      console.error("🔴 Login error:", error);
+      throw error; // Pass to the component
+    }
   };
 
   const handleRegister = async (storeData) => {
-    const store = await AuthService.register(
-      storeData.storeName,
-      storeData.ownerName,
-      storeData.email,
-      storeData.phone,
-      storeData.password
-    );
-    // Auto-login after registration for a seamless mobile experience
-    setCurrentStore(store);
-    setCustomers([]);
-    setView("home");
+    console.log("🔵 Attempting registration for:", storeData.email);
+    try {
+      const store = await AuthService.register(
+        storeData.storeName,
+        storeData.ownerName,
+        storeData.email,
+        storeData.phone,
+        storeData.password
+      );
+      console.log("🟢 Registration successful:", store.name);
+      setCurrentStore(store);
+      setCustomers([]);
+      setView("home");
+    } catch (error) {
+      console.error("🔴 Registration error:", error);
+      throw error; // Pass to the component
+    }
   };
 
   const value = {
@@ -105,9 +119,9 @@ export const AppProvider = ({ children }) => {
     theme, setTheme, toast, showToast, showConfetti, triggerConfetti,
     currentStore, setCurrentStore, customers, setCustomers, refreshCustomers,
     selectedCustomer, setSelectedCustomer, totalDebt, todaySales, handleLogout,
-    // 👇 Add these to the exported value:
-    handleLogin,
-    handleRegister
+    handleLogin, handleRegister,
+    // 👇 Add this:
+    prefillTransaction, setPrefillTransaction
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

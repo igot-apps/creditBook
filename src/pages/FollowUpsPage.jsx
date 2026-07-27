@@ -38,8 +38,8 @@ export const FollowUpsPage = () => {
   }, [followUps, filter]);
 
   const generateMessage = (c) => 
-    `Hello ${c.name}, this is a reminder from ${store.name}. Your current outstanding balance is ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
-
+    `Hello ${c.name}, this is a reminder from ${store.name}. You have an outstanding debt of ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
+  
   const handleMarkPaid = async (customerId) => {
     await CustomerService.clearDebt(customerId);
     await refreshCustomers();
