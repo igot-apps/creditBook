@@ -23,6 +23,10 @@ export const ProfilePage = () => {
   const [viewingInvoice, setViewingInvoice] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // 👇 NEW: States for Clear Debt Confirmation
+  const [showClearDebtModal, setShowClearDebtModal] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
 
   if (!selectedCustomer) return null;
 
@@ -36,14 +40,31 @@ export const ProfilePage = () => {
     return `Hello ${c.name}, this is a reminder from ${currentStore.name}. You have an outstanding debt of ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
   };
 
-  const handleMarkPaid = async () => {
+  // 👇 Opens the modal instead of executing immediately
+  const handleMarkPaid = () => {
     if (selectedCustomer.balance <= 0) return;
-    await CustomerService.clearDebt(currentStore.id, selectedCustomer.id);
-    const refreshed = await refreshCustomers();
-    const updated = refreshed.find(c => c.id === selectedCustomer.id);
-    setSelectedCustomer(updated);
-    triggerConfetti();
-    showToast("Debt cleared!");
+    setShowClearDebtModal(true);
+    setConfirmText("");
+  };
+
+  // 👇 Executes only after "yes" is typed
+  const executeClearDebt = async () => {
+    if (confirmText.toLowerCase().trim() !== "yes") return;
+    
+    setShowClearDebtModal(false);
+    setConfirmText("");
+    
+    try {
+      await CustomerService.clearDebt(currentStore.id, selectedCustomer.id);
+      const refreshed = await refreshCustomers();
+      const updated = refreshed.find(c => c.id === selectedCustomer.id);
+      setSelectedCustomer(updated);
+      triggerConfetti();
+      showToast("Debt cleared!");
+    } catch (error) {
+      console.error("Failed to clear debt:", error);
+      showToast("Failed to clear debt");
+    }
   };
 
   const handleDelete = async () => {
@@ -57,7 +78,6 @@ export const ProfilePage = () => {
       return;
     }
 
-    // Double confirmation for customers with debt
     if (selectedCustomer.balance > 0) {
       if (!window.confirm(
         `⚠️ WARNING: This customer still owes ${formatCurrency(selectedCustomer.balance)}!\n\n` +
@@ -82,7 +102,6 @@ export const ProfilePage = () => {
     }
   };
 
-  // 👇 NEW: Void Transaction Function
   const handleVoidTransaction = async (tx) => {
     if (!window.confirm(
       `Are you sure you want to VOID this transaction?\n\n` +
@@ -147,6 +166,8 @@ export const ProfilePage = () => {
           >
             <PlusCircle size={24} /> Add Purchase
           </button>
+          
+          {/* 👇 Updated Clear Debt Button to open modal */}
           <button 
             onClick={handleMarkPaid} 
             disabled={selectedCustomer.balance <= 0} 
@@ -154,6 +175,7 @@ export const ProfilePage = () => {
           >
             <Gift size={24} /> Clear Debt
           </button>
+          
           <button 
             onClick={() => openWhatsApp(selectedCustomer.phone, generateReminderMessage(selectedCustomer))} 
             className="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-bold py-4 rounded-xl flex flex-col items-center gap-2 border border-green-200 dark:border-green-800 shadow-sm active:scale-95 transition"
@@ -231,8 +253,6 @@ export const ProfilePage = () => {
                     >
                       <FileText size={16} />
                     </button>
-                    
-                    {/* 👇 NEW: Void Button (Only show if not already voided) */}
                     {!h.isVoid && (
                       <button 
                         onClick={() => handleVoidTransaction(h)}
@@ -263,6 +283,45 @@ export const ProfilePage = () => {
           customer={selectedCustomer} 
           onClose={() => setIsEditing(false)} 
         />
+      )}
+
+      {/* 👇 NEW: Clear Debt Confirmation Modal */}
+      {showClearDebtModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6 border border-gray-200 dark:border-gray-700">
+            <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Clear Debt?</h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              This will mark the outstanding balance of <span className="font-bold text-red-600">{formatCurrency(selectedCustomer.balance)}</span> as fully paid for <span className="font-bold">{selectedCustomer.name}</span>.
+            </p>
+            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              Type <span className="text-red-600 font-mono bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-800">yes</span> to confirm:
+            </p>
+            <input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && confirmText.toLowerCase().trim() === 'yes' && executeClearDebt()}
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white mb-4 text-center font-mono text-lg"
+              placeholder="yes"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowClearDebtModal(false); setConfirmText(""); }}
+                className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeClearDebt}
+                disabled={confirmText.toLowerCase().trim() !== "yes"}
+                className="flex-1 bg-green-700 text-white font-bold py-3 rounded-xl hover:bg-green-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
