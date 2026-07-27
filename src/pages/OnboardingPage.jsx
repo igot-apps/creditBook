@@ -18,14 +18,16 @@ export const OnboardingPage = () => {
 
     setIsLoading(true);
     try {
-      // Get the email from the pending Google login session
-      const pendingEmail = localStorage.getItem('cb_pending_google_email') || "owner@gmail.com";
+      const pendingEmail = localStorage.getItem('cb_pending_google_email');
+      const pendingName = localStorage.getItem('cb_pending_google_name') || "Business Owner";
       
-      await AuthService.completeBusinessSetup(pendingEmail, businessName, businessPhone);
-      localStorage.removeItem('cb_pending_google_email'); // Clean up
+      await AuthService.completeBusinessSetup(pendingEmail, businessName, businessPhone, pendingName);
+      
+      localStorage.removeItem('cb_pending_google_email');
+      localStorage.removeItem('cb_pending_google_name');
       
       showToast("Business setup complete!");
-      window.location.reload(); // Reload to trigger AppContext to load the new store
+      window.location.reload();
     } catch (error) {
       console.error(error);
       showToast("Failed to setup business");

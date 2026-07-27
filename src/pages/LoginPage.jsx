@@ -13,16 +13,20 @@ export const LoginPage = () => {
       const result = await AuthService.loginWithGoogle();
       
       if (result.isNew) {
-        // New user: save email temporarily and route to onboarding
+        // New user: save details temporarily and route to onboarding
         localStorage.setItem('cb_pending_google_email', result.user.email);
+        localStorage.setItem('cb_pending_google_name', result.user.displayName || "Business Owner");
         setView("onboarding");
       } else {
-        // Existing user: session is already set, just reload to initialize the app
+        // Existing user: session is set, reload to initialize the app
         window.location.reload(); 
       }
     } catch (err) {
       console.error(err);
-      showToast("Login failed. Please try again.");
+      // Handle user closing the popup gracefully
+      if (err.code !== 'auth/popup-closed-by-user') {
+        showToast("Login failed. Please try again.");
+      }
     } finally {
       setIsLoading(false);
     }
