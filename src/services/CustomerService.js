@@ -18,18 +18,15 @@ export const CustomerService = {
     let targetCustomer = null;
     
     if (customerId) {
-      // Existing customer selected from search/profile
       targetCustomer = await CustomerRepository.getById(storeId, customerId);
     } else {
-      // 👇 NEW CUSTOMER FLOW: Check if phone already exists
+      // Check if phone already exists for new customers
       const existingCustomer = await CustomerRepository.getByPhone(storeId, customerPhone);
       
       if (existingCustomer) {
-        // Block creation and throw a clear error
         throw new Error(`A customer with the phone number "${customerPhone}" already exists.`);
       }
       
-      // If unique, create the new customer
       const newId = await CustomerRepository.add(storeId, {
         name: customerName,
         phone: customerPhone,
@@ -89,5 +86,31 @@ export const CustomerService = {
   deleteCustomer: async (storeId, customerId) => {
     await CustomerRepository.delete(storeId, customerId);
     return true;
+  }, // 👈 THIS COMMA WAS MISSING
+
+  voidTransaction: async (storeId, customerId, transactionId) => {
+    const history = await TransactionRepository.getByCustomerId(storeId, customerId);
+    const originalTx = history.find(t => t.id === transactionId);
+    
+    if (!originalTx) return null;
+
+    const voidTx = {
+      customerId,
+      date: new Date().toISOString(),
+      amount: -originalTx.amount,
+      paid: -originalTx.paid,
+      items: `VOIDED: ${originalTx.items || 'General Purchase'}`,
+      prevBalance: 0,
+      newBalance: 0,
+      isVoid: true
+    };
+
+    await TransactionRepository.add(storeId, voidTx);
+    
+    const updatedHistory = await TransactionRepository.getByCustomerId(storeId, customerId);
+    const customer = await CustomerRepository.getById(storeId, customerId);
+    const newBalance = updatedHistory.reduce((sum, t) => sum + (t.amount || 0) - (t.paid || 0), 0);
+    
+    return { ...customer, history: updatedHistory, balance: newBalance };
   }
 };

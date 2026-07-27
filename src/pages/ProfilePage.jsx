@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Phone, PlusCircle, Gift, MessageCircle, MessageSquare, FileText, Edit3, Trash2 } from "lucide-react";
+import { Phone, PlusCircle, Gift, MessageCircle, MessageSquare, FileText, Edit3, Trash2, Ban } from "lucide-react";
 import { useApp } from "../contexts/AppContext";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openSMS, openWhatsApp, openDialer } from "../utils/communication";
@@ -79,6 +79,27 @@ export const ProfilePage = () => {
       showToast("Failed to delete customer");
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  // 👇 NEW: Void Transaction Function
+  const handleVoidTransaction = async (tx) => {
+    if (!window.confirm(
+      `Are you sure you want to VOID this transaction?\n\n` +
+      `"${tx.items || 'General Purchase'}" for ${formatCurrency(tx.amount)}\n\n` +
+      `This will reverse the amount and update the balance.`
+    )) {
+      return;
+    }
+
+    try {
+      const updatedCustomer = await CustomerService.voidTransaction(currentStore.id, selectedCustomer.id, tx.id);
+      setSelectedCustomer(updatedCustomer);
+      await refreshCustomers();
+      showToast("Transaction voided successfully");
+    } catch (error) {
+      console.error("Failed to void transaction:", error);
+      showToast("Failed to void transaction");
     }
   };
 
@@ -187,22 +208,41 @@ export const ProfilePage = () => {
           </div>
           <div className="divide-y divide-gray-100 dark:divide-gray-700">
             {[...selectedCustomer.history].reverse().map(h => (
-              <div key={h.id} className="p-4 flex justify-between items-center">
+              <div key={h.id} className={`p-4 flex justify-between items-center ${h.isVoid ? 'bg-red-50 dark:bg-red-900/10 opacity-60' : ''}`}>
                 <div className="flex-1">
-                  <p className="font-semibold text-gray-900 dark:text-white">{h.items || "General Purchase"}</p>
+                  <p className={`font-semibold ${h.isVoid ? 'text-red-600 dark:text-red-400 line-through' : 'text-gray-900 dark:text-white'}`}>
+                    {h.items || "General Purchase"}
+                  </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(h.date)}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="text-right">
-                    <p className="font-bold text-gray-900 dark:text-white">{formatCurrency(h.amount)}</p>
+                    <p className={`font-bold ${h.isVoid ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
+                      {formatCurrency(h.amount)}
+                    </p>
                     <p className="text-xs text-green-600 dark:text-green-400">Paid: {formatCurrency(h.paid)}</p>
                   </div>
-                  <button 
-                    onClick={() => setViewingInvoice(h)}
-                    className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-600 dark:text-gray-300 active:scale-95 transition"
-                  >
-                    <FileText size={16} />
-                  </button>
+                  
+                  <div className="flex flex-col gap-1">
+                    <button 
+                      onClick={() => setViewingInvoice(h)}
+                      className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-600 dark:text-gray-300 active:scale-95 transition"
+                      title="View Invoice"
+                    >
+                      <FileText size={16} />
+                    </button>
+                    
+                    {/* 👇 NEW: Void Button (Only show if not already voided) */}
+                    {!h.isVoid && (
+                      <button 
+                        onClick={() => handleVoidTransaction(h)}
+                        className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg text-red-600 dark:text-red-400 active:scale-95 transition"
+                        title="Void Transaction"
+                      >
+                        <Ban size={16} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
