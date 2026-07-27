@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { Mic, X, Check, MessageSquare, AlertCircle } from "lucide-react";
+import { Mic, Check, MessageSquare, AlertCircle } from "lucide-react";
 import { useApp } from "../contexts/AppContext";
 import { formatDate } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
 import { PageHeader } from "../components/PageHeader";
 
 export const RecordPage = () => {
-  const { store, customers, refreshCustomers, showToast, triggerConfetti, setView } = useApp();
+  const { currentStore, customers, refreshCustomers, showToast, triggerConfetti, setView } = useApp();
   const [tx, setTx] = useState({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "" });
   const [isListening, setIsListening] = useState(false);
 
@@ -31,7 +31,15 @@ export const RecordPage = () => {
     if (amount === 0 && paid === 0) return;
 
     try {
-      await CustomerService.addTransaction(tx.customerId, tx.name, tx.phone, amount, paid, tx.items);
+      await CustomerService.addTransaction(
+        currentStore.id, // 👈 SaaS: pass storeId
+        tx.customerId, 
+        tx.name, 
+        tx.phone, 
+        amount, 
+        paid, 
+        tx.items
+      );
       await refreshCustomers();
       
       if (newBal === 0 && paid > 0) triggerConfetti();
@@ -104,7 +112,7 @@ export const RecordPage = () => {
               {newBal < 0 
                 ? `New Balance: GHS 0.00\n(Credit: GHS ${Math.abs(newBal).toFixed(2)})`
                 : `New Balance: GHS ${newBal.toFixed(2)}`}
-              {`\nThank you! - ${store.name}`}
+              {`\nThank you! - ${currentStore?.name || "Store"}`}
             </div>
           </div>
         )}

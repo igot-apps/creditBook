@@ -8,23 +8,23 @@ const startOfDay = (date) => {
 };
 
 export const ReportService = {
-  getAllTransactionsWithCustomers: async () => {
-    const customers = await CustomerRepository.getAll();
+  getAllTransactionsWithCustomers: async (storeId) => {
+    const customers = await CustomerRepository.getAll(storeId);
     const allTx = await Promise.all(
       customers.flatMap(async (c) => {
-        const txs = await TransactionRepository.getByCustomerId(c.id);
+        const txs = await TransactionRepository.getByCustomerId(storeId, c.id);
         return txs.map(t => ({ ...t, customerName: c.name, customerPhone: c.phone }));
       })
     );
     return allTx.flat().sort((a, b) => new Date(b.date) - new Date(a.date));
   },
 
-  getDailySales: async (date = new Date()) => {
+  getDailySales: async (storeId, date = new Date()) => {
     const dayStart = startOfDay(date);
     const dayEnd = new Date(dayStart);
     dayEnd.setDate(dayEnd.getDate() + 1);
     
-    const txs = await ReportService.getAllTransactionsWithCustomers();
+    const txs = await ReportService.getAllTransactionsWithCustomers(storeId);
     const dayTxs = txs.filter(t => {
       const txDate = new Date(t.date);
       return txDate >= dayStart && txDate < dayEnd;
@@ -38,8 +38,8 @@ export const ReportService = {
     };
   },
 
-  getSalesTrend: async (days = 7) => {
-    const txs = await ReportService.getAllTransactionsWithCustomers();
+  getSalesTrend: async (storeId, days = 7) => {
+    const txs = await ReportService.getAllTransactionsWithCustomers(storeId);
     const trend = [];
     
     for (let i = days - 1; i >= 0; i--) {
@@ -65,11 +65,11 @@ export const ReportService = {
     return trend;
   },
 
-  getTopCustomers: async (limit = 5) => {
-    const customers = await CustomerRepository.getAll();
+  getTopCustomers: async (storeId, limit = 5) => {
+    const customers = await CustomerRepository.getAll(storeId);
     
     const enriched = await Promise.all(customers.map(async (c) => {
-      const txs = await TransactionRepository.getByCustomerId(c.id);
+      const txs = await TransactionRepository.getByCustomerId(storeId, c.id);
       const totalPurchases = txs.reduce((sum, t) => sum + (t.amount || 0), 0);
       const totalPaid = txs.reduce((sum, t) => sum + (t.paid || 0), 0);
       return {
@@ -86,11 +86,11 @@ export const ReportService = {
       .slice(0, limit);
   },
 
-  getMostOverdue: async (limit = 5) => {
-    const customers = await CustomerRepository.getAll();
+  getMostOverdue: async (storeId, limit = 5) => {
+    const customers = await CustomerRepository.getAll(storeId);
     
     const enriched = await Promise.all(customers.map(async (c) => {
-      const txs = await TransactionRepository.getByCustomerId(c.id);
+      const txs = await TransactionRepository.getByCustomerId(storeId, c.id);
       const balance = txs.reduce((sum, t) => sum + (t.amount || 0) - (t.paid || 0), 0);
       const lastTx = txs.length > 0 ? txs[txs.length - 1] : null;
       const daysSinceContact = lastTx 

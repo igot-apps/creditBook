@@ -2,37 +2,37 @@ import { CustomerRepository } from '../repositories/CustomerRepository';
 import { TransactionRepository } from '../repositories/TransactionRepository';
 
 export const CustomerService = {
-  getAllWithHistory: async () => {
-    const customers = await CustomerRepository.getAll();
+  getAllWithHistory: async (storeId) => {
+    const customers = await CustomerRepository.getAll(storeId);
     
-    const enrichedCustomers = await Promise.all(customers.map(async (c) => {
-      const history = await TransactionRepository.getByCustomerId(c.id);
+    const enriched = await Promise.all(customers.map(async (c) => {
+      const history = await TransactionRepository.getByCustomerId(storeId, c.id);
       const balance = history.reduce((sum, t) => sum + (t.amount || 0) - (t.paid || 0), 0);
       return { ...c, history, balance };
     }));
 
-    return enrichedCustomers;
+    return enriched;
   },
 
-  addTransaction: async (customerId, customerName, customerPhone, amount, paid, items) => {
+  addTransaction: async (storeId, customerId, customerName, customerPhone, amount, paid, items) => {
     let targetCustomer = null;
     
     if (customerId) {
-      targetCustomer = await CustomerRepository.getById(customerId);
+      targetCustomer = await CustomerRepository.getById(storeId, customerId);
     }
     
     if (!targetCustomer) {
-      const newId = await CustomerRepository.add({
+      const newId = await CustomerRepository.add(storeId, {
         name: customerName,
         phone: customerPhone,
         joined: new Date().toISOString()
       });
-      targetCustomer = await CustomerRepository.getById(newId);
+      targetCustomer = await CustomerRepository.getById(storeId, newId);
     }
 
-    const history = await TransactionRepository.getByCustomerId(targetCustomer.id);
+    const history = await TransactionRepository.getByCustomerId(storeId, targetCustomer.id);
     const prevBalance = history.reduce((sum, t) => sum + (t.amount || 0) - (t.paid || 0), 0);
-    const newBalance = prevBalance + amount - paid; // Allows negative for credit
+    const newBalance = prevBalance + amount - paid;
 
     const newTx = {
       customerId: targetCustomer.id,
@@ -44,24 +44,22 @@ export const CustomerService = {
       newBalance
     };
     
-    await TransactionRepository.add(newTx);
+    await TransactionRepository.add(storeId, newTx);
 
-    const updatedHistory = await TransactionRepository.getByCustomerId(targetCustomer.id);
+    const updatedHistory = await TransactionRepository.getByCustomerId(storeId, targetCustomer.id);
     return { ...targetCustomer, history: updatedHistory, balance: newBalance };
   },
 
-  clearDebt: async (customerId) => {
-    if (!customerId) return null;
-    
-    const customer = await CustomerRepository.getById(customerId);
+  clearDebt: async (storeId, customerId) => {
+    const customer = await CustomerRepository.getById(storeId, customerId);
     if (!customer) return null;
     
-    const history = await TransactionRepository.getByCustomerId(customerId);
+    const history = await TransactionRepository.getByCustomerId(storeId, customerId);
     const currentBalance = history.reduce((sum, t) => sum + (t.amount || 0) - (t.paid || 0), 0);
 
     if (currentBalance <= 0) return null;
 
-    const clearanceTx = {
+    await TransactionRepository.add(storeId, {
       customerId,
       date: new Date().toISOString(),
       amount: 0,
@@ -69,11 +67,9 @@ export const CustomerService = {
       items: 'Balance clearance',
       prevBalance: currentBalance,
       newBalance: 0
-    };
-
-    await TransactionRepository.add(clearanceTx);
+    });
     
-    const updatedHistory = await TransactionRepository.getByCustomerId(customerId);
+    const updatedHistory = await TransactionRepository.getByCustomerId(storeId, customerId);
     return { ...customer, history: updatedHistory, balance: 0 };
   }
 };

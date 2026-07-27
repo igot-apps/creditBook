@@ -1,14 +1,23 @@
 import { db } from '../database/db';
 
 export const CustomerRepository = {
-  getAll: async () => await db.customers.toArray(),
+  getAll: async (storeId) => await db.customers.where('storeId').equals(storeId).toArray(),
   
-  getById: async (id) => {
+  getById: async (storeId, id) => {
     if (!id) return null;
-    return await db.customers.get(id);
+    return await db.customers.where({ storeId, id }).first();
   },
   
-  add: async (customer) => await db.customers.add(customer),
-  update: async (id, updates) => await db.customers.update(id, updates),
-  delete: async (id) => await db.customers.delete(id)
+  add: async (storeId, customerData) => {
+    return await db.customers.add({ storeId, ...customerData });
+  },
+  
+  update: async (storeId, id, updates) => {
+    return await db.customers.where({ storeId, id }).modify(updates);
+  },
+  
+  delete: async (storeId, id) => {
+    await db.transactions.where({ storeId, customerId: id }).delete();
+    return await db.customers.where({ storeId, id }).delete();
+  }
 };

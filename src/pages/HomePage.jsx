@@ -6,7 +6,8 @@ import { CustomerCard } from "../components/CustomerCard";
 import { Confetti } from "../components/Confetti";
 
 export const HomePage = () => {
-  const { store, customers, totalDebt, todaySales, setView } = useApp();
+  // 👇 Changed 'store' to 'currentStore' to match AppContext
+  const { currentStore, customers, totalDebt, todaySales, setView } = useApp();
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredCustomers = useMemo(() => {
@@ -18,6 +19,9 @@ export const HomePage = () => {
     );
   }, [customers, searchQuery]);
 
+  // Safety check: if not logged in yet, don't render
+  if (!currentStore) return null;
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <Confetti />
@@ -25,8 +29,8 @@ export const HomePage = () => {
       <div className="bg-green-700 dark:bg-gray-900 text-white p-6 pb-12 rounded-b-[2.5rem] shadow-lg">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <p className="text-green-100 dark:text-gray-400 text-sm font-medium">{store.name}</p>
-            <h1 className="text-2xl font-bold">Good Day, {store.owner}!</h1>
+            <p className="text-green-100 dark:text-gray-400 text-sm font-medium">{currentStore.name}</p>
+            <h1 className="text-2xl font-bold">Good Day, {currentStore.ownerName || currentStore.owner}!</h1>
           </div>
           <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
             <Store size={20} />
