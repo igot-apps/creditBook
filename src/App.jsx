@@ -1,9 +1,9 @@
 import { AppProvider, useApp } from "./contexts/AppContext";
 import { BottomNav } from "./components/BottomNav";
 import { Toast } from "./components/Toast";
-import { Layout } from "./components/Layout"; // 👈 Add this
+import { Layout } from "./components/Layout";
 import { LoginPage } from "./pages/LoginPage";
-import { RegisterPage } from "./pages/RegisterPage";
+import { OnboardingPage } from "./pages/OnboardingPage"; // 👈 NEW
 import { HomePage } from "./pages/HomePage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { RecordPage } from "./pages/RecordPage";
@@ -24,7 +24,7 @@ const AppRouter = () => {
   }
 
   if (view === "login") return <LoginPage />;
-  if (view === "register") return <RegisterPage />;
+  if (view === "onboarding") return <OnboardingPage />; // 👈 NEW
 
   const renderPage = () => {
     switch (view) {

@@ -1,99 +1,57 @@
 import { db } from '../database/db';
 
-const generateId = () => {
-  try {
-    return crypto.randomUUID();
-  } catch {
-    // Fallback for older browsers
-    return 'id-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-  }
-};
+const generateId = () => crypto.randomUUID();
 
 export const AuthService = {
-  // Test if database is working
-  testDatabase: async () => {
-    try {
-      console.log("🔵 Testing database connection...");
-      await db.open();
-      console.log("🟢 Database opened successfully");
-      return { success: true, message: "Database is working" };
-    } catch (error) {
-      console.error("🔴 Database test failed:", error);
-      return { success: false, message: error.message };
-    }
-  },
-
-  register: async (storeName, ownerName, email, phone, password) => {
-    console.log("🔵 AuthService.register() called with:", { storeName, email });
+  // Simulated Google Login (Replace with Firebase/Supabase in production)
+  loginWithGoogle: async () => {
+    // Simulate network delay for realistic UX
+    await new Promise(resolve => setTimeout(resolve, 1500)); 
     
-    // Test database first
-    const dbTest = await AuthService.testDatabase();
-    if (!dbTest.success) {
-      throw new Error("Database not available: " + dbTest.message);
-    }
+    // In production, this data comes from: const result = await signInWithPopup(auth, googleProvider);
+    const mockGoogleUser = {
+      email: "owner@gmail.com", 
+      name: "Business Owner",
+      picture: "https://ui-avatars.com/api/?name=Business+Owner&background=006B3F&color=fff"
+    };
 
-    try {
-      const storeId = generateId();
-      const newStore = {
-        id: storeId,
-        name: storeName,
-        ownerName,
-        email,
-        phone,
-        password,
-        createdAt: new Date().toISOString()
-      };
-
-      console.log("🔵 Adding store to database...");
-      await db.stores.add(newStore);
-      console.log("🟢 Store added successfully with ID:", storeId);
-      
-      return newStore;
-    } catch (error) {
-      console.error("🔴 Registration failed:", error);
-      if (error.name === 'ConstraintError') {
-        throw new Error("Email already exists");
-      }
-      throw new Error("Registration failed: " + error.message);
-    }
-  },
-
-  login: async (email, password) => {
-    console.log("🔵 AuthService.login() called for:", email);
+    // Check if this Google email already has a store in our DB
+    const existingStore = await db.stores.where('email').equals(mockGoogleUser.email).first();
     
-    const dbTest = await AuthService.testDatabase();
-    if (!dbTest.success) {
-      throw new Error("Database not available: " + dbTest.message);
-    }
-
-    try {
-      console.log("🔵 Querying database for user...");
-      const store = await db.stores.where('email').equals(email).first();
-      
-      if (!store) {
-        console.log("🟡 No user found with email:", email);
-        throw new Error("Invalid email or password");
-      }
-
-      if (store.password !== password) {
-        console.log("🟡 Password mismatch for:", email);
-        throw new Error("Invalid email or password");
-      }
-
-      const session = { storeId: store.id, email: store.email, ownerName: store.ownerName };
+    if (existingStore) {
+      const session = { storeId: existingStore.id, email: existingStore.email, ownerName: existingStore.ownerName };
       localStorage.setItem('cb_saas_session', JSON.stringify(session));
-      console.log("🟢 Login successful for:", store.name);
-      
-      return store;
-    } catch (error) {
-      console.error("🔴 Login failed:", error);
-      throw error;
+      return { user: mockGoogleUser, store: existingStore, isNew: false };
     }
+
+    // New user: return flag to trigger onboarding
+    return { user: mockGoogleUser, store: null, isNew: true };
+  },
+
+  // Called after the user fills out the business setup form
+  completeBusinessSetup: async (email, businessName, businessPhone) => {
+    const storeId = generateId();
+    const newStore = {
+      id: storeId,
+      name: businessName,
+      ownerName: "Business Owner", // In production, extract from Google profile
+      email: email,
+      phone: businessPhone,
+      password: "google-auth", // Placeholder for OAuth users
+      createdAt: new Date().toISOString()
+    };
+    
+    await db.stores.add(newStore);
+    
+    const session = { storeId: newStore.id, email: newStore.email, ownerName: newStore.ownerName };
+    localStorage.setItem('cb_saas_session', JSON.stringify(session));
+    
+    return newStore;
   },
 
   logout: () => {
-    console.log("🔵 Logging out...");
     localStorage.removeItem('cb_saas_session');
+    localStorage.removeItem('cb_pending_google_email');
   },
 
   getSession: () => {
