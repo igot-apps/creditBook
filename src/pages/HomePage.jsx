@@ -27,14 +27,9 @@ export const HomePage = () => {
       <Confetti />
       
       <div className="bg-green-700 dark:bg-gray-900 text-white p-6 pb-12 rounded-b-[2.5rem] shadow-lg">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <p className="text-green-100 dark:text-gray-400 text-sm font-medium">{currentStore.name}</p>
-            <h1 className="text-2xl font-bold">Good Day, {currentStore.ownerName || currentStore.owner}!</h1>
-          </div>
-          <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-            <Store size={20} />
-          </div>
+        <div className="mb-6">
+          <p className="text-green-100 dark:text-gray-400 text-sm font-medium">{currentStore.name}</p>
+          <h1 className="text-2xl font-bold">Good Day, {currentStore.ownerName || currentStore.owner}!</h1>
         </div>
         <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
           <p className="text-green-100 text-sm">Total Outstanding Debt</p>

@@ -17,6 +17,7 @@ export const AppProvider = ({ children }) => {
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [prefillTransaction, setPrefillTransaction] = useState(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     if (theme === "dark") document.documentElement.classList.add("dark");
@@ -114,14 +115,15 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const value = {
+    const value = {
     view, setView, isLoading, setIsLoading,
     theme, setTheme, toast, showToast, showConfetti, triggerConfetti,
     currentStore, setCurrentStore, customers, setCustomers, refreshCustomers,
     selectedCustomer, setSelectedCustomer, totalDebt, todaySales, handleLogout,
     handleLogin, handleRegister,
+    prefillTransaction, setPrefillTransaction,
     // 👇 Add this:
-    prefillTransaction, setPrefillTransaction
+    isMenuOpen, setIsMenuOpen
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

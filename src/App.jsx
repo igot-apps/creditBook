@@ -1,6 +1,7 @@
 import { AppProvider, useApp } from "./contexts/AppContext";
 import { BottomNav } from "./components/BottomNav";
 import { Toast } from "./components/Toast";
+import { Layout } from "./components/Layout"; // 👈 Add this
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { HomePage } from "./pages/HomePage";
@@ -27,22 +28,23 @@ const AppRouter = () => {
 
   const renderPage = () => {
     switch (view) {
-      case "home": return <><HomePage /><BottomNav /></>;
-      case "customers": return <><CustomersPage /><BottomNav /></>;
+      case "home": return <HomePage />;
+      case "customers": return <CustomersPage />;
       case "record": return <RecordPage />;
       case "profile": return <ProfilePage />;
-      case "reports": return <><ReportsPage /><BottomNav /></>;
-      case "settings": return <><SettingsPage onLogout={handleLogout} /><BottomNav /></>;
-      case "followups": return <><FollowUpsPage /><BottomNav /></>;
-      default: return <><HomePage /><BottomNav /></>;
+      case "reports": return <ReportsPage />;
+      case "settings": return <SettingsPage onLogout={handleLogout} />;
+      case "followups": return <FollowUpsPage />;
+      default: return <HomePage />;
     }
   };
 
   return (
-    <>
+    <Layout>
       {renderPage()}
+      <BottomNav />
       <Toast />
-    </>
+    </Layout>
   );
 };
 
