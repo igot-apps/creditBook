@@ -1,13 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from "react";
 import { AuthService } from "../services/AuthService";
 import { CustomerService } from "../services/CustomerService";
-import { StoreRepository } from "../repositories/StoreRepository";
 
 const AppContext = createContext();
 export const useApp = () => useContext(AppContext);
 
 export const AppProvider = ({ children }) => {
-  const [view, setView] = useState("login"); // Default to login
+  const [view, setView] = useState("login");
   const [isLoading, setIsLoading] = useState(true);
   const [theme, setTheme] = useState(() => localStorage.getItem("cb_theme") || "light");
   const [toast, setToast] = useState(null);
@@ -55,11 +54,28 @@ export const AppProvider = ({ children }) => {
     init();
   }, []);
 
+  // Existing Stats
   const totalDebt = useMemo(() => customers.reduce((sum, c) => sum + Math.max(0, c.balance || 0), 0), [customers]);
+  
   const todaySales = useMemo(() => {
     if (!currentStore) return 0;
     const today = new Date().toDateString();
     return customers.reduce((sum, c) => sum + (c.history || []).filter(h => new Date(h.date).toDateString() === today).reduce((s, h) => s + (h.amount || 0), 0), 0);
+  }, [customers, currentStore]);
+
+  // 👇 NEW STATS ADDED HERE
+  const totalCustomers = customers.length;
+  
+  const moneyCollectedToday = useMemo(() => {
+    if (!currentStore) return 0;
+    const today = new Date().toDateString();
+    return customers.reduce((sum, c) => sum + (c.history || []).filter(h => new Date(h.date).toDateString() === today).reduce((s, h) => s + (h.paid || 0), 0), 0);
+  }, [customers, currentStore]);
+
+  const recentActivity = useMemo(() => {
+    if (!currentStore) return [];
+    const allTx = customers.flatMap(c => (c.history || []).map(h => ({ ...h, customerName: c.name, customerId: c.id })));
+    return allTx.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
   }, [customers, currentStore]);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
@@ -79,7 +95,6 @@ export const AppProvider = ({ children }) => {
     setView("login");
   };
 
-    // Add these two functions inside the AppProvider component:
   const handleLogin = async (email, password) => {
     console.log("🔵 Attempting login for:", email);
     try {
@@ -91,7 +106,7 @@ export const AppProvider = ({ children }) => {
       setView("home");
     } catch (error) {
       console.error("🔴 Login error:", error);
-      throw error; // Pass to the component
+      throw error;
     }
   };
 
@@ -111,18 +126,19 @@ export const AppProvider = ({ children }) => {
       setView("home");
     } catch (error) {
       console.error("🔴 Registration error:", error);
-      throw error; // Pass to the component
+      throw error;
     }
   };
 
-    const value = {
+  // 👇 UPDATED VALUE OBJECT WITH NEW STATS
+  const value = {
     view, setView, isLoading, setIsLoading,
     theme, setTheme, toast, showToast, showConfetti, triggerConfetti,
     currentStore, setCurrentStore, customers, setCustomers, refreshCustomers,
-    selectedCustomer, setSelectedCustomer, totalDebt, todaySales, handleLogout,
-    handleLogin, handleRegister,
+    selectedCustomer, setSelectedCustomer, 
+    totalDebt, todaySales, totalCustomers, moneyCollectedToday, recentActivity, // 👈 ADDED
+    handleLogout, handleLogin, handleRegister,
     prefillTransaction, setPrefillTransaction,
-    // 👇 Add this:
     isMenuOpen, setIsMenuOpen
   };
 

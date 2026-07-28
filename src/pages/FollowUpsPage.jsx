@@ -7,16 +7,15 @@ import { PageHeader } from "../components/PageHeader";
 import { CustomerService } from "../services/CustomerService";
 
 export const FollowUpsPage = () => {
-  // 👇 Changed 'store' to 'currentStore'
+  // 👇 FIXED: Changed 'store' to 'currentStore'
   const { currentStore, customers, refreshCustomers, showToast, triggerConfetti } = useApp();
   const [filter, setFilter] = useState("all");
 
   const followUps = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
     return customers
-      .filter(c => c.balance > 0)
+      .filter(c => c.balance > 0 && !c.isArchived) // 👇 FIXED: Ignore archived customers
       .map(c => {
         const lastTx = c.history[c.history.length - 1];
         const lastContact = lastTx ? new Date(lastTx.date) : null;
@@ -41,17 +40,15 @@ export const FollowUpsPage = () => {
   const generateMessage = (c) =>
     `Hello ${c.name}, this is a reminder from ${currentStore.name}. You have an outstanding debt of ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
 
+  // 👇 FIXED: Added storeId parameter
   const handleMarkPaid = async (customerId) => {
-    if (!currentStore) return;
-    
     try {
-      // 👇 Now passing both storeId and customerId
       await CustomerService.clearDebt(currentStore.id, customerId);
       await refreshCustomers();
       triggerConfetti();
       showToast("Debt cleared!");
     } catch (error) {
-      console.error("Failed to clear debt:", error);
+      console.error(error);
       showToast("Failed to clear debt");
     }
   };
@@ -68,16 +65,13 @@ export const FollowUpsPage = () => {
       <PageHeader title="Today's Follow-ups" subtitle={`${followUps.length} customers to contact`} />
 
       <div className="p-4 max-w-lg mx-auto space-y-4">
-        {/* Filters */}
         <div className="flex gap-2 overflow-x-auto pb-2">
           {filters.map(f => (
             <button
               key={f.key}
               onClick={() => setFilter(f.key)}
               className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
-                filter === f.key 
-                  ? "bg-green-700 text-white" 
-                  : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
+                filter === f.key ? "bg-green-700 text-white" : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
               }`}
             >
               {f.label} ({f.count})
@@ -85,7 +79,6 @@ export const FollowUpsPage = () => {
           ))}
         </div>
 
-        {/* Customer list */}
         <div className="space-y-3">
           {filtered.length === 0 ? (
             <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700">
@@ -112,28 +105,16 @@ export const FollowUpsPage = () => {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => openSMS(c.phone, generateMessage(c))}
-                    className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"
-                  >
+                  <button onClick={() => openSMS(c.phone, generateMessage(c))} className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
                     <MessageSquare size={18} /> SMS
                   </button>
-                  <button
-                    onClick={() => openWhatsApp(c.phone, generateMessage(c))}
-                    className="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"
-                  >
+                  <button onClick={() => openWhatsApp(c.phone, generateMessage(c))} className="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
                     <MessageCircle size={18} /> WhatsApp
                   </button>
-                  <button
-                    onClick={() => openDialer(c.phone)}
-                    className="bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"
-                  >
+                  <button onClick={() => openDialer(c.phone)} className="bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
                     <Phone size={18} /> Call
                   </button>
-                  <button
-                    onClick={() => handleMarkPaid(c.id)}
-                    className="bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"
-                  >
+                  <button onClick={() => handleMarkPaid(c.id)} className="bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
                     <Check size={18} /> Mark Paid
                   </button>
                 </div>

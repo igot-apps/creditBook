@@ -6,59 +6,75 @@ const generateId = () => crypto.randomUUID();
 const provider = new GoogleAuthProvider();
 
 export const AuthService = {
-  // REAL Google Login
+  // 1. REAL Google Login (Optional)
   loginWithGoogle: async () => {
     try {
-      // This triggers the real Google popup
       const result = await signInWithPopup(auth, provider);
-      const user = result.user; // Contains: email, displayName, photoURL, uid
+      const user = result.user;
 
-      // Check if this Google email already has a store in our IndexedDB
       const existingStore = await db.stores.where('email').equals(user.email).first();
       
       if (existingStore) {
-        const session = { 
-          storeId: existingStore.id, 
-          email: existingStore.email, 
-          ownerName: existingStore.ownerName,
-          uid: user.uid 
-        };
+        const session = { storeId: existingStore.id, email: existingStore.email, ownerName: existingStore.ownerName, uid: user.uid };
         localStorage.setItem('cb_saas_session', JSON.stringify(session));
         return { user, store: existingStore, isNew: false };
       }
 
-      // New user: return flag to trigger onboarding
       return { user, store: null, isNew: true };
-      
     } catch (error) {
       console.error("Google Login Error:", error);
       throw error;
     }
   },
 
-  // Called after the user fills out the business setup form
-  completeBusinessSetup: async (email, businessName, businessPhone, userName) => {
-    const storeId = generateId();
-    const newStore = {
-      id: storeId,
-      name: businessName,
-      ownerName: userName || "Business Owner",
-      email: email,
-      phone: businessPhone,
-      authProvider: "google",
-      createdAt: new Date().toISOString()
-    };
+  // 2. NEW: Guest Login (100% Local, No Firebase Required)
+  loginAsGuest: async () => {
+    // Check if a guest store already exists to prevent duplicates
+    const existingGuest = await db.stores.where('email').equals('guest@creditbook.local').first();
     
-    await db.stores.add(newStore);
-    
-    const session = { storeId: newStore.id, email: newStore.email, ownerName: newStore.ownerName };
+    let store;
+    if (existingGuest) {
+      store = existingGuest;
+    } else {
+      // Create a default local store for the guest
+      const storeId = generateId();
+      store = {
+        id: storeId,
+        name: "Guest Store",
+        ownerName: "Guest User",
+        email: "guest@creditbook.local",
+        phone: "0000000000",
+        authProvider: "guest",
+        createdAt: new Date().toISOString()
+      };
+      await db.stores.add(store);
+    }
+
+    const session = { storeId: store.id, email: store.email, ownerName: store.ownerName };
     localStorage.setItem('cb_saas_session', JSON.stringify(session));
     
+    return { store, isNew: !existingGuest };
+  },
+
+  completeBusinessSetup: async (email, businessName, businessPhone, userName) => {
+    const storeId = generateId();
+    const newStore = { 
+      id: storeId, 
+      name: businessName, 
+      ownerName: userName || "Business Owner", 
+      email, 
+      phone: businessPhone, 
+      authProvider: "google", 
+      createdAt: new Date().toISOString() 
+    };
+    await db.stores.add(newStore);
+    const session = { storeId: newStore.id, email: newStore.email, ownerName: newStore.ownerName };
+    localStorage.setItem('cb_saas_session', JSON.stringify(session));
     return newStore;
   },
 
   logout: async () => {
-    await signOut(auth); // Signs out of Firebase
+    try { await signOut(auth); } catch (e) { /* Ignore Firebase errors if guest */ }
     localStorage.removeItem('cb_saas_session');
     localStorage.removeItem('cb_pending_google_email');
     localStorage.removeItem('cb_pending_google_name');
@@ -73,5 +89,12 @@ export const AuthService = {
     const session = AuthService.getSession();
     if (!session) return null;
     return await db.stores.get(session.storeId);
+  },
+
+  checkCloudBackup: async (uid) => {
+    // Guest users don't have a UID, so no cloud backup check needed
+    if (!uid) return false;
+    // (Cloud sync logic will go here later)
+    return false; 
   }
 };

@@ -1,4 +1,4 @@
-import { Home, Users, Bell, BarChart3, Settings, LogOut, Moon, Sun, Store, User, Mail, Info, Menu, X } from "lucide-react";
+import { Home, Users, Bell, BarChart3, Settings, LogOut, Moon, Sun, Store, User, Mail, Info, Menu, X, Package } from "lucide-react";
 import { useApp } from "../contexts/AppContext";
 import { useState } from "react";
 
@@ -30,6 +30,7 @@ export const Layout = ({ children }) => {
   const menuItems = [
     { icon: Home, label: "Home", view: "home" },
     { icon: Users, label: "Customers", view: "customers" },
+    { icon: Package, label: "Products", view: "products" }, // 👈 NEW: Products Menu Item
     { icon: Bell, label: "Follow-ups", view: "followups" },
     { icon: BarChart3, label: "Reports", view: "reports" },
     { icon: Settings, label: "Settings", view: "settings" },

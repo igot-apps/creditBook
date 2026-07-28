@@ -3,9 +3,10 @@ import { BottomNav } from "./components/BottomNav";
 import { Toast } from "./components/Toast";
 import { Layout } from "./components/Layout";
 import { LoginPage } from "./pages/LoginPage";
-import { OnboardingPage } from "./pages/OnboardingPage"; // 👈 NEW
+import { OnboardingPage } from "./pages/OnboardingPage";
 import { HomePage } from "./pages/HomePage";
 import { CustomersPage } from "./pages/CustomersPage";
+import { ProductsPage } from "./pages/ProductsPage"; // 👈 NEW: Import ProductsPage
 import { RecordPage } from "./pages/RecordPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -24,12 +25,13 @@ const AppRouter = () => {
   }
 
   if (view === "login") return <LoginPage />;
-  if (view === "onboarding") return <OnboardingPage />; // 👈 NEW
+  if (view === "onboarding") return <OnboardingPage />;
 
   const renderPage = () => {
     switch (view) {
       case "home": return <HomePage />;
       case "customers": return <CustomersPage />;
+      case "products": return <ProductsPage />; // 👈 NEW: Route to ProductsPage
       case "record": return <RecordPage />;
       case "profile": return <ProfilePage />;
       case "reports": return <ReportsPage />;
