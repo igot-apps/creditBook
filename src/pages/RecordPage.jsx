@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { Check, MessageSquare, AlertCircle, User, Search, PlusCircle, ArrowLeft, Trash2, X, Package, FileText } from "lucide-react";
 import { useApp } from "../contexts/AppContext";
 import { formatDate, formatCurrency } from "../utils/helpers";
+import { openSMS } from "../utils/communication"; // 👈 ADDED: Import openSMS
 import { CustomerService } from "../services/CustomerService";
 import { ProductService } from "../services/ProductService";
 import { PageHeader } from "../components/PageHeader";
@@ -19,13 +20,13 @@ export const RecordPage = () => {
   } = useApp();
   
   // --- Customer Search State ---
-  const [mode, setMode] = useState("search"); // "search" | "existing" | "new"
+  const [mode, setMode] = useState("search");
   const [searchQuery, setSearchQuery] = useState("");
   const [tx, setTx] = useState({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "" });
   const [phoneError, setPhoneError] = useState("");
 
   // --- Recording Mode State ---
-  const [recordMode, setRecordMode] = useState("quick"); // "quick" | "detailed"
+  const [recordMode, setRecordMode] = useState("quick");
   
   // --- Detailed Invoice State ---
   const [products, setProducts] = useState([]);
@@ -33,14 +34,12 @@ export const RecordPage = () => {
   const [productSearch, setProductSearch] = useState("");
   const [showInlineProduct, setShowInlineProduct] = useState(false);
   const [newProduct, setNewProduct] = useState({ name: "", price: "", unit: "", category: "" });
-  const [priceUpdateModal, setPriceUpdateModal] = useState(null); // { itemIndex, oldPrice, newPrice }
+  const [priceUpdateModal, setPriceUpdateModal] = useState(null);
 
-  // Load products for detailed invoice
   useEffect(() => {
     ProductService.getAll(currentStore.id).then(setProducts);
   }, [currentStore.id]);
 
-  // Handle prefill from ProfilePage
   useEffect(() => {
     if (prefillTransaction) {
       setTx(prefillTransaction);
@@ -82,7 +81,6 @@ export const RecordPage = () => {
   // --- Detailed Invoice Logic ---
   const totalInvoiceAmount = invoiceItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
   
-  // Sync total to tx.amount for Quick Note compatibility
   useEffect(() => {
     if (recordMode === "detailed") {
       setTx(prev => ({ ...prev, amount: totalInvoiceAmount.toString() }));
@@ -98,7 +96,6 @@ export const RecordPage = () => {
   const addProductToInvoice = (product, isOneTime = false) => {
     const existingIndex = invoiceItems.findIndex(i => i.productId === product.id && !i.isOneTime);
     if (existingIndex >= 0 && !isOneTime) {
-      // Increment quantity if already in invoice
       const updated = [...invoiceItems];
       updated[existingIndex].quantity += 1;
       setInvoiceItems(updated);
@@ -121,7 +118,6 @@ export const RecordPage = () => {
     const updated = [...invoiceItems];
     updated[index][field] = field === 'name' ? value : parseFloat(value) || 0;
     
-    // Check if price changed from default to prompt update
     if (field === 'price' && !updated[index].isOneTime) {
       const oldPrice = updated[index].defaultPrice;
       const newPrice = parseFloat(value) || 0;
@@ -135,7 +131,6 @@ export const RecordPage = () => {
   const handlePriceUpdate = (shouldUpdate) => {
     if (shouldUpdate && priceUpdateModal) {
       ProductService.update(priceUpdateModal.productId, { price: priceUpdateModal.newPrice });
-      // Update local products list
       setProducts(prev => prev.map(p => p.id === priceUpdateModal.productId ? { ...p, price: priceUpdateModal.newPrice } : p));
     }
     setPriceUpdateModal(null);
@@ -158,7 +153,6 @@ export const RecordPage = () => {
       isFavourite: false
     };
     
-    // Add to DB and local state
     ProductService.create(currentStore.id, productData).then(newId => {
       const createdProduct = { id: newId, ...productData };
       setProducts([...products, createdProduct]);
@@ -176,7 +170,6 @@ export const RecordPage = () => {
 
     setPhoneError("");
     try {
-      // For detailed mode, format items string for backward compatibility
       const itemsString = recordMode === "detailed" 
         ? invoiceItems.map(i => `${i.quantity}x ${i.name}`).join(", ") 
         : tx.items;
@@ -216,6 +209,20 @@ export const RecordPage = () => {
   const totalDue = currentBal + amountVal;
   const newBal = totalDue - paidVal;
   const isOverpayment = paidVal > totalDue && totalDue > 0;
+
+  // 👇 NEW: Generate the exact SMS message string for the button
+  const smsMessage = useMemo(() => {
+    if (amountVal === 0 && paidVal === 0) return "";
+    return `Balance update (${formatDate(new Date())}):\n` +
+      `Old debt: ${formatCurrency(currentBal)}\n` +
+      (amountVal > 0 ? `Items bought: ${formatCurrency(amountVal)}\n` : '') +
+      (tx.items && amountVal > 0 ? `What was bought: ${tx.items}\n` : '') +
+      (paidVal > 0 ? `Money paid: ${formatCurrency(paidVal)}\n` : '') +
+      (newBal < 0 
+        ? `Total debt now: ${formatCurrency(0)}\n(You have a credit of ${formatCurrency(Math.abs(newBal))})`
+        : `Total debt now: ${formatCurrency(newBal)}`) +
+      `\nThank you! - From ${currentStore?.name || "Store"}`;
+  }, [currentBal, amountVal, paidVal, tx.items, newBal, currentStore]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
@@ -332,7 +339,6 @@ export const RecordPage = () => {
             {/* 4. DETAILED INVOICE FORM */}
             {recordMode === "detailed" && (
               <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
-                {/* Product Search */}
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                   <input 
@@ -342,7 +348,6 @@ export const RecordPage = () => {
                   />
                 </div>
                 
-                {/* Search Results / Inline Create */}
                 {productSearch && (
                   <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 max-h-48 overflow-y-auto shadow-lg absolute z-10 w-full max-w-lg mx-auto left-0 right-0">
                     {filteredProducts.length > 0 ? filteredProducts.map(p => (
@@ -361,7 +366,6 @@ export const RecordPage = () => {
                   </div>
                 )}
 
-                {/* Invoice Items List */}
                 <div className="space-y-2">
                   {invoiceItems.length === 0 ? (
                     <p className="text-center text-gray-400 dark:text-gray-500 py-4 text-sm">No items added yet. Search above to add products.</p>
@@ -383,7 +387,6 @@ export const RecordPage = () => {
                   ))}
                 </div>
 
-                {/* Total & Paid */}
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-500 dark:text-gray-400 font-semibold">Total Amount:</span>
@@ -408,20 +411,24 @@ export const RecordPage = () => {
               </div>
             )}
 
-            {/* 6. SMS PREVIEW */}
-            {(amountVal > 0 || paidVal > 0) && (
+            {/* 6. SMS PREVIEW & SEND BUTTON */}
+            {smsMessage && (
               <div className="bg-gray-900 text-gray-100 p-5 rounded-2xl shadow-xl relative">
-                <div className="absolute top-3 right-3 bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1"><MessageSquare size={12} /> SMS Preview</div>
-                <p className="text-xs text-gray-400 mb-2 uppercase tracking-wider">Message to {tx.name || "Customer"}:</p>
-                <div className="font-mono text-sm leading-relaxed whitespace-pre-line">
-                  {`Balance update (${formatDate(new Date())}):\n`}
-                  {`Old debt: ${formatCurrency(currentBal)}\n`}
-                  {amountVal > 0 && `Items bought: ${formatCurrency(amountVal)}\n`}
-                  {tx.items && amountVal > 0 && `What was bought: ${tx.items}\n`}
-                  {paidVal > 0 && `Money paid: ${formatCurrency(paidVal)}\n`}
-                  {newBal < 0 ? `Total debt now: ${formatCurrency(0)}\n(You have a credit of ${formatCurrency(Math.abs(newBal))})` : `Total debt now: ${formatCurrency(newBal)}`}
-                  {`\nThank you! - From ${currentStore?.name || "Store"}`}
+                <div className="absolute top-3 right-3 bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1">
+                  <MessageSquare size={12} /> SMS Preview
                 </div>
+                <p className="text-xs text-gray-400 mb-2 uppercase tracking-wider">Message to {tx.name || "Customer"}:</p>
+                <div className="font-mono text-sm leading-relaxed whitespace-pre-line mb-4 bg-black/20 p-3 rounded-lg border border-gray-700">
+                  {smsMessage}
+                </div>
+                
+                {/* 👇 NEW: Send SMS Button */}
+                <button 
+                  onClick={() => openSMS(tx.phone, smsMessage)}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
+                >
+                  <MessageSquare size={18} /> Send via SMS App
+                </button>
               </div>
             )}
 
@@ -434,8 +441,6 @@ export const RecordPage = () => {
       </div>
 
       {/* --- MODALS --- */}
-      
-      {/* Inline Product Creation Modal */}
       {showInlineProduct && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full shadow-2xl p-6">
@@ -456,7 +461,6 @@ export const RecordPage = () => {
         </div>
       )}
 
-      {/* Price Update Prompt Modal */}
       {priceUpdateModal && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6 text-center">
