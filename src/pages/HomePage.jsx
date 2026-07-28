@@ -1,16 +1,13 @@
 import { useState, useMemo } from "react";
 import { Search, Users, TrendingUp, DollarSign } from "lucide-react";
-import { useApp } from "../contexts/AppContext";
+import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { CustomerCard } from "../components/CustomerCard";
 import { Confetti } from "../components/Confetti";
-import { GlobalSearchModal } from "../components/GlobalSearchModal";
 
 export const HomePage = () => {
-  // 👇 Removed 'recentActivity' from the context
-  const { currentStore, customers, totalDebt, todaySales, moneyCollectedToday, totalCustomers, setView } = useApp();
+  const { currentStore, customers, setView } = useStore();
   const [searchQuery, setSearchQuery] = useState("");
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   const filteredCustomers = useMemo(() => {
     if (!searchQuery.trim()) return customers;
@@ -18,33 +15,41 @@ export const HomePage = () => {
     return customers.filter(c => c.name.toLowerCase().includes(q) || c.phone.includes(q));
   }, [customers, searchQuery]);
 
-  if (!currentStore) return null;
+  const totalDebt = useMemo(() => customers.reduce((sum, c) => sum + Math.max(0, c.balance || 0), 0), [customers]);
+  const todaySales = useMemo(() => {
+    if (!currentStore) return 0;
+    const today = new Date().toDateString();
+    return customers.reduce((sum, c) => sum + (c.history || []).filter(h => new Date(h.date).toDateString() === today).reduce((s, h) => s + (h.amount || 0), 0), 0);
+  }, [customers, currentStore]);
+
+  // 👇 CHANGED: Show a loading spinner instead of a blank screen
+  if (!currentStore) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col items-center justify-center p-4">
+        <div className="w-12 h-12 border-4 border-green-200 border-t-green-700 rounded-full animate-spin mb-4"></div>
+        <p className="text-gray-500 dark:text-gray-400 font-medium animate-pulse">Loading your business data...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <Confetti />
       
-      {/* Header */}
       <div className="bg-green-700 dark:bg-gray-900 text-white p-6 pb-8 rounded-b-[2rem] shadow-lg relative">
         <div className="flex justify-between items-start mb-6">
           <div>
             <p className="text-green-100 dark:text-gray-400 text-sm font-medium">{currentStore.name}</p>
-            <h1 className="text-2xl font-bold">Good Day, {currentStore.ownerName || currentStore.owner}!</h1>
+            <h1 className="text-2xl font-bold">Good Day, {currentStore.ownerName || "Owner"}!</h1>
           </div>
-          <button onClick={() => setIsSearchOpen(true)} className="p-2 bg-white/20 rounded-full hover:bg-white/30 active:scale-95 transition">
-            <Search size={20} />
-          </button>
         </div>
-        
         <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
           <p className="text-green-100 text-sm">Total Outstanding Debt</p>
           <p className="text-4xl font-bold mt-1">{formatCurrency(totalDebt)}</p>
         </div>
       </div>
 
-      {/* Content */}
       <div className="px-4 max-w-lg mx-auto space-y-6">
-        {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-2 mb-1">
@@ -54,23 +59,11 @@ export const HomePage = () => {
             <p className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(todaySales)}</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-            <div className="flex items-center gap-2 mb-1">
-              <DollarSign size={16} className="text-blue-600" />
-              <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase">Collected Today</p>
-            </div>
-            <p className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(moneyCollectedToday)}</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase mb-1">Customers Owing</p>
             <p className="text-xl font-bold text-red-600 dark:text-red-400">{customers.filter(c => c.balance > 0).length}</p>
           </div>
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-            <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase mb-1">Total Customers</p>
-            <p className="text-xl font-bold text-gray-900 dark:text-white">{totalCustomers}</p>
-          </div>
         </div>
 
-        {/* Customer List */}
         <div>
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">Recent Customers</h2>
@@ -100,9 +93,6 @@ export const HomePage = () => {
           </div>
         </div>
       </div>
-
-      {/* Global Search Modal */}
-      {isSearchOpen && <GlobalSearchModal onClose={() => setIsSearchOpen(false)} />}
     </div>
   );
 };

@@ -1,21 +1,20 @@
 import { useState, useMemo } from "react";
 import { MessageSquare, MessageCircle, Phone, Check, AlertCircle } from "lucide-react";
-import { useApp } from "../contexts/AppContext";
+import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { openSMS, openWhatsApp, openDialer } from "../utils/communication";
 import { PageHeader } from "../components/PageHeader";
 import { CustomerService } from "../services/CustomerService";
 
 export const FollowUpsPage = () => {
-  // 👇 FIXED: Changed 'store' to 'currentStore'
-  const { currentStore, customers, refreshCustomers, showToast, triggerConfetti } = useApp();
+  const { currentStore, customers, refreshCustomers, showToast, triggerConfetti } = useStore();
   const [filter, setFilter] = useState("all");
 
   const followUps = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return customers
-      .filter(c => c.balance > 0 && !c.isArchived) // 👇 FIXED: Ignore archived customers
+      .filter(c => c.balance > 0 && !c.isArchived)
       .map(c => {
         const lastTx = c.history[c.history.length - 1];
         const lastContact = lastTx ? new Date(lastTx.date) : null;
@@ -38,9 +37,8 @@ export const FollowUpsPage = () => {
   }, [followUps, filter]);
 
   const generateMessage = (c) =>
-    `Hello ${c.name}, this is a reminder from ${currentStore.name}. You have an outstanding debt of ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
+    `Hello ${c.name}, this is a reminder from ${currentStore?.name || "Store"}. You have an outstanding debt of ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
 
-  // 👇 FIXED: Added storeId parameter
   const handleMarkPaid = async (customerId) => {
     try {
       await CustomerService.clearDebt(currentStore.id, customerId);
@@ -57,21 +55,26 @@ export const FollowUpsPage = () => {
     { key: "all", label: "All", count: followUps.length },
     { key: "overdue30", label: "30+ Days", count: followUps.filter(c => c.category === "overdue30").length },
     { key: "overdue7", label: "7+ Days", count: followUps.filter(c => c.category === "overdue7").length },
-    { key: "never", label: "Never Contacted", count: followUps.filter(c => c.category === "never").length },
+    { key: "never", label: "Never", count: followUps.filter(c => c.category === "never").length },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      <PageHeader title="Today's Follow-ups" subtitle={`${followUps.length} customers to contact`} />
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24 w-full flex flex-col overflow-x-hidden">
+      <PageHeader title="Follow-ups" subtitle={`${followUps.length} to contact`} />
 
-      <div className="p-4 max-w-lg mx-auto space-y-4">
-        <div className="flex gap-2 overflow-x-auto pb-2">
+      {/* 👇 REDUCED PADDING (px-3 instead of px-4) for 375px screens */}
+      <div className="flex-1 w-full px-3 py-4 space-y-4 mx-auto max-w-full">
+        
+        {/* Scrollable Filter Tabs - Strictly bounded */}
+        <div className="w-full overflow-x-auto flex gap-2 pb-2 scrollbar-hide">
           {filters.map(f => (
             <button
               key={f.key}
               onClick={() => setFilter(f.key)}
-              className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
-                filter === f.key ? "bg-green-700 text-white" : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
+              className={`flex-shrink-0 px-4 py-2 rounded-full text-xs sm:text-sm font-semibold whitespace-nowrap transition active:scale-95 ${
+                filter === f.key 
+                  ? "bg-green-700 text-white shadow-md" 
+                  : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
               }`}
             >
               {f.label} ({f.count})
@@ -79,43 +82,64 @@ export const FollowUpsPage = () => {
           ))}
         </div>
 
-        <div className="space-y-3">
+        {/* Customer Cards */}
+        <div className="space-y-3 w-full">
           {filtered.length === 0 ? (
-            <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700">
-              <Check className="mx-auto text-green-500 mb-2" size={48} />
+            <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 w-full">
+              <Check className="mx-auto text-green-500 mb-3" size={48} />
               <p className="text-gray-700 dark:text-gray-300 font-bold text-lg">All caught up!</p>
-              <p className="text-gray-500 dark:text-gray-400 mt-1">No follow-ups needed.</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">No follow-ups needed right now.</p>
             </div>
           ) : (
             filtered.map(c => (
-              <div key={c.id} className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h3 className="font-bold text-gray-900 dark:text-white text-lg">{c.name}</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{c.phone}</p>
+              // 👇 Card: Reduced padding to p-3, strict box-border
+              <div key={c.id} className="w-full bg-white dark:bg-gray-800 p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 box-border">
+                
+                {/* Header: Name & Balance */}
+                <div className="flex justify-between items-start gap-2 mb-3 w-full">
+                  {/* 👇 min-w-0 is the magic trick for 375px truncation */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-gray-900 dark:text-white text-sm sm:text-base truncate leading-tight">{c.name}</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate leading-tight mt-0.5">{c.phone}</p>
                     {c.daysSince > 7 && (
-                      <span className="inline-block mt-1 text-xs bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300 px-2 py-0.5 rounded-full font-bold">
-                        <AlertCircle size={10} className="inline" /> {c.daysSince} days since contact
+                      <span className="inline-flex items-center gap-1 mt-1.5 text-[10px] sm:text-xs bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300 px-2 py-0.5 rounded-full font-bold max-w-full truncate">
+                        <AlertCircle size={10} className="flex-shrink-0" /> {c.daysSince} days
                       </span>
                     )}
                   </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(c.balance)}</p>
+                  
+                  {/* 👇 flex-shrink-0 keeps balance fixed */}
+                  <div className="flex-shrink-0 text-right pl-2">
+                    <p className="text-lg sm:text-xl font-bold text-red-600 dark:text-red-400 leading-tight">{formatCurrency(c.balance)}</p>
+                    <p className="text-[9px] text-gray-400 uppercase font-semibold tracking-wide">Owed</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => openSMS(c.phone, generateMessage(c))} className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
-                    <MessageSquare size={18} /> SMS
+                {/* Action Buttons Grid - Strictly bounded */}
+                <div className="grid grid-cols-2 gap-2 w-full">
+                  <button 
+                    onClick={() => openSMS(c.phone, generateMessage(c))} 
+                    className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-semibold py-2 rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs sm:text-sm min-w-0"
+                  >
+                    <MessageSquare size={14} className="flex-shrink-0" /> <span className="truncate">SMS</span>
                   </button>
-                  <button onClick={() => openWhatsApp(c.phone, generateMessage(c))} className="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
-                    <MessageCircle size={18} /> WhatsApp
+                  <button 
+                    onClick={() => openWhatsApp(c.phone, generateMessage(c))} 
+                    className="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-semibold py-2 rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs sm:text-sm min-w-0"
+                  >
+                    <MessageCircle size={14} className="flex-shrink-0" /> <span className="truncate">WhatsApp</span>
                   </button>
-                  <button onClick={() => openDialer(c.phone)} className="bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
-                    <Phone size={18} /> Call
+                  <button 
+                    onClick={() => openDialer(c.phone)} 
+                    className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold py-2 rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs sm:text-sm min-w-0"
+                  >
+                    <Phone size={14} className="flex-shrink-0" /> <span className="truncate">Call</span>
                   </button>
-                  <button onClick={() => handleMarkPaid(c.id)} className="bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
-                    <Check size={18} /> Mark Paid
+                  <button 
+                    onClick={() => handleMarkPaid(c.id)} 
+                    className="bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 font-semibold py-2 rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs sm:text-sm min-w-0"
+                  >
+                    <Check size={14} className="flex-shrink-0" /> <span className="truncate">Paid</span>
                   </button>
                 </div>
               </div>

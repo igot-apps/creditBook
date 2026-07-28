@@ -1,3 +1,28 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 👇 NUCLEAR LOCK FOR MOBILE (375px and up) */
+html, body, #root {
+  width: 100%;
+  max-width: 100vw;
+  max-width: 100dvw; /* Fixes mobile browser address bar overflow */
+  overflow-x: hidden !important;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Ensure every single element respects padding inside its width */
+*, *::before, *::after {
+  box-sizing: inherit;
+}
+
+/* Hide scrollbar for horizontal scrolling areas */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

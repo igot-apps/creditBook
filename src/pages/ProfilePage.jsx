@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Phone, PlusCircle, MessageCircle, MessageSquare, Edit3, Archive, ShoppingBag, CreditCard, Ban, Clock, MapPin, FileText, ArrowLeft } from "lucide-react";
-import { useApp } from "../contexts/AppContext";
+import useStore from "../store/useStore"; // 👈 CHANGED
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openSMS, openWhatsApp, openDialer } from "../utils/communication";
 import { CustomerService } from "../services/CustomerService";
@@ -9,7 +9,8 @@ import { InvoiceModal } from "../components/InvoiceModal";
 import { EditCustomerModal } from "../components/EditCustomerModal";
 
 export const ProfilePage = () => {
-  const { currentStore, selectedCustomer, setSelectedCustomer, setView, refreshCustomers, showToast, triggerConfetti, setPrefillTransaction } = useApp();
+  // 👈 CHANGED to useStore
+  const { currentStore, selectedCustomer, setSelectedCustomer, setView, refreshCustomers, showToast, triggerConfetti, setPrefillTransaction } = useStore();
   
   const [viewingInvoice, setViewingInvoice] = useState(null);
   const [isEditing, setIsEditing] = useState(false);

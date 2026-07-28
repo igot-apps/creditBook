@@ -1,177 +1,112 @@
-import { useState, useEffect } from "react";
-import { Calendar, TrendingUp, Loader2, AlertCircle } from "lucide-react";
-import { useApp } from "../contexts/AppContext";
-import { formatCurrency } from "../utils/helpers";
-import { ReportService } from "../services/ReportService";
+import { useMemo } from "react";
+import { TrendingUp, DollarSign, Users, Calendar } from "lucide-react";
+import useStore from "../store/useStore";
+import { formatCurrency, formatDate } from "../utils/helpers";
 import { PageHeader } from "../components/PageHeader";
 
 export const ReportsPage = () => {
-  const { currentStore } = useApp();
-  const [isLoadingReports, setIsLoadingReports] = useState(true);
-  
-  const [dailyReport, setDailyReport] = useState(null);
-  const [salesTrend, setSalesTrend] = useState([]);
-  const [topCustomers, setTopCustomers] = useState([]);
-  const [mostOverdue, setMostOverdue] = useState([]);
+  const { currentStore, customers } = useStore();
 
-  useEffect(() => {
-    console.log("🔵 ReportsPage: currentStore is", currentStore);
-    if (!currentStore) {
-      console.log("🟡 ReportsPage: Waiting for currentStore...");
-      return;
-    }
-    
-    const loadReports = async () => {
-      console.log("🔵 ReportsPage: Starting to load reports for storeId:", currentStore.id);
-      setIsLoadingReports(true);
-      try {
-        const storeId = currentStore.id;
-        const [daily, trend, top, overdue] = await Promise.all([
-          ReportService.getDailySales(storeId),
-          ReportService.getSalesTrend(storeId, 7),
-          ReportService.getTopCustomers(storeId, 5),
-          ReportService.getMostOverdue(storeId, 5)
-        ]);
-        
-        console.log("🟢 ReportsPage: Reports loaded successfully!", { daily, trend, top, overdue });
-        setDailyReport(daily);
-        setSalesTrend(trend);
-        setTopCustomers(top);
-        setMostOverdue(overdue);
-      } catch (error) {
-        console.error("🔴 ReportsPage: Failed to load reports:", error);
-      } finally {
-        setIsLoadingReports(false);
-      }
-    };
-    
-    loadReports();
-  }, [currentStore]);
+  const stats = useMemo(() => {
+    if (!currentStore) return null;
 
-  const maxSales = salesTrend.length > 0 ? Math.max(...salesTrend.map(d => d.sales), 1) : 1;
+    const today = new Date().toDateString();
+    let todaySales = 0;
+    let todayCollections = 0;
+    let totalOutstanding = 0;
+    let totalRecovered = 0;
 
-  if (!currentStore || isLoadingReports) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center pb-24">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-green-700 animate-spin" />
-          <p className="text-gray-500 dark:text-gray-400 font-medium">Loading business reports...</p>
-        </div>
-      </div>
-    );
-  }
+    customers.forEach(c => {
+      totalOutstanding += Math.max(0, c.balance || 0);
+      
+      c.history?.forEach(tx => {
+        const txDate = new Date(tx.date).toDateString();
+        if (txDate === today) {
+          todaySales += tx.amount || 0;
+          todayCollections += tx.paid || 0;
+        }
+        totalRecovered += tx.paid || 0;
+      });
+    });
 
-  // Check if there is literally zero data
-  const hasNoData = (!dailyReport || dailyReport.totalSales === 0) && topCustomers.length === 0;
+    return { todaySales, todayCollections, totalOutstanding, totalRecovered };
+  }, [currentStore, customers]);
 
-  if (hasNoData) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-        <PageHeader title="Reports & Analytics" subtitle="Your business at a glance" />
-        <div className="p-8 text-center">
-          <AlertCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">No Data Yet</h3>
-          <p className="text-gray-500 dark:text-gray-400 mb-6">
-            You haven't recorded any transactions for <strong>{currentStore.name}</strong> yet.
-          </p>
-          <p className="text-sm text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 p-4 rounded-xl">
-            💡 <strong>Note:</strong> When we upgraded the app to SaaS, the database was reset for security. 
-            Please go to <strong>Record Sale</strong> and add a test transaction to see reports appear here!
-          </p>
-        </div>
-      </div>
-    );
-  }
+  if (!stats) return null;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      <PageHeader title="Reports & Analytics" subtitle="Your business at a glance" />
+      <PageHeader title="Reports" subtitle="Business Overview" />
 
       <div className="p-4 max-w-lg mx-auto space-y-4">
-        {/* Today's Summary */}
-        {dailyReport && (
-          <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-            <h3 className="font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-              <Calendar size={18} className="text-green-700 dark:text-green-400" /> Today's Summary
-            </h3>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Sales</p>
-                <p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(dailyReport.totalSales)}</p>
+        {/* Today's Performance */}
+        <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+          <h3 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <Calendar size={18} className="text-green-600" /> Today's Performance
+          </h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-xl">
+              <p className="text-xs text-green-700 dark:text-green-400 font-bold uppercase mb-1">Sales</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(stats.todaySales)}</p>
+            </div>
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl">
+              <p className="text-xs text-blue-700 dark:text-blue-400 font-bold uppercase mb-1">Collected</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(stats.todayCollections)}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Overall Business Health */}
+        <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+          <h3 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <TrendingUp size={18} className="text-blue-600" /> Overall Health
+          </h3>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center p-3 bg-red-50 dark:bg-red-900/20 rounded-xl">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 dark:bg-red-800 rounded-lg">
+                  <DollarSign size={20} className="text-red-600 dark:text-red-300" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Total Outstanding Debt</p>
+                  <p className="text-lg font-bold text-red-600 dark:text-red-400">{formatCurrency(stats.totalOutstanding)}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Collected</p>
-                <p className="text-lg font-bold text-green-700 dark:text-green-400">{formatCurrency(dailyReport.totalCollected)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Txns</p>
-                <p className="text-lg font-bold text-gray-900 dark:text-white">{dailyReport.transactionCount}</p>
+            </div>
+
+            <div className="flex justify-between items-center p-3 bg-green-50 dark:bg-green-900/20 rounded-xl">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-100 dark:bg-green-800 rounded-lg">
+                  <Users size={20} className="text-green-600 dark:text-green-300" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Total Recovered (All Time)</p>
+                  <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(stats.totalRecovered)}</p>
+                </div>
               </div>
             </div>
           </div>
-        )}
-
-        {/* 7-Day Sales Trend */}
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-          <h3 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <TrendingUp size={18} className="text-green-700 dark:text-green-400" /> Last 7 Days
-          </h3>
-          <div className="flex items-end justify-between gap-2 h-32">
-            {salesTrend.map((day, i) => (
-              <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                <div className="w-full flex flex-col justify-end h-24">
-                  <div 
-                    className="bg-green-600 dark:bg-green-500 rounded-t-lg w-full transition-all"
-                    style={{ height: `${(day.sales / maxSales) * 100}%`, minHeight: day.sales > 0 ? '4px' : '0' }}
-                    title={formatCurrency(day.sales)}
-                  />
-                </div>
-                <span className="text-xs text-gray-500 dark:text-gray-400 font-semibold">{day.label}</span>
-              </div>
-            ))}
-          </div>
         </div>
 
-        {/* Top Customers */}
+        {/* Recent Transactions List */}
         <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-          <h3 className="font-bold text-gray-900 dark:text-white mb-3">Top Customers</h3>
+          <h3 className="font-bold text-gray-900 dark:text-white mb-4">Recent Activity</h3>
           <div className="space-y-3">
-            {topCustomers.map((c, i) => {
-              const maxPurchase = topCustomers[0]?.totalPurchases || 1;
-              return (
-                <div key={c.id} className="flex items-center gap-3">
-                  <span className="text-lg font-bold text-gray-400 w-6">#{i + 1}</span>
-                  <div className="flex-1">
-                    <div className="flex justify-between mb-1">
-                      <span className="font-semibold text-gray-900 dark:text-white text-sm">{c.name}</span>
-                      <span className="font-bold text-green-700 dark:text-green-400 text-sm">{formatCurrency(c.totalPurchases)}</span>
-                    </div>
-                    <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-green-600 dark:bg-green-500 rounded-full transition-all" 
-                        style={{ width: `${(c.totalPurchases / maxPurchase) * 100}%` }} 
-                      />
-                    </div>
+            {customers.flatMap(c => (c.history || []).map(h => ({ ...h, customerName: c.name })))
+              .sort((a, b) => new Date(b.date) - new Date(a.date))
+              .slice(0, 5)
+              .map((tx, i) => (
+                <div key={i} className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                  <div>
+                    <p className="font-semibold text-gray-900 dark:text-white text-sm">{tx.customerName}</p>
+                    <p className="text-xs text-gray-500">{tx.items || "Transaction"} • {formatDate(tx.date).split(',')[0]}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-gray-900 dark:text-white">{formatCurrency(tx.amount)}</p>
+                    {tx.paid > 0 && <p className="text-xs text-green-600">Paid: {formatCurrency(tx.paid)}</p>}
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Most Overdue */}
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-          <h3 className="font-bold text-gray-900 dark:text-white mb-3">Highest Outstanding Debt</h3>
-          <div className="space-y-2">
-            {mostOverdue.map((c, i) => (
-              <div key={c.id} className="flex justify-between items-center p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                <div>
-                  <p className="font-semibold text-gray-900 dark:text-white">{c.name}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{c.daysSinceContact} days since contact</p>
-                </div>
-                <p className="font-bold text-red-600 dark:text-red-400">{formatCurrency(c.balance)}</p>
-              </div>
-            ))}
+              ))}
           </div>
         </div>
       </div>

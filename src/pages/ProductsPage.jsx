@@ -1,12 +1,12 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Plus, Search, Package, Star, Archive, Edit3, Check, X } from "lucide-react";
-import { useApp } from "../contexts/AppContext";
+import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { ProductService } from "../services/ProductService";
 import { PageHeader } from "../components/PageHeader";
 
 export const ProductsPage = () => {
-  const { currentStore, showToast, refreshCustomers } = useApp();
+  const { currentStore, showToast } = useStore();
   const [products, setProducts] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("all"); // all, favourites, archived
@@ -14,14 +14,16 @@ export const ProductsPage = () => {
   const [editingProduct, setEditingProduct] = useState(null);
   const [form, setForm] = useState({ name: "", price: "", unit: "", category: "", isFavourite: false });
 
-  // Load products when page mounts or tab changes
   const loadProducts = async () => {
+    if (!currentStore) return;
     const includeArchived = activeTab === "archived";
     const data = await ProductService.getAll(currentStore.id, includeArchived);
     setProducts(data);
   };
 
-  useState(() => { loadProducts(); }, [activeTab]);
+  useEffect(() => { 
+    loadProducts(); 
+  }, [activeTab, currentStore]);
 
   const filteredProducts = useMemo(() => {
     let filtered = products;
@@ -109,7 +111,7 @@ export const ProductsPage = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <PageHeader title="Product Catalogue" subtitle={`${products.length} products`} />
 
-      <div className="p-4 max-w-lg mx-auto space-y-4">
+      <div className="px-4 py-4 max-w-lg mx-auto space-y-4">
         {/* Search & Add */}
         <div className="flex gap-3">
           <div className="relative flex-1">
@@ -123,14 +125,14 @@ export const ProductsPage = () => {
           </div>
           <button 
             onClick={() => openModal()}
-            className="bg-green-700 text-white p-3 rounded-xl shadow-md active:scale-95 transition"
+            className="bg-green-700 text-white p-3 rounded-xl shadow-md active:scale-95 transition flex-shrink-0"
           >
             <Plus size={24} />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
           {[
             { key: "all", label: "All" },
             { key: "favourites", label: "Favourites" },
@@ -139,9 +141,9 @@ export const ProductsPage = () => {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
+              className={`flex-shrink-0 px-4 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap transition active:scale-95 ${
                 activeTab === tab.key 
-                  ? "bg-green-700 text-white" 
+                  ? "bg-green-700 text-white shadow-md" 
                   : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
               }`}
             >
@@ -159,36 +161,42 @@ export const ProductsPage = () => {
             </div>
           ) : (
             filteredProducts.map(p => (
-              <div key={p.id} className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <div key={p.id} className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-start sm:items-center gap-3">
+                {/* Left Side: Product Info (Takes available space, truncates properly) */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-bold text-gray-900 dark:text-white truncate">{p.name}</p>
-                    {p.isFavourite && <Star size={14} className="text-yellow-500 fill-yellow-500" />}
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-bold text-gray-900 dark:text-white text-sm sm:text-base truncate">{p.name}</p>
+                    {p.isFavourite && <Star size={14} className="text-yellow-500 fill-yellow-500 flex-shrink-0" />}
                   </div>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <p className="text-sm text-green-700 dark:text-green-400 font-semibold">{formatCurrency(p.price)}</p>
                     {p.unit && <span className="text-xs text-gray-400">/ {p.unit}</span>}
-                    {p.category && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-full">{p.category}</span>}
+                    {p.category && (
+                      <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-full truncate max-w-[100px]">
+                        {p.category}
+                      </span>
+                    )}
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-2">
+                {/* Right Side: Action Buttons (NEVER squishes or hides) */}
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                   <button 
                     onClick={() => handleToggleFavourite(p)}
-                    className={`p-2 rounded-lg transition ${p.isFavourite ? 'bg-yellow-50 text-yellow-600' : 'bg-gray-50 dark:bg-gray-700 text-gray-400'}`}
+                    className={`p-2 rounded-lg transition active:scale-90 ${p.isFavourite ? 'bg-yellow-50 text-yellow-600' : 'bg-gray-50 dark:bg-gray-700 text-gray-400'}`}
                   >
                     <Star size={18} className={p.isFavourite ? "fill-yellow-500" : ""} />
                   </button>
                   <button 
                     onClick={() => openModal(p)}
-                    className="p-2 bg-gray-50 dark:bg-gray-700 rounded-lg text-gray-600 dark:text-gray-300"
+                    className="p-2 bg-gray-50 dark:bg-gray-700 rounded-lg text-gray-600 dark:text-gray-300 active:scale-90 transition"
                   >
                     <Edit3 size={18} />
                   </button>
                   {activeTab !== "archived" && (
                     <button 
                       onClick={() => handleToggleArchive(p)}
-                      className="p-2 bg-red-50 dark:bg-red-900/20 rounded-lg text-red-600 dark:text-red-400"
+                      className="p-2 bg-red-50 dark:bg-red-900/20 rounded-lg text-red-600 dark:text-red-400 active:scale-90 transition"
                     >
                       <Archive size={18} />
                     </button>
@@ -203,17 +211,17 @@ export const ProductsPage = () => {
       {/* Add/Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full shadow-2xl">
-            <div className="flex justify-between items-center p-5 border-b border-gray-200 dark:border-gray-700">
-              <h3 className="font-bold text-xl text-gray-900 dark:text-white">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-900 z-10">
+              <h3 className="font-bold text-lg sm:text-xl text-gray-900 dark:text-white">
                 {editingProduct ? "Edit Product" : "New Product"}
               </h3>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
+              <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full active:scale-90 transition">
                 <X size={20} />
               </button>
             </div>
             
-            <form onSubmit={handleSave} className="p-5 space-y-4">
+            <form onSubmit={handleSave} className="p-4 sm:p-5 space-y-4">
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Product Name *</label>
                 <input 
@@ -249,7 +257,7 @@ export const ProductsPage = () => {
                 />
               </div>
               
-              <label className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl cursor-pointer">
+              <label className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl cursor-pointer active:bg-gray-100 dark:active:bg-gray-700 transition">
                 <input 
                   type="checkbox" checked={form.isFavourite} onChange={e => setForm({...form, isFavourite: e.target.checked})}
                   className="w-5 h-5 text-green-700 rounded focus:ring-green-500"
@@ -259,7 +267,7 @@ export const ProductsPage = () => {
 
               <button 
                 type="submit"
-                className="w-full bg-green-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"
+                className="w-full bg-green-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition mt-2"
               >
                 <Check size={20} /> {editingProduct ? "Update Product" : "Create Product"}
               </button>

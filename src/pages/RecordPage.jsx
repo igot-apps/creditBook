@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Check, MessageSquare, AlertCircle, User, Search, PlusCircle, ArrowLeft, Trash2, X, Package, FileText } from "lucide-react";
-import { useApp } from "../contexts/AppContext";
+import useStore from "../store/useStore"; // 👈 CHANGED TO useStore
 import { formatDate, formatCurrency } from "../utils/helpers";
-import { openSMS } from "../utils/communication"; // 👈 ADDED: Import openSMS
+import { openSMS } from "../utils/communication";
 import { CustomerService } from "../services/CustomerService";
 import { ProductService } from "../services/ProductService";
 import { PageHeader } from "../components/PageHeader";
 
 export const RecordPage = () => {
+  // 👈 CHANGED TO useStore
   const { 
     currentStore, 
     customers, 
@@ -17,7 +18,7 @@ export const RecordPage = () => {
     setView,
     prefillTransaction,
     setPrefillTransaction
-  } = useApp();
+  } = useStore();
   
   // --- Customer Search State ---
   const [mode, setMode] = useState("search");
@@ -193,11 +194,16 @@ export const RecordPage = () => {
       showToast("Transaction saved");
     } catch (error) {
       console.error("Failed to save transaction", error);
-      if (error.message.includes("already exists")) {
-        setPhoneError(error.message);
-        showToast(error.message);
+      
+      // 👇 CHANGED: Show the ACTUAL error message on your phone screen
+      const realError = error.message || error.toString();
+      
+      if (realError.includes("already exists")) {
+        setPhoneError(realError);
+        showToast(realError);
       } else {
-        showToast("Failed to save transaction");
+        // This will tell us exactly what Dexie/IndexedDB is complaining about
+        showToast(`Error: ${realError.substring(0, 60)}`); 
       }
     }
   };
@@ -210,7 +216,6 @@ export const RecordPage = () => {
   const newBal = totalDue - paidVal;
   const isOverpayment = paidVal > totalDue && totalDue > 0;
 
-  // 👇 NEW: Generate the exact SMS message string for the button
   const smsMessage = useMemo(() => {
     if (amountVal === 0 && paidVal === 0) return "";
     return `Balance update (${formatDate(new Date())}):\n` +
@@ -229,7 +234,6 @@ export const RecordPage = () => {
       <PageHeader title="Record Sale" onBack={() => setView("home")} />
 
       <div className="p-4 space-y-4 max-w-lg mx-auto">
-        
         {/* 1. CUSTOMER SELECTION */}
         {mode === "search" && (
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
@@ -422,7 +426,6 @@ export const RecordPage = () => {
                   {smsMessage}
                 </div>
                 
-                {/* 👇 NEW: Send SMS Button */}
                 <button 
                   onClick={() => openSMS(tx.phone, smsMessage)}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"

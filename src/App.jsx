@@ -1,12 +1,11 @@
-import { AppProvider, useApp } from "./contexts/AppContext";
+import { useEffect } from "react";
+import useStore from "./store/useStore";
 import { BottomNav } from "./components/BottomNav";
 import { Toast } from "./components/Toast";
 import { Layout } from "./components/Layout";
-import { LoginPage } from "./pages/LoginPage";
-import { OnboardingPage } from "./pages/OnboardingPage";
 import { HomePage } from "./pages/HomePage";
 import { CustomersPage } from "./pages/CustomersPage";
-import { ProductsPage } from "./pages/ProductsPage"; // 👈 NEW: Import ProductsPage
+import { ProductsPage } from "./pages/ProductsPage";
 import { RecordPage } from "./pages/RecordPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -14,28 +13,28 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { FollowUpsPage } from "./pages/FollowUpsPage";
 
 const AppRouter = () => {
-  const { view, isLoading, handleLogout } = useApp();
+  const { view, initializeApp, theme } = useStore();
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
-        <div className="text-green-700 dark:text-green-400 font-bold text-xl animate-pulse">Loading CreditBook...</div>
-      </div>
-    );
-  }
+  // Initialize app on mount
+  useEffect(() => {
+    initializeApp();
+  }, []);
 
-  if (view === "login") return <LoginPage />;
-  if (view === "onboarding") return <OnboardingPage />;
+  // Handle theme
+  useEffect(() => {
+    if (theme === "dark") document.documentElement.classList.add("dark");
+    else document.documentElement.classList.remove("dark");
+  }, [theme]);
 
   const renderPage = () => {
     switch (view) {
       case "home": return <HomePage />;
       case "customers": return <CustomersPage />;
-      case "products": return <ProductsPage />; // 👈 NEW: Route to ProductsPage
+      case "products": return <ProductsPage />;
       case "record": return <RecordPage />;
       case "profile": return <ProfilePage />;
       case "reports": return <ReportsPage />;
-      case "settings": return <SettingsPage onLogout={handleLogout} />;
+      case "settings": return <SettingsPage />;
       case "followups": return <FollowUpsPage />;
       default: return <HomePage />;
     }
@@ -51,9 +50,5 @@ const AppRouter = () => {
 };
 
 export default function App() {
-  return (
-    <AppProvider>
-      <AppRouter />
-    </AppProvider>
-  );
+  return <AppRouter />;
 }

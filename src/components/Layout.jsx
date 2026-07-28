@@ -1,5 +1,5 @@
-import { Home, Users, Bell, BarChart3, Settings, LogOut, Moon, Sun, Store, User, Mail, Info, Menu, X, Package } from "lucide-react";
-import { useApp } from "../contexts/AppContext";
+import { Home, Users, Package, Bell, BarChart3, Settings, Moon, Sun, User, Mail, Info, Menu, X } from "lucide-react";
+import useStore from "../store/useStore";
 import { useState } from "react";
 
 export const Layout = ({ children }) => {
@@ -9,9 +9,8 @@ export const Layout = ({ children }) => {
     view,
     theme, 
     setTheme, 
-    handleLogout,
     setSelectedCustomer
-  } = useApp();
+  } = useStore();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -21,21 +20,17 @@ export const Layout = ({ children }) => {
     setIsMobileMenuOpen(false);
   };
 
-  const handleLogoutClick = () => {
-    if (window.confirm("Are you sure you want to sign out?")) {
-      handleLogout();
-    }
-  };
-
+  // 👇 FIXED: Removed all trailing spaces from view strings
   const menuItems = [
     { icon: Home, label: "Home", view: "home" },
     { icon: Users, label: "Customers", view: "customers" },
-    { icon: Package, label: "Products", view: "products" }, // 👈 NEW: Products Menu Item
+    { icon: Package, label: "Products", view: "products" },
     { icon: Bell, label: "Follow-ups", view: "followups" },
     { icon: BarChart3, label: "Reports", view: "reports" },
     { icon: Settings, label: "Settings", view: "settings" },
   ];
 
+  // 👇 FIXED: Removed the syntax error space in "() =>"
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Header with Store Info */}
@@ -110,23 +105,12 @@ export const Layout = ({ children }) => {
         {/* About */}
         <button
           onClick={() => {
-            alert("CreditBook SaaS v2.0\n\nBuilt for Ghanaian market women and small businesses.\n\nZero-cost SMS & WhatsApp reminders.\nOffline-first with IndexedDB.");
+            alert("CreditBook v2.0\n\nBuilt for small businesses.\n\nOffline-first with IndexedDB.\nNo login required!");
           }}
           className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all text-left"
         >
           <Info size={20} className="text-gray-500 dark:text-gray-400" />
           <span className="font-medium">About CreditBook</span>
-        </button>
-      </div>
-
-      {/* Logout */}
-      <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-        <button
-          onClick={handleLogoutClick}
-          className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-left"
-        >
-          <LogOut size={20} />
-          <span className="font-bold">Sign Out</span>
         </button>
       </div>
     </div>
@@ -167,8 +151,8 @@ export const Layout = ({ children }) => {
         </>
       )}
 
-      {/* Main Content */}
-      <main className="flex-1 lg:ml-72">
+      {/* Main Content - FIXED with overflow prevention */}
+      <main className="flex-1 lg:ml-72 w-full max-w-full overflow-x-hidden">
         {children}
       </main>
     </div>

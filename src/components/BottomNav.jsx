@@ -1,52 +1,56 @@
-import { Home, Users, PlusCircle, BarChart3, Settings, Bell } from "lucide-react";
-import { useApp } from "../contexts/AppContext";
+import { Home, Users, PlusCircle, Bell, Settings } from "lucide-react";
+import useStore from "../store/useStore";
 
 export const BottomNav = () => {
-  const { view, setView, setSelectedCustomer } = useApp();
-  
-  const navItems = [
-    { key: "home", icon: Home, label: "Home" },
-    { key: "followups", icon: Bell, label: "Follow-ups" },
-    { key: "record", icon: PlusCircle, label: "Record", isCenter: true },
-    { key: "reports", icon: BarChart3, label: "Reports" },
-    { key: "settings", icon: Settings, label: "Settings" },
-  ];
+  const { view, setView, setSelectedCustomer } = useStore();
 
   const navigateTo = (targetView) => {
     setSelectedCustomer(null);
     setView(targetView);
   };
 
+  const navItems = [
+    { icon: Home, label: "Home", view: "home" },
+    { icon: Users, label: "Customers", view: "customers" },
+    { icon: PlusCircle, label: "Record", view: "record", isCenter: true },
+    { icon: Bell, label: "Follow-ups", view: "followups" },
+    { icon: Settings, label: "Settings", view: "settings" },
+  ];
+
   return (
-    // 👇 Outer container: Spans the screen on mobile, but starts AFTER the sidebar on desktop (lg:left-72)
-    <div className="fixed bottom-0 left-0 right-0 lg:left-72 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-      
-      {/*  Inner container: Keeps the buttons neatly centered within the main content area */}
-      <div className="max-w-4xl mx-auto px-6 py-3 flex justify-between items-center w-full">
-        {navItems.map(item => {
+    <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 z-40 pb-safe">
+      <div className="flex justify-around items-center h-16">
+        {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = view === item.key;
+          const isActive = view === item.view;
           
+          // Special styling for the center "Record" button
           if (item.isCenter) {
             return (
-              <button 
-                key={item.key}
-                onClick={() => navigateTo(item.key)} 
-                className="relative -top-6 bg-green-700 text-white p-4 rounded-full shadow-lg shadow-green-700/40 active:scale-90 transition-transform"
+              <button
+                key={item.view}
+                onClick={() => navigateTo(item.view)}
+                className="relative -top-5 bg-green-700 text-white p-4 rounded-full shadow-xl border-4 border-gray-50 dark:border-gray-950 active:scale-90 transition-transform"
+                aria-label="Record Sale"
               >
-                <Icon size={32} />
+                <Icon size={28} />
               </button>
             );
           }
-          
+
+          // Standard nav items
           return (
-            <button 
-              key={item.key}
-              onClick={() => navigateTo(item.key)} 
-              className={`flex flex-col items-center gap-1 ${isActive ? "text-green-700 dark:text-green-400" : "text-gray-400 dark:text-gray-500"}`}
+            <button
+              key={item.view}
+              onClick={() => navigateTo(item.view)}
+              className={`flex flex-col items-center justify-center w-full h-full transition-colors ${
+                isActive 
+                  ? "text-green-700 dark:text-green-400" 
+                  : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+              }`}
             >
-              <Icon size={24} />
-              <span className="text-[10px] font-bold">{item.label}</span>
+              <Icon size={22} className={isActive ? "opacity-100" : "opacity-70"} />
+              <span className="text-[10px] font-semibold mt-1">{item.label}</span>
             </button>
           );
         })}
