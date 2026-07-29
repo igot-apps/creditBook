@@ -6,14 +6,12 @@ import { openSMS } from "../utils/communication";
 import { CustomerService } from "../services/CustomerService";
 import { ProductService } from "../services/ProductService";
 import { PageHeader } from "../components/PageHeader";
-
-import { EditCustomerModal } from "../components/EditCustomerModal";
+import { EditCustomerModal } from "../components/EditCustomerModal"; // 👈 Ensure this is imported
 
 export const RecordPage = () => {
   const { currentStore, customers, refreshCustomers, showToast, triggerConfetti, setView, prefillTransaction, setPrefillTransaction, saveDraft, deleteDraft } = useStore();
   
   const [mode, setMode] = useState("search");
-  const [isEditingCustomer, setIsEditingCustomer] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [tx, setTx] = useState({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "" });
   const [phoneError, setPhoneError] = useState("");
@@ -25,11 +23,14 @@ export const RecordPage = () => {
   const [showInlineProduct, setShowInlineProduct] = useState(false);
   const [newProduct, setNewProduct] = useState({ name: "", price: "", unit: "", category: "" });
   const [priceUpdateIndex, setPriceUpdateIndex] = useState(null);
-  
-  // 👇 NEW: Track if we are editing a specific draft
   const [editingDraftId, setEditingDraftId] = useState(null);
+  const [isEditingCustomer, setIsEditingCustomer] = useState(false); // 👈 For editing existing customer details
 
-  // Handle pre-filling for Drafts or Redo
+  useEffect(() => {
+    if (currentStore?.id) ProductService.getAll(currentStore.id).then(setProducts);
+  }, [currentStore?.id]);
+
+  // 👇 SMART PREFILL LOGIC FOR DRAFTS & REDO
   useEffect(() => {
     if (prefillTransaction) {
       setTx({
@@ -37,7 +38,6 @@ export const RecordPage = () => {
         name: prefillTransaction.name || "",
         phone: prefillTransaction.phone || "",
         items: prefillTransaction.items || "",
-        // Safely convert to string, handling null/undefined
         amount: prefillTransaction.amount ? prefillTransaction.amount.toString() : "",
         paid: prefillTransaction.paid ? prefillTransaction.paid.toString() : ""
       });
@@ -49,33 +49,14 @@ export const RecordPage = () => {
         setRecordMode("quick");
       }
 
-      // 👇 FIX: Smart Mode Selection based on Customer Data
+      // Smart Mode Selection
       if (prefillTransaction.customerId) {
         setMode("existing"); // They selected an existing customer previously
       } else if (prefillTransaction.name || prefillTransaction.phone) {
         setMode("new"); // They typed a name/phone but haven't saved the customer yet
       } else {
-        setMode("search"); // No customer info at all, show the search list
+        setMode("search"); // No customer info at all
       }
-      
-      if (prefillTransaction.isDraft) {
-        setEditingDraftId(prefillTransaction.id);
-      }
-      setPrefillTransaction(null);
-    }
-  }, [prefillTransaction, setPrefillTransaction]);
-
-  // Handle pre-filling for Drafts or Redo
-  useEffect(() => {
-    if (prefillTransaction) {
-      setTx({
-        customerId: prefillTransaction.customerId, name: prefillTransaction.name, phone: prefillTransaction.phone,
-        items: prefillTransaction.items || "", amount: prefillTransaction.amount.toString(), paid: prefillTransaction.paid.toString()
-      });
-      if (prefillTransaction.invoiceItems && prefillTransaction.invoiceItems.length > 0) {
-        setRecordMode("detailed"); setInvoiceItems(prefillTransaction.invoiceItems);
-      } else { setRecordMode("quick"); }
-      setMode("existing");
       
       if (prefillTransaction.isDraft) {
         setEditingDraftId(prefillTransaction.id);
@@ -92,24 +73,33 @@ export const RecordPage = () => {
 
   const handleSelectCustomer = (customer) => {
     setTx({ customerId: customer.id, name: customer.name, phone: customer.phone, items: "", amount: "", paid: "" });
-    setMode("existing"); setSearchQuery("");
+    setMode("existing");
+    setSearchQuery("");
   };
 
   const handleCreateInline = () => {
     const isPhone = /^\d+$/.test(searchQuery.replace(/\s/g, ''));
     if (isPhone) setTx(prev => ({ ...prev, phone: searchQuery, customerId: null }));
     else setTx(prev => ({ ...prev, name: searchQuery, customerId: null }));
-    setMode("new"); setSearchQuery("");
+    setMode("new");
+    setSearchQuery("");
   };
 
   const resetToSearch = () => {
     setTx({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "" });
-    setInvoiceItems([]); setMode("search"); setSearchQuery(""); setProductSearch(""); setPhoneError("");
-    setEditingDraftId(null); // Clear draft editing state
+    setInvoiceItems([]); 
+    setMode("search"); 
+    setSearchQuery(""); 
+    setProductSearch(""); 
+    setPhoneError("");
+    setEditingDraftId(null);
   };
 
   const totalInvoiceAmount = invoiceItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
-  useEffect(() => { if (recordMode === "detailed") setTx(prev => ({ ...prev, amount: totalInvoiceAmount.toString() })); }, [totalInvoiceAmount, recordMode]);
+  
+  useEffect(() => {
+    if (recordMode === "detailed") setTx(prev => ({ ...prev, amount: totalInvoiceAmount.toString() }));
+  }, [totalInvoiceAmount, recordMode]);
 
   const filteredProducts = useMemo(() => {
     if (!productSearch.trim()) return products.filter(p => p.isFavourite || p.usageCount > 0).slice(0, 5);
@@ -183,7 +173,6 @@ export const RecordPage = () => {
     } catch (err) { showToast("Failed to copy."); }
   };
 
-  // 👇 NEW: Save as Draft Function
   const handleSaveDraft = async () => {
     if (!tx.name && !tx.phone && invoiceItems.length === 0) {
       showToast("Add a customer or items to save a draft.");
@@ -191,7 +180,7 @@ export const RecordPage = () => {
     }
     try {
       await saveDraft({
-        id: editingDraftId, // If editing, pass ID to update it
+        id: editingDraftId,
         customerId: tx.customerId,
         name: tx.name,
         phone: tx.phone,
@@ -209,7 +198,6 @@ export const RecordPage = () => {
     }
   };
 
-  // Finalize Transaction (Creates real record, deletes draft if applicable)
   const saveTransaction = async () => {
     const amount = parseFloat(tx.amount) || 0; const paid = parseFloat(tx.paid) || 0;
     if (amount === 0 && paid === 0) return;
@@ -223,7 +211,6 @@ export const RecordPage = () => {
       const itemsString = recordMode === "detailed" ? invoiceItems.map(i => `${i.quantity}x ${i.name}`).join(", ") : tx.items;
       await CustomerService.addTransaction(currentStore.id, tx.customerId, tx.name, tx.phone, amount, paid, itemsString, recordMode === "detailed" ? invoiceItems : null);
       
-      // 👇 If this was a draft, delete the draft now that it's finalized
       if (editingDraftId) {
         await deleteDraft(editingDraftId);
       }
@@ -260,7 +247,6 @@ export const RecordPage = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <PageHeader title={editingDraftId ? "Edit Draft" : "Record Sale"} onBack={() => setView("home")} />
 
-      {/* 👇 NEW: Draft Editing Banner */}
       {editingDraftId && (
         <div className="bg-yellow-100 dark:bg-yellow-900/30 border-b border-yellow-300 dark:border-yellow-800 px-4 py-2 flex justify-between items-center">
           <p className="text-xs font-bold text-yellow-800 dark:text-yellow-300">Editing Draft</p>
@@ -292,6 +278,7 @@ export const RecordPage = () => {
           </div>
         )}
 
+        {/* 👇 EXISTING CUSTOMER (with Edit button to fix missing info) */}
         {isExistingCustomer && (
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-3">
@@ -301,12 +288,7 @@ export const RecordPage = () => {
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{tx.name}</p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{tx.phone || "No phone number"}</p>
               </div>
-              {/* 👇 NEW: Edit Customer Details Button */}
-              <button 
-                onClick={() => setIsEditingCustomer(true)} 
-                className="text-blue-600 dark:text-blue-400 p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition active:scale-90 flex-shrink-0"
-                title="Edit customer details"
-              >
+              <button onClick={() => setIsEditingCustomer(true)} className="text-blue-600 dark:text-blue-400 p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition active:scale-90 flex-shrink-0" title="Edit customer details">
                 <Edit3 size={18} />
               </button>
               <button onClick={resetToSearch} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
@@ -320,17 +302,41 @@ export const RecordPage = () => {
           </div>
         )}
 
+        {/* 👇 NEW / UNSAVED CUSTOMER (Pre-filled from draft, clearly editable) */}
         {mode === "new" && (
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
             <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2"><User size={16} className="text-gray-400" /><p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">New Customer</p></div>
+              <div className="flex items-center gap-2">
+                <User size={16} className="text-gray-400" />
+                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">
+                  {editingDraftId ? "Customer Info (Edit to update)" : "New Customer"}
+                </p>
+              </div>
               <button onClick={resetToSearch} className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 hover:text-green-600"><ArrowLeft size={12} /> Back</button>
             </div>
-            <input placeholder="Customer Name" value={tx.name} onChange={e => { setTx({...tx, name: e.target.value}); setPhoneError(""); }} className="w-full text-lg font-semibold border-b border-gray-200 dark:border-gray-700 pb-2 outline-none focus:border-green-600 dark:text-white bg-transparent" />
+            
+            <input 
+              placeholder="Customer Name" 
+              value={tx.name} 
+              onChange={e => { setTx({...tx, name: e.target.value}); setPhoneError(""); }} 
+              className="w-full text-lg font-semibold border-b border-gray-200 dark:border-gray-700 pb-2 outline-none focus:border-green-600 dark:text-white bg-transparent" 
+            />
+            
             <div>
               <div className="flex gap-2">
-                <div className="flex-1"><input type="tel" inputMode="tel" placeholder="e.g., 024 123 4567" value={tx.phone} onChange={e => { setTx({...tx, phone: e.target.value}); setPhoneError(""); }} className={`w-full text-lg border-b pb-2 outline-none focus:border-green-600 bg-transparent ${phoneError ? "text-red-600 border-red-500" : "text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700"}`} /></div>
-                <button type="button" onClick={handlePickContact} className="flex-shrink-0 p-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition active:scale-90 mb-1" title="Pick from contacts"><Contact size={22} /></button>
+                <div className="flex-1">
+                  <input 
+                    type="tel" 
+                    inputMode="tel" 
+                    placeholder="e.g., 024 123 4567" 
+                    value={tx.phone} 
+                    onChange={e => { setTx({...tx, phone: e.target.value}); setPhoneError(""); }} 
+                    className={`w-full text-lg border-b pb-2 outline-none focus:border-green-600 bg-transparent ${phoneError ? "text-red-600 border-red-500" : "text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700"}`} 
+                  />
+                </div>
+                <button type="button" onClick={handlePickContact} className="flex-shrink-0 p-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition active:scale-90 mb-1" title="Pick from contacts">
+                  <Contact size={22} />
+                </button>
               </div>
               {phoneError && <p className="text-xs text-red-600 dark:text-red-400 mt-1 flex items-center gap-1"><AlertCircle size={12} /> {phoneError}</p>}
             </div>
@@ -413,12 +419,10 @@ export const RecordPage = () => {
               </div>
             )}
 
-            {/* 👇 NEW: Save as Draft Button */}
             <button onClick={handleSaveDraft} className="w-full bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-bold text-lg py-3 rounded-2xl shadow-sm active:scale-95 transition-transform flex items-center justify-center gap-2 mb-2">
               <Save size={20} /> Save as Draft
             </button>
 
-            {/* Finalize & Save Button */}
             <button onClick={saveTransaction} disabled={!tx.amount && !tx.paid} className="w-full bg-green-700 text-white font-bold text-xl py-4 rounded-2xl shadow-lg disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-2">
               <Check size={24} /> {editingDraftId ? "Finalize & Save" : "Save Transaction"}
             </button>
@@ -426,6 +430,7 @@ export const RecordPage = () => {
         )}
       </div>
 
+      {/* Modals */}
       {showInlineProduct && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full shadow-2xl p-6">
@@ -443,20 +448,17 @@ export const RecordPage = () => {
         </div>
       )}
 
-      {/* 👇 2. PASTE THE NEW EDIT CUSTOMER MODAL RIGHT HERE 👇 */}
+      {/* 👇 NEW: Edit Customer Modal (for adding missing phone numbers to existing customers) */}
       {isEditingCustomer && tx.customerId && (
         <EditCustomerModal 
           customer={customers.find(c => c.id === tx.customerId)} 
           onClose={() => {
             setIsEditingCustomer(false);
-            // Refresh the local tx state with the newly updated phone number
             const updated = customers.find(c => c.id === tx.customerId);
             if(updated) setTx(prev => ({ ...prev, name: updated.name, phone: updated.phone }));
           }} 
         />
       )}
-
-      
     </div>
   );
 };
