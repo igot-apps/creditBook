@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Phone, PlusCircle, MessageCircle, MessageSquare, Edit3, Trash2, ShoppingBag, CreditCard, Ban, Clock, FileText } from "lucide-react";
+import { Phone, PlusCircle, MessageCircle, MessageSquare, Edit3, Trash2, ShoppingBag, CreditCard, Ban, Clock, FileText, RefreshCw } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openSMS, openWhatsApp, openDialer } from "../utils/communication";
@@ -9,7 +9,16 @@ import { InvoiceModal } from "../components/InvoiceModal";
 import { EditCustomerModal } from "../components/EditCustomerModal";
 
 export const ProfilePage = () => {
-  const { currentStore, selectedCustomer, setSelectedCustomer, setView, refreshCustomers, showToast, triggerConfetti, setPrefillTransaction } = useStore();
+  const { 
+    currentStore, 
+    selectedCustomer, 
+    setSelectedCustomer, 
+    setView, 
+    refreshCustomers, 
+    showToast, 
+    triggerConfetti, 
+    setPrefillTransaction 
+  } = useStore();
   
   const [viewingInvoice, setViewingInvoice] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -21,8 +30,8 @@ export const ProfilePage = () => {
   if (!selectedCustomer) return null;
 
   const history = selectedCustomer.history || [];
-  const totalPurchases = history.reduce((sum, t) => sum + (t.amount > 0 ? t.amount : 0), 0);
-  const totalPaid = history.reduce((sum, t) => sum + (t.paid || 0), 0);
+  const totalPurchases = history.reduce((sum, t) => sum + (t.amount > 0 && !t.isVoid ? t.amount : 0), 0);
+  const totalPaid = history.reduce((sum, t) => sum + (t.paid > 0 && !t.isVoid ? t.paid : 0), 0);
 
   const generateReminderMessage = (c) =>
     `Hello ${c.name}, this is a reminder from ${currentStore.name}. You have an outstanding debt of ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
@@ -35,6 +44,34 @@ export const ProfilePage = () => {
   const handleAddPurchase = () => {
     setPrefillTransaction({ customerId: selectedCustomer.id, name: selectedCustomer.name, phone: selectedCustomer.phone, items: "", amount: "", paid: "" });
     setView("record");
+  };
+
+  // 👇 NEW: Void & Duplicate (Redo) Logic
+  const handleRedoTransaction = async (tx) => {
+    if (!window.confirm(`This will VOID this invoice and open a corrected copy for you to fix. Continue?`)) return;
+    
+    try {
+      // 1. Void the old transaction immediately
+      await CustomerService.voidTransaction(currentStore.id, selectedCustomer.id, tx.id);
+      await refreshCustomers();
+      
+      // 2. Pre-fill the Record page with the old data so they don't have to re-type
+      setPrefillTransaction({
+        customerId: selectedCustomer.id, // Use current customer ID
+        name: selectedCustomer.name,
+        phone: selectedCustomer.phone,
+        items: tx.items || "",
+        amount: tx.amount.toString(),
+        paid: tx.paid.toString(),
+        invoiceItems: tx.invoiceItems || null // Pass detailed items if they exist!
+      });
+      
+      showToast("Old invoice voided. Please correct and save the new one.");
+      setView("record");
+    } catch (error) {
+      console.error(error);
+      showToast("Failed to redo transaction");
+    }
   };
 
   const executeClearDebt = async () => {
@@ -50,7 +87,6 @@ export const ProfilePage = () => {
     } catch (error) { showToast("Failed to clear debt"); }
   };
 
-  // 👇 NEW: Execute actual deletion
   const executeDelete = async () => {
     if (deleteConfirmText.toLowerCase().trim() !== "yes") return;
     setShowDeleteModal(false);
@@ -67,8 +103,7 @@ export const ProfilePage = () => {
   const handleVoidTransaction = async (tx) => {
     if (!window.confirm(`VOID "${tx.items}" for ${formatCurrency(tx.amount)}? This will reverse the transaction.`)) return;
     try {
-      const updated = await CustomerService.voidTransaction(currentStore.id, selectedCustomer.id, tx.id);
-      setSelectedCustomer(updated);
+      await CustomerService.voidTransaction(currentStore.id, selectedCustomer.id, tx.id);
       await refreshCustomers();
       showToast("Transaction voided");
     } catch (error) { showToast("Failed to void"); }
@@ -120,7 +155,7 @@ export const ProfilePage = () => {
           </div>
           <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
             <p className="text-xs text-gray-500 uppercase font-bold">Transactions</p>
-            <p className="text-lg font-bold text-gray-900 dark:text-white">{history.length}</p>
+            <p className="text-lg font-bold text-gray-900 dark:text-white">{history.filter(t => !t.isVoid).length}</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
             <p className="text-xs text-gray-500 uppercase font-bold">Customer Since</p>
@@ -148,7 +183,6 @@ export const ProfilePage = () => {
           <button onClick={() => setIsEditing(true)} className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
             <Edit3 size={18} /> <span className="text-[10px] font-bold">Edit</span>
           </button>
-          {/* 👇 CHANGED: Archive button replaced with Delete button */}
           <button onClick={() => setShowDeleteModal(true)} className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
             <Trash2 size={18} /> <span className="text-[10px] font-bold">Delete</span>
           </button>
@@ -188,11 +222,31 @@ export const ProfilePage = () => {
                         {tx.paid > 0 && <p className={`text-green-600 dark:text-green-400 ${tx.isVoid ? 'line-through' : ''}`}>Paid: <span className="font-bold">{formatCurrency(tx.paid)}</span></p>}
                       </div>
                       <div className="flex gap-1">
-                        <button onClick={() => setViewingInvoice(tx)} className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-green-600 transition shadow-sm">
+                        {/* 👇 NEW: Redo Button (Void & Duplicate) */}
+                        {!tx.isVoid && (
+                          <button 
+                            onClick={() => handleRedoTransaction(tx)} 
+                            className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-blue-600 transition shadow-sm"
+                            title="Fix / Redo this invoice"
+                          >
+                            <RefreshCw size={14} />
+                          </button>
+                        )}
+                        
+                        <button 
+                          onClick={() => setViewingInvoice(tx)} 
+                          className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-green-600 transition shadow-sm"
+                          title="View Receipt"
+                        >
                           <FileText size={14} />
                         </button>
+                        
                         {!tx.isVoid && (
-                          <button onClick={() => handleVoidTransaction(tx)} className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-red-600 transition shadow-sm">
+                          <button 
+                            onClick={() => handleVoidTransaction(tx)} 
+                            className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-red-600 transition shadow-sm"
+                            title="Void Transaction"
+                          >
                             <Ban size={14} />
                           </button>
                         )}
@@ -232,7 +286,7 @@ export const ProfilePage = () => {
         </div>
       )}
 
-      {/* 👇 NEW: Strict Delete Confirmation Modal */}
+      {/* Strict Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">

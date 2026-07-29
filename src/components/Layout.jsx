@@ -20,7 +20,7 @@ export const Layout = ({ children }) => {
     setIsMobileMenuOpen(false);
   };
 
-  // 👇 FIXED: Removed all trailing spaces from view strings
+  // 👇 FIXED: Removed all trailing spaces from view strings so routing works
   const menuItems = [
     { icon: Home, label: "Home", view: "home" },
     { icon: Users, label: "Customers", view: "customers" },
@@ -30,7 +30,7 @@ export const Layout = ({ children }) => {
     { icon: Settings, label: "Settings", view: "settings" },
   ];
 
-  // 👇 FIXED: Removed the syntax error space in "() =>"
+  // 👇 FIXED: Removed the space in "() =>"
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Header with Store Info */}
@@ -151,7 +151,7 @@ export const Layout = ({ children }) => {
         </>
       )}
 
-      {/* Main Content - FIXED with overflow prevention */}
+      {/* 👇 Main Content - Added overflow-x-hidden to prevent mobile horizontal scrolling */}
       <main className="flex-1 lg:ml-72 w-full max-w-full overflow-x-hidden">
         {children}
       </main>

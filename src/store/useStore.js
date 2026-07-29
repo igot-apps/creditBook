@@ -11,7 +11,7 @@ const useStore = create((set, get) => ({
   currentStore: null,
   customers: [],
   selectedCustomer: null,
-  prefillTransaction: null,
+  prefillTransaction: null, // Used for the "Void & Duplicate" redo flow
   isMenuOpen: false,
 
   // Actions
@@ -51,7 +51,6 @@ const useStore = create((set, get) => ({
       
       if (!store) {
         console.log("📦 No store found. Creating default local store...");
-        // 👇 FIX: Use a universally supported ID generator for mobile
         const mobileSafeId = 'store_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
         
         const defaultStore = {
@@ -76,7 +75,6 @@ const useStore = create((set, get) => ({
       set({ view: 'home' });
     } catch (error) {
       console.error("❌ Database initialization failed:", error);
-      // Fallback to prevent infinite spinner
       set({ 
         view: 'home', 
         currentStore: { name: 'My Business', ownerName: 'Owner' }, 

@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from "react";
-import { Check, MessageSquare, AlertCircle, User, Search, PlusCircle, ArrowLeft, Trash2, X, Package, FileText, Copy } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Check, MessageSquare, AlertCircle, User, Search, PlusCircle, ArrowLeft, Trash2, X, Package, FileText, Copy, Contact } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatDate, formatCurrency, isValidPhone } from "../utils/helpers";
 import { openSMS } from "../utils/communication";
@@ -19,16 +19,12 @@ export const RecordPage = () => {
     setPrefillTransaction
   } = useStore();
   
-  // --- Customer Search State ---
   const [mode, setMode] = useState("search");
   const [searchQuery, setSearchQuery] = useState("");
   const [tx, setTx] = useState({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "" });
   const [phoneError, setPhoneError] = useState("");
-
-  // --- Recording Mode State ---
   const [recordMode, setRecordMode] = useState("quick");
   
-  // --- Detailed Invoice State ---
   const [products, setProducts] = useState([]);
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [productSearch, setProductSearch] = useState("");
@@ -37,18 +33,34 @@ export const RecordPage = () => {
   const [priceUpdateModal, setPriceUpdateModal] = useState(null);
 
   useEffect(() => {
-    ProductService.getAll(currentStore.id).then(setProducts);
-  }, [currentStore.id]);
+    if (currentStore?.id) {
+      ProductService.getAll(currentStore.id).then(setProducts);
+    }
+  }, [currentStore?.id]);
 
+  // Handle pre-filling for "Void & Duplicate" (Redo) flow
   useEffect(() => {
     if (prefillTransaction) {
-      setTx(prefillTransaction);
-      setPrefillTransaction(null);
-      setMode(prefillTransaction.customerId ? "existing" : "new");
+      setTx({
+        customerId: prefillTransaction.customerId,
+        name: prefillTransaction.name,
+        phone: prefillTransaction.phone,
+        items: prefillTransaction.items || "",
+        amount: prefillTransaction.amount.toString(),
+        paid: prefillTransaction.paid.toString()
+      });
+      
+      if (prefillTransaction.invoiceItems && prefillTransaction.invoiceItems.length > 0) {
+        setRecordMode("detailed");
+        setInvoiceItems(prefillTransaction.invoiceItems);
+      } else {
+        setRecordMode("quick");
+      }
+      setMode("existing");
+      setPrefillTransaction(null); // Clear it after loading
     }
   }, [prefillTransaction, setPrefillTransaction]);
 
-  // --- Customer Search Logic ---
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return customers.filter(c => !c.isArchived).slice(0, 5);
     const q = searchQuery.toLowerCase();
@@ -78,7 +90,6 @@ export const RecordPage = () => {
     setPhoneError("");
   };
 
-  // --- Detailed Invoice Logic ---
   const totalInvoiceAmount = invoiceItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
   
   useEffect(() => {
@@ -162,7 +173,56 @@ export const RecordPage = () => {
     });
   };
 
-  // --- Save Transaction ---
+  const handlePickContact = async () => {
+    if (!('contacts' in navigator)) {
+      showToast("Contact picker not supported on this device. Please type the number.");
+      return;
+    }
+    try {
+      const [contact] = await navigator.contacts.select(['tel'], { multiple: false });
+      if (contact && contact.tel && contact.tel[0]) {
+        let phoneNum = contact.tel[0];
+        if (phoneNum.startsWith('tel:')) phoneNum = phoneNum.substring(4);
+        setTx(prev => ({ ...prev, phone: phoneNum }));
+        setPhoneError("");
+        showToast("Contact selected!");
+      }
+    } catch (err) {
+      console.log("Contact picker cancelled");
+    }
+  };
+
+  // 👇 BULLETPROOF MOBILE SMS COPY FIX
+  const handleCopySMS = async () => {
+    try {
+      // 1. Try modern API first (works on desktop and secure HTTPS mobile)
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(smsMessage);
+      } else {
+        // 2. Fallback for mobile HTTP / older browsers
+        const textArea = document.createElement("textarea");
+        textArea.value = smsMessage;
+        // Move it out of viewport so it's invisible
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        // Execute the copy command
+        const successful = document.execCommand('copy');
+        textArea.remove();
+        
+        if (!successful) throw new Error("execCommand failed");
+      }
+      showToast("Message copied to clipboard!");
+    } catch (err) {
+      console.error("Copy failed:", err);
+      showToast("Failed to copy message. Please select and copy manually.");
+    }
+  };
+
   const saveTransaction = async () => {
     const amount = parseFloat(tx.amount) || 0;
     const paid = parseFloat(tx.paid) || 0;
@@ -173,12 +233,11 @@ export const RecordPage = () => {
       return;
     }
 
-    // 👇 UPDATED: Professional validation check
     if (!tx.customerId && !isValidPhone(tx.phone)) {
       const errorMsg = "Please enter a valid phone number (e.g., 024 123 4567).";
       setPhoneError(errorMsg);
-      showToast(`⚠️ ${errorMsg}`); 
-      return; 
+      showToast(`⚠️ ${errorMsg}`);
+      return;
     }
 
     setPhoneError("");
@@ -216,16 +275,6 @@ export const RecordPage = () => {
     }
   };
 
-    // 👇 NEW: Function to copy the SMS message
-  const handleCopySMS = async () => {
-    try {
-      await navigator.clipboard.writeText(smsMessage);
-      showToast("Message copied to clipboard!");
-    } catch (err) {
-      showToast("Failed to copy message");
-    }
-  };
-
   const isExistingCustomer = mode === "existing";
   const currentBal = tx.customerId ? (customers.find(c => c.id === tx.customerId)?.balance || 0) : 0;
   const amountVal = parseFloat(tx.amount) || 0;
@@ -247,7 +296,6 @@ export const RecordPage = () => {
       `\nThank you! - From ${currentStore?.name || "Store"}`;
   }, [currentBal, amountVal, paidVal, tx.items, newBal, currentStore]);
 
-  // 👇 CSS class to hide number input spinners across all browsers
   const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
   return (
@@ -256,7 +304,6 @@ export const RecordPage = () => {
 
       <div className="p-4 space-y-4 max-w-lg mx-auto">
         
-        {/* 1. CUSTOMER SELECTION */}
         {mode === "search" && (
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="relative">
@@ -318,29 +365,38 @@ export const RecordPage = () => {
               <div className="flex items-center gap-2"><User size={16} className="text-gray-400" /><p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">New Customer</p></div>
               <button onClick={resetToSearch} className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 hover:text-green-600"><ArrowLeft size={12} /> Back</button>
             </div>
-            
             <input 
               placeholder="Customer Name" 
               value={tx.name} 
               onChange={e => { setTx({...tx, name: e.target.value}); setPhoneError(""); }} 
               className="w-full text-lg font-semibold border-b border-gray-200 dark:border-gray-700 pb-2 outline-none focus:border-green-600 dark:text-white bg-transparent" 
             />
-            
             <div>
-              <input 
-                type="tel" 
-                inputMode="tel" // 👈 Changed from 'numeric' to 'tel' to allow '+' and spaces
-                placeholder="e.g., 024 123 4567 or +233..." 
-                value={tx.phone} 
-                onChange={e => { 
-                  // 👇 REMOVED the .replace(/\D/g, '') so users can type + and spaces
-                  setTx({...tx, phone: e.target.value}); 
-                  setPhoneError(""); 
-                }} 
-                className={`w-full text-lg border-b pb-2 outline-none focus:border-green-600 bg-transparent ${
-                  phoneError ? "text-red-600 border-red-500" : "text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700"
-                }`} 
-              />
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <input 
+                    type="tel" 
+                    inputMode="tel" 
+                    placeholder="e.g., 024 123 4567" 
+                    value={tx.phone} 
+                    onChange={e => { 
+                      setTx({...tx, phone: e.target.value}); 
+                      setPhoneError(""); 
+                    }} 
+                    className={`w-full text-lg border-b pb-2 outline-none focus:border-green-600 bg-transparent ${
+                      phoneError ? "text-red-600 border-red-500" : "text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700"
+                    }`} 
+                  />
+                </div>
+                <button 
+                  type="button"
+                  onClick={handlePickContact}
+                  className="flex-shrink-0 p-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition active:scale-90 mb-1"
+                  title="Pick from contacts"
+                >
+                  <Contact size={22} />
+                </button>
+              </div>
               {phoneError && (
                 <p className="text-xs text-red-600 dark:text-red-400 mt-1 flex items-center gap-1">
                   <AlertCircle size={12} /> {phoneError}
@@ -350,7 +406,6 @@ export const RecordPage = () => {
           </div>
         )}
 
-        {/* 2. RECORDING MODE TOGGLE */}
         {(mode === "existing" || mode === "new") && (
           <>
             <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
@@ -362,7 +417,6 @@ export const RecordPage = () => {
               </button>
             </div>
 
-            {/* 3. QUICK NOTE FORM */}
             {recordMode === "quick" && (
               <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <div>
@@ -376,40 +430,21 @@ export const RecordPage = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Total Amount</label>
-                    <input 
-                      type="number" 
-                      inputMode="decimal"
-                      placeholder="0.00" 
-                      value={tx.amount} 
-                      onChange={e => setTx({...tx, amount: e.target.value})} 
-                      className={`w-full text-2xl font-bold text-gray-900 dark:text-white mt-1 outline-none bg-transparent ${noSpinnerClass}`} 
-                    />
+                    <input type="number" inputMode="decimal" placeholder="0.00" value={tx.amount} onChange={e => setTx({...tx, amount: e.target.value})} className={`w-full text-2xl font-bold text-gray-900 dark:text-white mt-1 outline-none bg-transparent ${noSpinnerClass}`} />
                   </div>
                   <div>
                     <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Money Paid</label>
-                    <input 
-                      type="number" 
-                      inputMode="decimal"
-                      placeholder="0.00" 
-                      value={tx.paid} 
-                      onChange={e => setTx({...tx, paid: e.target.value})} 
-                      className={`w-full text-2xl font-bold text-green-700 dark:text-green-400 mt-1 outline-none bg-transparent ${noSpinnerClass}`} 
-                    />
+                    <input type="number" inputMode="decimal" placeholder="0.00" value={tx.paid} onChange={e => setTx({...tx, paid: e.target.value})} className={`w-full text-2xl font-bold text-green-700 dark:text-green-400 mt-1 outline-none bg-transparent ${noSpinnerClass}`} />
                   </div>
                 </div>
               </div>
             )}
 
-            {/* 4. DETAILED INVOICE FORM */}
             {recordMode === "detailed" && (
               <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                  <input 
-                    value={productSearch} onChange={e => setProductSearch(e.target.value)}
-                    placeholder="Search or add product..."
-                    className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
-                  />
+                  <input value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search or add product..." className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" />
                 </div>
                 
                 {productSearch && (
@@ -445,27 +480,14 @@ export const RecordPage = () => {
                         </button>
                       </div>
                       
-                      {/* 👇 CLEAR LABELS & NO SPINNERS */}
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Qty</label>
-                          <input 
-                            type="number" 
-                            inputMode="decimal"
-                            value={item.quantity} 
-                            onChange={e => updateItem(index, 'quantity', e.target.value)} 
-                            className={`w-full px-3 py-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 text-sm font-bold text-center focus:ring-1 focus:ring-green-500 outline-none ${noSpinnerClass}`} 
-                          />
+                          <input type="number" inputMode="decimal" value={item.quantity} onChange={e => updateItem(index, 'quantity', e.target.value)} className={`w-full px-3 py-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 text-sm font-bold text-center focus:ring-1 focus:ring-green-500 outline-none ${noSpinnerClass}`} />
                         </div>
                         <div>
                           <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Unit Price</label>
-                          <input 
-                            type="number" 
-                            inputMode="decimal"
-                            value={item.price} 
-                            onChange={e => updateItem(index, 'price', e.target.value)} 
-                            className={`w-full px-3 py-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 text-sm font-bold text-right focus:ring-1 focus:ring-green-500 outline-none ${noSpinnerClass}`} 
-                          />
+                          <input type="number" inputMode="decimal" value={item.price} onChange={e => updateItem(index, 'price', e.target.value)} className={`w-full px-3 py-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 text-sm font-bold text-right focus:ring-1 focus:ring-green-500 outline-none ${noSpinnerClass}`} />
                         </div>
                       </div>
                       
@@ -484,20 +506,12 @@ export const RecordPage = () => {
                   </div>
                   <div>
                     <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Money Paid</label>
-                    <input 
-                      type="number" 
-                      inputMode="decimal"
-                      placeholder="0.00" 
-                      value={tx.paid} 
-                      onChange={e => setTx({...tx, paid: e.target.value})} 
-                      className={`w-full text-2xl font-bold text-green-700 dark:text-green-400 mt-1 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`} 
-                    />
+                    <input type="number" inputMode="decimal" placeholder="0.00" value={tx.paid} onChange={e => setTx({...tx, paid: e.target.value})} className={`w-full text-2xl font-bold text-green-700 dark:text-green-400 mt-1 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`} />
                   </div>
                 </div>
               </div>
             )}
 
-            {/* 5. OVERPAYMENT WARNING */}
             {isOverpayment && (
               <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-300 p-4 rounded-xl flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
@@ -508,7 +522,6 @@ export const RecordPage = () => {
               </div>
             )}
 
-            {/* 6. SMS PREVIEW & SEND BUTTON */}
             {smsMessage && (
               <div className="bg-gray-900 text-gray-100 p-5 rounded-2xl shadow-xl relative">
                 <div className="absolute top-3 right-3 bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1">
@@ -519,7 +532,6 @@ export const RecordPage = () => {
                   {smsMessage}
                 </div>
                 
-                {/* 👇 NEW: Copy Message Button */}
                 <button 
                   onClick={handleCopySMS}
                   className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg mb-3"
@@ -527,7 +539,6 @@ export const RecordPage = () => {
                   <Copy size={18} /> Copy Message
                 </button>
 
-                {/* Send via SMS App Button */}
                 <button 
                   onClick={() => openSMS(tx.phone, smsMessage)}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
@@ -537,7 +548,6 @@ export const RecordPage = () => {
               </div>
             )}
 
-            {/* 7. SAVE BUTTON */}
             <button onClick={saveTransaction} disabled={!tx.amount && !tx.paid} className="w-full bg-green-700 text-white font-bold text-xl py-4 rounded-2xl shadow-lg disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-2">
               <Check size={24} /> Save Transaction
             </button>
@@ -545,7 +555,6 @@ export const RecordPage = () => {
         )}
       </div>
 
-      {/* --- MODALS --- */}
       {showInlineProduct && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full shadow-2xl p-6">

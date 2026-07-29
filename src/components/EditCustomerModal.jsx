@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { X, Save, User, Phone, MapPin, FileText } from "lucide-react";
+import { X, Save, User, Phone, MapPin, FileText, Contact } from "lucide-react";
 import useStore from "../store/useStore";
 import { CustomerService } from "../services/CustomerService";
 import { CustomerRepository } from "../repositories/CustomerRepository";
-import { isValidPhone } from "../utils/helpers"; // 👈 IMPORT VALIDATION
+import { isValidPhone } from "../utils/helpers";
 
 export const EditCustomerModal = ({ customer, onClose }) => {
   const { currentStore, refreshCustomers, setSelectedCustomer, showToast } = useStore();
@@ -23,6 +23,27 @@ export const EditCustomerModal = ({ customer, onClose }) => {
     }
   }, [customer]);
 
+  // 👇 NEW: Pick contact from phone's native contact list
+  const handlePickContact = async () => {
+    if (!('contacts' in navigator)) {
+      showToast("Contact picker not supported on this device.");
+      return;
+    }
+
+    try {
+      const [contact] = await navigator.contacts.select(['tel'], { multiple: false });
+      if (contact && contact.tel && contact.tel[0]) {
+        let phoneNum = contact.tel[0];
+        if (phoneNum.startsWith('tel:')) phoneNum = phoneNum.substring(4);
+        
+        setForm(prev => ({ ...prev, phone: phoneNum }));
+        setError("");
+      }
+    } catch (err) {
+      console.log("Contact picker cancelled");
+    }
+  };
+
   const handleSave = async () => {
     setError("");
     if (!form.name.trim()) {
@@ -30,9 +51,9 @@ export const EditCustomerModal = ({ customer, onClose }) => {
       return;
     }
 
-    // 👇 NEW: Strict Phone Validation
+    // 👇 Professional Phone Validation
     if (!isValidPhone(form.phone)) {
-      setError("Please enter a valid phone number (7-15 digits).");
+      setError("Please enter a valid phone number (e.g., 024 123 4567).");
       return;
     }
 
@@ -87,17 +108,28 @@ export const EditCustomerModal = ({ customer, onClose }) => {
             </div>
           </div>
 
+          {/* 👇 UPDATED: Phone Input with Contact Picker Button */}
           <div>
             <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Phone *</label>
-            <div className="relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-              <input 
-                type="tel" 
-                inputMode="tel"
-                value={form.phone} 
-                onChange={e => setForm({...form, phone: e.target.value})} // 👈 Removed .replace
-                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
-              />
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                <input 
+                  type="tel" 
+                  inputMode="tel"
+                  value={form.phone} 
+                  onChange={e => setForm({...form, phone: e.target.value})} 
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
+                />
+              </div>
+              <button 
+                type="button"
+                onClick={handlePickContact}
+                className="flex-shrink-0 p-3 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/50 transition active:scale-90"
+                title="Pick from contacts"
+              >
+                <Contact size={20} />
+              </button>
             </div>
           </div>
 
@@ -109,7 +141,7 @@ export const EditCustomerModal = ({ customer, onClose }) => {
                 type="tel" 
                 inputMode="tel"
                 value={form.altPhone} 
-                onChange={e => setForm({...form, altPhone: e.target.value})} // 👈 Removed .replace
+                onChange={e => setForm({...form, altPhone: e.target.value})} 
                 className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
               />
             </div>
