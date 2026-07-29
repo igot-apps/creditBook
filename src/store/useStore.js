@@ -3,7 +3,6 @@ import { db } from '../database/db';
 import { CustomerService } from '../services/CustomerService';
 
 const useStore = create((set, get) => ({
-  // State
   view: 'home',
   theme: localStorage.getItem('cb_theme') || 'light',
   toast: null,
@@ -11,10 +10,10 @@ const useStore = create((set, get) => ({
   currentStore: null,
   customers: [],
   selectedCustomer: null,
-  prefillTransaction: null, // Used for the "Void & Duplicate" redo flow
+  prefillTransaction: null,
+  drafts: [], // 👈 NEW: Array to hold draft invoices
   isMenuOpen: false,
 
-  // Actions
   setView: (view) => set({ view }),
   setTheme: (theme) => {
     localStorage.setItem('cb_theme', theme);
@@ -36,6 +35,45 @@ const useStore = create((set, get) => ({
   setPrefillTransaction: (tx) => set({ prefillTransaction: tx }),
   setIsMenuOpen: (isOpen) => set({ isMenuOpen: isOpen }),
 
+  // 👇 NEW: Draft Actions
+  fetchDrafts: async () => {
+    const { currentStore } = get();
+    if (!currentStore) return;
+    const loaded = await db.drafts.where('storeId').equals(currentStore.id).reverse().sortBy('createdAt');
+    set({ drafts: loaded });
+  },
+  
+  saveDraft: async (draftData) => {
+    const { currentStore } = get();
+    if (!currentStore) return;
+    
+    const dataToSave = {
+      ...draftData,
+      storeId: currentStore.id,
+      createdAt: new Date().toISOString()
+    };
+    
+    // 👇 FIX: IndexedDB throws a DataError if you pass `id: null` 
+    // when the key path is auto-incrementing (`++id`). We must delete it.
+    if (!dataToSave.id) {
+      delete dataToSave.id;
+    }
+
+    // If it has a valid ID, update it. Otherwise, add it as a new draft.
+    if (dataToSave.id) {
+      await db.drafts.update(dataToSave.id, dataToSave);
+    } else {
+      await db.drafts.add(dataToSave);
+    }
+    
+    await get().fetchDrafts();
+  },
+
+  deleteDraft: async (id) => {
+    await db.drafts.delete(id);
+    await get().fetchDrafts();
+  },
+
   refreshCustomers: async () => {
     const { currentStore } = get();
     if (!currentStore) return [];
@@ -46,40 +84,21 @@ const useStore = create((set, get) => ({
 
   initializeApp: async () => {
     try {
-      console.log("🔄 Initializing local database...");
       let store = await db.stores.toCollection().first();
-      
       if (!store) {
-        console.log("📦 No store found. Creating default local store...");
         const mobileSafeId = 'store_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
-        
-        const defaultStore = {
-          id: mobileSafeId, 
-          name: 'My Business',
-          ownerName: 'Owner',
-          email: '',
-          phone: '',
-          createdAt: new Date().toISOString()
-        };
+        const defaultStore = { id: mobileSafeId, name: 'My Business', ownerName: 'Owner', email: '', phone: '', createdAt: new Date().toISOString() };
         await db.stores.add(defaultStore);
         store = defaultStore;
       }
-      
-      console.log("✅ Store loaded:", store.name);
       set({ currentStore: store });
-      
       const customers = await CustomerService.getAllWithHistory(store.id);
-      console.log("✅ Customers loaded:", customers.length);
-      
       set({ customers });
+      await get().fetchDrafts(); // 👈 Load drafts on startup
       set({ view: 'home' });
     } catch (error) {
-      console.error("❌ Database initialization failed:", error);
-      set({ 
-        view: 'home', 
-        currentStore: { name: 'My Business', ownerName: 'Owner' }, 
-        customers: [] 
-      });
+      console.error("DB init failed:", error);
+      set({ view: 'home', currentStore: { name: 'My Business', ownerName: 'Owner' }, customers: [] });
     }
   }
 }));
