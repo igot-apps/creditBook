@@ -91,12 +91,11 @@ export const EditCustomerModal = ({ customer, onClose }) => {
             <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Phone *</label>
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-              {/* 👇 UPDATED: Strict numeric input */}
               <input 
                 type="tel" 
-                inputMode="numeric"
+                inputMode="tel"
                 value={form.phone} 
-                onChange={e => setForm({...form, phone: e.target.value.replace(/\D/g, '')})} 
+                onChange={e => setForm({...form, phone: e.target.value})} // 👈 Removed .replace
                 className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
               />
             </div>
@@ -108,9 +107,9 @@ export const EditCustomerModal = ({ customer, onClose }) => {
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
               <input 
                 type="tel" 
-                inputMode="numeric"
+                inputMode="tel"
                 value={form.altPhone} 
-                onChange={e => setForm({...form, altPhone: e.target.value.replace(/\D/g, '')})} 
+                onChange={e => setForm({...form, altPhone: e.target.value})} // 👈 Removed .replace
                 className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
               />
             </div>

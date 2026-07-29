@@ -1,13 +1,37 @@
-export const formatCurrency = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
-export const formatDate = (d) => new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-export const formatShortDate = (d) => new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
-export const uid = () => Math.random().toString(36).slice(2, 9);
+import { parsePhoneNumber } from 'libphonenumber-js';
 
-// 👇 ADD THIS to src/utils/helpers.js
+// 1. Format Currency (GHS)
+export const formatCurrency = (amount) => {
+  return new Intl.NumberFormat('en-GH', {
+    style: 'currency',
+    currency: 'GHS',
+    minimumFractionDigits: 2
+  }).format(amount || 0);
+};
+
+// 2. Format Date
+export const formatDate = (dateString) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+// 3. Professional Phone Validation (Ghana Default)
 export const isValidPhone = (phone) => {
-  if (!phone) return false;
-  // Remove any spaces or dashes just in case
-  const cleaned = phone.replace(/[\s\-\(\)]/g, '');
-  // Must be purely numeric and between 7 and 15 digits long
-  return /^\d{7,15}$/.test(cleaned);
+  if (!phone || phone.length < 5) return false;
+  
+  try {
+    // Default to Ghana ('GH') for local market accuracy. 
+    // It will still accept international numbers if they start with '+'
+    const phoneNumber = parsePhoneNumber(phone, 'GH');
+    return phoneNumber ? phoneNumber.isValid() : false;
+  } catch (e) {
+    return false;
+  }
 };

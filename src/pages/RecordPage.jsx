@@ -173,12 +173,12 @@ export const RecordPage = () => {
       return;
     }
 
-    // 👇 UPDATED: Strict Phone Validation with a clear Toast message
+    // 👇 UPDATED: Professional validation check
     if (!tx.customerId && !isValidPhone(tx.phone)) {
-      const errorMsg = "Phone number must be 7 to 15 digits.";
+      const errorMsg = "Please enter a valid phone number (e.g., 024 123 4567).";
       setPhoneError(errorMsg);
-      showToast(`⚠️ ${errorMsg}`); // 👈 This triggers the toast at the bottom of the screen
-      return; // Stop the save process
+      showToast(`⚠️ ${errorMsg}`); 
+      return; 
     }
 
     setPhoneError("");
@@ -329,13 +329,12 @@ export const RecordPage = () => {
             <div>
               <input 
                 type="tel" 
-                inputMode="numeric" // 👈 Forces numeric keypad on mobile
-                placeholder="Phone Number (e.g., 0241234567)" 
+                inputMode="tel" // 👈 Changed from 'numeric' to 'tel' to allow '+' and spaces
+                placeholder="e.g., 024 123 4567 or +233..." 
                 value={tx.phone} 
                 onChange={e => { 
-                  // 👇 NEW: Physically prevents typing letters or symbols
-                  const val = e.target.value.replace(/\D/g, ''); 
-                  setTx({...tx, phone: val}); 
+                  // 👇 REMOVED the .replace(/\D/g, '') so users can type + and spaces
+                  setTx({...tx, phone: e.target.value}); 
                   setPhoneError(""); 
                 }} 
                 className={`w-full text-lg border-b pb-2 outline-none focus:border-green-600 bg-transparent ${
