@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Check, MessageSquare, AlertCircle, User, Search, PlusCircle, ArrowLeft, Trash2, X, Package, FileText, Copy, Contact, Save } from "lucide-react";
+import { Check, MessageSquare, AlertCircle, User, Search, PlusCircle, ArrowLeft, Trash2, X, Package, FileText, Copy, Contact, Save, Edit3 } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatDate, formatCurrency, isValidPhone } from "../utils/helpers";
 import { openSMS } from "../utils/communication";
@@ -7,10 +7,13 @@ import { CustomerService } from "../services/CustomerService";
 import { ProductService } from "../services/ProductService";
 import { PageHeader } from "../components/PageHeader";
 
+import { EditCustomerModal } from "../components/EditCustomerModal";
+
 export const RecordPage = () => {
   const { currentStore, customers, refreshCustomers, showToast, triggerConfetti, setView, prefillTransaction, setPrefillTransaction, saveDraft, deleteDraft } = useStore();
   
   const [mode, setMode] = useState("search");
+  const [isEditingCustomer, setIsEditingCustomer] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [tx, setTx] = useState({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "" });
   const [phoneError, setPhoneError] = useState("");
@@ -26,9 +29,41 @@ export const RecordPage = () => {
   // 👇 NEW: Track if we are editing a specific draft
   const [editingDraftId, setEditingDraftId] = useState(null);
 
+  // Handle pre-filling for Drafts or Redo
   useEffect(() => {
-    if (currentStore?.id) ProductService.getAll(currentStore.id).then(setProducts);
-  }, [currentStore?.id]);
+    if (prefillTransaction) {
+      setTx({
+        customerId: prefillTransaction.customerId || null,
+        name: prefillTransaction.name || "",
+        phone: prefillTransaction.phone || "",
+        items: prefillTransaction.items || "",
+        // Safely convert to string, handling null/undefined
+        amount: prefillTransaction.amount ? prefillTransaction.amount.toString() : "",
+        paid: prefillTransaction.paid ? prefillTransaction.paid.toString() : ""
+      });
+      
+      if (prefillTransaction.invoiceItems && prefillTransaction.invoiceItems.length > 0) {
+        setRecordMode("detailed");
+        setInvoiceItems(prefillTransaction.invoiceItems);
+      } else {
+        setRecordMode("quick");
+      }
+
+      // 👇 FIX: Smart Mode Selection based on Customer Data
+      if (prefillTransaction.customerId) {
+        setMode("existing"); // They selected an existing customer previously
+      } else if (prefillTransaction.name || prefillTransaction.phone) {
+        setMode("new"); // They typed a name/phone but haven't saved the customer yet
+      } else {
+        setMode("search"); // No customer info at all, show the search list
+      }
+      
+      if (prefillTransaction.isDraft) {
+        setEditingDraftId(prefillTransaction.id);
+      }
+      setPrefillTransaction(null);
+    }
+  }, [prefillTransaction, setPrefillTransaction]);
 
   // Handle pre-filling for Drafts or Redo
   useEffect(() => {
@@ -261,9 +296,27 @@ export const RecordPage = () => {
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0">{tx.name.charAt(0)}</div>
-              <div className="flex-1 min-w-0"><p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Recording for</p><p className="font-bold text-gray-900 dark:text-white text-lg truncate">{tx.name}</p><p className="text-sm text-gray-500 dark:text-gray-400 truncate">{tx.phone}</p></div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Recording for</p>
+                <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{tx.name}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{tx.phone || "No phone number"}</p>
+              </div>
+              {/* 👇 NEW: Edit Customer Details Button */}
+              <button 
+                onClick={() => setIsEditingCustomer(true)} 
+                className="text-blue-600 dark:text-blue-400 p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition active:scale-90 flex-shrink-0"
+                title="Edit customer details"
+              >
+                <Edit3 size={18} />
+              </button>
               <button onClick={resetToSearch} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
             </div>
+            {currentBal > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center">
+                <p className="text-sm text-gray-500 dark:text-gray-400">Current Debt</p>
+                <p className="text-lg font-bold text-red-600 dark:text-red-400">{formatCurrency(currentBal)}</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -389,6 +442,21 @@ export const RecordPage = () => {
           </div>
         </div>
       )}
+
+      {/* 👇 2. PASTE THE NEW EDIT CUSTOMER MODAL RIGHT HERE 👇 */}
+      {isEditingCustomer && tx.customerId && (
+        <EditCustomerModal 
+          customer={customers.find(c => c.id === tx.customerId)} 
+          onClose={() => {
+            setIsEditingCustomer(false);
+            // Refresh the local tx state with the newly updated phone number
+            const updated = customers.find(c => c.id === tx.customerId);
+            if(updated) setTx(prev => ({ ...prev, name: updated.name, phone: updated.phone }));
+          }} 
+        />
+      )}
+
+      
     </div>
   );
 };

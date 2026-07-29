@@ -7,36 +7,29 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
-        name: 'CreditBook SaaS',
+        name: 'CreditBook',
         short_name: 'CreditBook',
-        description: 'The smart way to manage market sales and debts. Works 100% offline.',
-        theme_color: '#006B3F', // Ghana Green
+        description: 'Offline-first credit and customer management.',
+        theme_color: '#15803d',
         background_color: '#ffffff',
-        display: 'standalone', // Makes it look like a real app, hiding the browser URL bar
-        orientation: 'portrait',
+        display: 'standalone',
         scope: '/',
         start_url: '/',
         icons: [
-          {
-            src: 'pwa-192x192.png',
-            sizes: '192x192',
-            type: 'image/png'
-          },
-          {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png'
-          },
-          {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any maskable'
-          }
+          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' }
         ]
       }
     })
   ],
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    allowedHosts: true // 👈 FIX: Allows LocalTunnel for dev server
+  },
+  preview: {
+    allowedHosts: true // 👈 FIX: Allows LocalTunnel for preview server
+  }
 })
