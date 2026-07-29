@@ -23,19 +23,17 @@ export const EditCustomerModal = ({ customer, onClose }) => {
     }
   }, [customer]);
 
-  // 👇 NEW: Pick contact from phone's native contact list
+  // Native Contact Picker
   const handlePickContact = async () => {
     if (!('contacts' in navigator)) {
       showToast("Contact picker not supported on this device.");
       return;
     }
-
     try {
       const [contact] = await navigator.contacts.select(['tel'], { multiple: false });
       if (contact && contact.tel && contact.tel[0]) {
         let phoneNum = contact.tel[0];
         if (phoneNum.startsWith('tel:')) phoneNum = phoneNum.substring(4);
-        
         setForm(prev => ({ ...prev, phone: phoneNum }));
         setError("");
       }
@@ -51,7 +49,7 @@ export const EditCustomerModal = ({ customer, onClose }) => {
       return;
     }
 
-    // 👇 Professional Phone Validation
+    // Professional Phone Validation
     if (!isValidPhone(form.phone)) {
       setError("Please enter a valid phone number (e.g., 024 123 4567).");
       return;
@@ -108,7 +106,6 @@ export const EditCustomerModal = ({ customer, onClose }) => {
             </div>
           </div>
 
-          {/* 👇 UPDATED: Phone Input with Contact Picker Button */}
           <div>
             <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Phone *</label>
             <div className="flex gap-2">

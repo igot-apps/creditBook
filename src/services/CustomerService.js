@@ -3,27 +3,36 @@ import { TransactionRepository } from '../repositories/TransactionRepository';
 import { db } from '../database/db';
 
 export const CustomerService = {
+  // 1. Get all customers and calculate their live balance (Ignoring voided transactions)
   getAllWithHistory: async (storeId, includeArchived = false) => {
     const allCustomers = await db.customers.where('storeId').equals(storeId).toArray();
+    const filtered = includeArchived 
+      ? allCustomers 
+      : allCustomers.filter(c => c.isArchived !== true);
     
-    const enriched = await Promise.all(allCustomers.map(async (c) => {
+    const enriched = await Promise.all(filtered.map(async (c) => {
       const history = await TransactionRepository.getByCustomerId(storeId, c.id);
+      
+      // 👇 CRITICAL: Ignore voided transactions when calculating the live balance
       const balance = history.reduce((sum, t) => {
         if (t.isVoid) return sum; 
         return sum + (t.amount || 0) - (t.paid || 0);
       }, 0);
+
       return { ...c, history, balance };
     }));
 
     return enriched;
   },
 
+  // 2. Add a new transaction (Purchase or Payment)
   addTransaction: async (storeId, customerId, customerName, customerPhone, amount, paid, items, invoiceItems = null) => {
     let targetCustomer = null;
     
     if (customerId) {
       targetCustomer = await CustomerRepository.getById(storeId, customerId);
     } else {
+      // Create new customer on the fly if they don't exist
       const existingCustomer = await CustomerRepository.getByPhone(storeId, customerPhone);
       if (existingCustomer) {
         throw new Error(`A customer with the phone number "${customerPhone}" already exists.`);
@@ -32,6 +41,7 @@ export const CustomerService = {
         name: customerName,
         phone: customerPhone,
         joined: new Date().toISOString(),
+        isArchived: false
       });
       targetCustomer = await CustomerRepository.getById(storeId, newId);
     }
@@ -46,6 +56,7 @@ export const CustomerService = {
 
     const newTx = {
       customerId: targetCustomer.id,
+      storeId: storeId, // Ensure storeId is saved for querying
       date: new Date().toISOString(),
       amount,
       paid,
@@ -63,6 +74,7 @@ export const CustomerService = {
     return { ...targetCustomer, history: updatedHistory, balance: newBalance };
   },
 
+  // 3. Clear Debt (Creates a 0 amount, high paid transaction to zero out the balance)
   clearDebt: async (storeId, customerId) => {
     const customer = await CustomerRepository.getById(storeId, customerId);
     if (!customer) return null;
@@ -77,6 +89,7 @@ export const CustomerService = {
 
     await TransactionRepository.add(storeId, {
       customerId,
+      storeId: storeId,
       date: new Date().toISOString(),
       amount: 0,
       paid: currentBalance,
@@ -90,23 +103,27 @@ export const CustomerService = {
     return { ...customer, history: updatedHistory, balance: 0 };
   },
 
+  // 4. Update Customer Details (Name, Phone, Notes, etc.)
   updateCustomer: async (storeId, customerId, updates) => {
     await CustomerRepository.update(storeId, customerId, updates);
     return await CustomerRepository.getById(storeId, customerId);
   },
 
-  //  NEW: Actual Deletion (Removes customer and their transactions)
+  // 5. REAL DELETION (Permanently wipes the customer and ALL their transaction history)
   deleteCustomer: async (storeId, customerId) => {
     // 1. Delete all transactions associated with this customer
     await db.transactions.where('customerId').equals(customerId).delete();
-    // 2. Delete the customer record
+    // 2. Delete the customer record itself
     await db.customers.delete(customerId);
     return true;
   },
 
+  // 6. VOID TRANSACTION (Flags as voided, keeps audit trail, recalculates balance)
   voidTransaction: async (storeId, customerId, transactionId) => {
+    // 1. Mark the original transaction as voided in the database
     await db.transactions.update(transactionId, { isVoid: true });
 
+    // 2. Recalculate the customer's balance ignoring voided items
     const history = await TransactionRepository.getByCustomerId(storeId, customerId);
     const newBalance = history.reduce((sum, t) => {
       if (t.isVoid) return sum;

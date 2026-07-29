@@ -1,14 +1,12 @@
-import { X, Printer, Download } from "lucide-react";
-import useStore from "../store/useStore"; // 👈 CHANGED to useStore
+import { X, Printer } from "lucide-react";
+import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 
 export const InvoiceModal = ({ transaction, onClose }) => {
-  // 👈 CHANGED to useStore
   const { currentStore, customers } = useStore();
 
   if (!transaction || !currentStore) return null;
 
-  // Find customer details for the invoice header
   const customer = customers.find(c => c.id === transaction.customerId) || { name: "Walk-in Customer", phone: "" };
 
   const handlePrint = () => {
@@ -50,7 +48,6 @@ export const InvoiceModal = ({ transaction, onClose }) => {
               <span className="font-medium text-gray-900 dark:text-white text-right max-w-[60%]">{transaction.items || "General Purchase"}</span>
             </div>
             
-            {/* If it's a detailed invoice, show line items */}
             {transaction.invoiceItems && transaction.invoiceItems.length > 0 && (
               <div className="mt-3 border-t border-b border-gray-100 dark:border-gray-700 py-2 space-y-2">
                 {transaction.invoiceItems.map((item, idx) => (

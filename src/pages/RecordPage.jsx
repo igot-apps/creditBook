@@ -8,16 +8,7 @@ import { ProductService } from "../services/ProductService";
 import { PageHeader } from "../components/PageHeader";
 
 export const RecordPage = () => {
-  const { 
-    currentStore, 
-    customers, 
-    refreshCustomers, 
-    showToast, 
-    triggerConfetti, 
-    setView,
-    prefillTransaction,
-    setPrefillTransaction
-  } = useStore();
+  const { currentStore, customers, refreshCustomers, showToast, triggerConfetti, setView, prefillTransaction, setPrefillTransaction } = useStore();
   
   const [mode, setMode] = useState("search");
   const [searchQuery, setSearchQuery] = useState("");
@@ -33,23 +24,15 @@ export const RecordPage = () => {
   const [priceUpdateModal, setPriceUpdateModal] = useState(null);
 
   useEffect(() => {
-    if (currentStore?.id) {
-      ProductService.getAll(currentStore.id).then(setProducts);
-    }
+    if (currentStore?.id) ProductService.getAll(currentStore.id).then(setProducts);
   }, [currentStore?.id]);
 
-  // Handle pre-filling for "Void & Duplicate" (Redo) flow
   useEffect(() => {
     if (prefillTransaction) {
       setTx({
-        customerId: prefillTransaction.customerId,
-        name: prefillTransaction.name,
-        phone: prefillTransaction.phone,
-        items: prefillTransaction.items || "",
-        amount: prefillTransaction.amount.toString(),
-        paid: prefillTransaction.paid.toString()
+        customerId: prefillTransaction.customerId, name: prefillTransaction.name, phone: prefillTransaction.phone,
+        items: prefillTransaction.items || "", amount: prefillTransaction.amount.toString(), paid: prefillTransaction.paid.toString()
       });
-      
       if (prefillTransaction.invoiceItems && prefillTransaction.invoiceItems.length > 0) {
         setRecordMode("detailed");
         setInvoiceItems(prefillTransaction.invoiceItems);
@@ -57,7 +40,7 @@ export const RecordPage = () => {
         setRecordMode("quick");
       }
       setMode("existing");
-      setPrefillTransaction(null); // Clear it after loading
+      setPrefillTransaction(null);
     }
   }, [prefillTransaction, setPrefillTransaction]);
 
@@ -69,33 +52,25 @@ export const RecordPage = () => {
 
   const handleSelectCustomer = (customer) => {
     setTx({ customerId: customer.id, name: customer.name, phone: customer.phone, items: "", amount: "", paid: "" });
-    setMode("existing");
-    setSearchQuery("");
+    setMode("existing"); setSearchQuery("");
   };
 
   const handleCreateInline = () => {
     const isPhone = /^\d+$/.test(searchQuery.replace(/\s/g, ''));
     if (isPhone) setTx(prev => ({ ...prev, phone: searchQuery, customerId: null }));
     else setTx(prev => ({ ...prev, name: searchQuery, customerId: null }));
-    setMode("new");
-    setSearchQuery("");
+    setMode("new"); setSearchQuery("");
   };
 
   const resetToSearch = () => {
     setTx({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "" });
-    setInvoiceItems([]);
-    setMode("search");
-    setSearchQuery("");
-    setProductSearch("");
-    setPhoneError("");
+    setInvoiceItems([]); setMode("search"); setSearchQuery(""); setProductSearch(""); setPhoneError("");
   };
 
   const totalInvoiceAmount = invoiceItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
   
   useEffect(() => {
-    if (recordMode === "detailed") {
-      setTx(prev => ({ ...prev, amount: totalInvoiceAmount.toString() }));
-    }
+    if (recordMode === "detailed") setTx(prev => ({ ...prev, amount: totalInvoiceAmount.toString() }));
   }, [totalInvoiceAmount, recordMode]);
 
   const filteredProducts = useMemo(() => {
@@ -107,18 +82,11 @@ export const RecordPage = () => {
   const addProductToInvoice = (product, isOneTime = false) => {
     const existingIndex = invoiceItems.findIndex(i => i.productId === product.id && !i.isOneTime);
     if (existingIndex >= 0 && !isOneTime) {
-      const updated = [...invoiceItems];
-      updated[existingIndex].quantity += 1;
-      setInvoiceItems(updated);
+      const updated = [...invoiceItems]; updated[existingIndex].quantity += 1; setInvoiceItems(updated);
     } else {
       setInvoiceItems([...invoiceItems, {
-        productId: isOneTime ? null : product.id,
-        name: product.name,
-        quantity: 1,
-        price: product.price || 0,
-        defaultPrice: product.price || 0,
-        unit: product.unit || "",
-        isOneTime
+        productId: isOneTime ? null : product.id, name: product.name, quantity: 1,
+        price: product.price || 0, defaultPrice: product.price || 0, unit: product.unit || "", isOneTime
       }]);
     }
     setProductSearch("");
@@ -128,13 +96,9 @@ export const RecordPage = () => {
   const updateItem = (index, field, value) => {
     const updated = [...invoiceItems];
     updated[index][field] = field === 'name' ? value : parseFloat(value) || 0;
-    
     if (field === 'price' && !updated[index].isOneTime) {
-      const oldPrice = updated[index].defaultPrice;
-      const newPrice = parseFloat(value) || 0;
-      if (oldPrice !== newPrice && newPrice > 0) {
-        setPriceUpdateModal({ index, oldPrice, newPrice, productId: updated[index].productId });
-      }
+      const oldPrice = updated[index].defaultPrice; const newPrice = parseFloat(value) || 0;
+      if (oldPrice !== newPrice && newPrice > 0) setPriceUpdateModal({ index, oldPrice, newPrice, productId: updated[index].productId });
     }
     setInvoiceItems(updated);
   };
@@ -147,152 +111,76 @@ export const RecordPage = () => {
     setPriceUpdateModal(null);
   };
 
-  const removeItem = (index) => {
-    setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
-  };
+  const removeItem = (index) => setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
 
   const handleSaveInlineProduct = () => {
-    if (!newProduct.name.trim() || !newProduct.price) {
-      showToast("Name and Price are required");
-      return;
-    }
-    const productData = {
-      name: newProduct.name.trim(),
-      price: parseFloat(newProduct.price),
-      unit: newProduct.unit.trim(),
-      category: newProduct.category.trim(),
-      isFavourite: false
-    };
-    
+    if (!newProduct.name.trim() || !newProduct.price) { showToast("Name and Price are required"); return; }
+    const productData = { name: newProduct.name.trim(), price: parseFloat(newProduct.price), unit: newProduct.unit.trim(), category: newProduct.category.trim(), isFavourite: false };
     ProductService.create(currentStore.id, productData).then(newId => {
       const createdProduct = { id: newId, ...productData };
-      setProducts([...products, createdProduct]);
-      addProductToInvoice(createdProduct);
-      setShowInlineProduct(false);
-      setNewProduct({ name: "", price: "", unit: "", category: "" });
+      setProducts([...products, createdProduct]); addProductToInvoice(createdProduct);
+      setShowInlineProduct(false); setNewProduct({ name: "", price: "", unit: "", category: "" });
     });
   };
 
   const handlePickContact = async () => {
-    if (!('contacts' in navigator)) {
-      showToast("Contact picker not supported on this device. Please type the number.");
-      return;
-    }
+    if (!('contacts' in navigator)) { showToast("Contact picker not supported on this device."); return; }
     try {
       const [contact] = await navigator.contacts.select(['tel'], { multiple: false });
       if (contact && contact.tel && contact.tel[0]) {
-        let phoneNum = contact.tel[0];
-        if (phoneNum.startsWith('tel:')) phoneNum = phoneNum.substring(4);
-        setTx(prev => ({ ...prev, phone: phoneNum }));
-        setPhoneError("");
-        showToast("Contact selected!");
+        let phoneNum = contact.tel[0]; if (phoneNum.startsWith('tel:')) phoneNum = phoneNum.substring(4);
+        setTx(prev => ({ ...prev, phone: phoneNum })); setPhoneError(""); showToast("Contact selected!");
       }
-    } catch (err) {
-      console.log("Contact picker cancelled");
-    }
+    } catch (err) { console.log("Contact picker cancelled"); }
   };
 
-  // 👇 BULLETPROOF MOBILE SMS COPY FIX
   const handleCopySMS = async () => {
     try {
-      // 1. Try modern API first (works on desktop and secure HTTPS mobile)
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(smsMessage);
-      } else {
-        // 2. Fallback for mobile HTTP / older browsers
-        const textArea = document.createElement("textarea");
-        textArea.value = smsMessage;
-        // Move it out of viewport so it's invisible
-        textArea.style.position = "fixed";
-        textArea.style.left = "-999999px";
-        textArea.style.top = "-999999px";
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        
-        // Execute the copy command
-        const successful = document.execCommand('copy');
-        textArea.remove();
-        
-        if (!successful) throw new Error("execCommand failed");
+      if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(smsMessage); } 
+      else {
+        const textArea = document.createElement("textarea"); textArea.value = smsMessage;
+        textArea.style.position = "fixed"; textArea.style.left = "-999999px"; document.body.appendChild(textArea);
+        textArea.focus(); textArea.select(); document.execCommand('copy'); textArea.remove();
       }
       showToast("Message copied to clipboard!");
-    } catch (err) {
-      console.error("Copy failed:", err);
-      showToast("Failed to copy message. Please select and copy manually.");
-    }
+    } catch (err) { showToast("Failed to copy message."); }
   };
 
   const saveTransaction = async () => {
-    const amount = parseFloat(tx.amount) || 0;
-    const paid = parseFloat(tx.paid) || 0;
+    const amount = parseFloat(tx.amount) || 0; const paid = parseFloat(tx.paid) || 0;
     if (amount === 0 && paid === 0) return;
-
-    if (!currentStore || !currentStore.id) {
-      showToast("Database not ready. Please wait 2 seconds and try again.");
-      return;
-    }
-
+    if (!currentStore || !currentStore.id) { showToast("Database not ready. Please wait 2 seconds."); return; }
     if (!tx.customerId && !isValidPhone(tx.phone)) {
       const errorMsg = "Please enter a valid phone number (e.g., 024 123 4567).";
-      setPhoneError(errorMsg);
-      showToast(`⚠️ ${errorMsg}`);
-      return;
+      setPhoneError(errorMsg); showToast(`⚠️ ${errorMsg}`); return;
     }
-
     setPhoneError("");
     try {
-      const itemsString = recordMode === "detailed" 
-        ? invoiceItems.map(i => `${i.quantity}x ${i.name}`).join(", ") 
-        : tx.items;
-
-      await CustomerService.addTransaction(
-        currentStore.id,
-        tx.customerId,
-        tx.name,
-        tx.phone,
-        amount,
-        paid,
-        itemsString,
-        recordMode === "detailed" ? invoiceItems : null
-      );
+      const itemsString = recordMode === "detailed" ? invoiceItems.map(i => `${i.quantity}x ${i.name}`).join(", ") : tx.items;
+      await CustomerService.addTransaction(currentStore.id, tx.customerId, tx.name, tx.phone, amount, paid, itemsString, recordMode === "detailed" ? invoiceItems : null);
       await refreshCustomers();
-      
       if (amount - paid <= 0 && paid > 0) triggerConfetti();
-      
-      resetToSearch();
-      setView("home");
-      showToast("Transaction saved");
+      resetToSearch(); setView("home"); showToast("Transaction saved");
     } catch (error) {
-      console.error("Failed to save transaction", error);
       const realError = error.message || error.toString();
-      if (realError.includes("already exists")) {
-        setPhoneError(realError);
-        showToast(realError);
-      } else {
-        showToast(`Error: ${realError.substring(0, 60)}`);
-      }
+      if (realError.includes("already exists")) { setPhoneError(realError); showToast(realError); } 
+      else { showToast(`Error: ${realError.substring(0, 60)}`); }
     }
   };
 
   const isExistingCustomer = mode === "existing";
   const currentBal = tx.customerId ? (customers.find(c => c.id === tx.customerId)?.balance || 0) : 0;
-  const amountVal = parseFloat(tx.amount) || 0;
-  const paidVal = parseFloat(tx.paid) || 0;
-  const totalDue = currentBal + amountVal;
-  const newBal = totalDue - paidVal;
+  const amountVal = parseFloat(tx.amount) || 0; const paidVal = parseFloat(tx.paid) || 0;
+  const totalDue = currentBal + amountVal; const newBal = totalDue - paidVal;
   const isOverpayment = paidVal > totalDue && totalDue > 0;
 
   const smsMessage = useMemo(() => {
     if (amountVal === 0 && paidVal === 0) return "";
-    return `Balance update (${formatDate(new Date())}):\n` +
-      `Old debt: ${formatCurrency(currentBal)}\n` +
+    return `Balance update (${formatDate(new Date())}):\nOld debt: ${formatCurrency(currentBal)}\n` +
       (amountVal > 0 ? `Items bought: ${formatCurrency(amountVal)}\n` : '') +
       (tx.items && amountVal > 0 ? `What was bought: ${tx.items}\n` : '') +
       (paidVal > 0 ? `Money paid: ${formatCurrency(paidVal)}\n` : '') +
-      (newBal < 0 
-        ? `Total debt now: ${formatCurrency(0)}\n(You have a credit of ${formatCurrency(Math.abs(newBal))})`
-        : `Total debt now: ${formatCurrency(newBal)}`) +
+      (newBal < 0 ? `Total debt now: ${formatCurrency(0)}\n(You have a credit of ${formatCurrency(Math.abs(newBal))})` : `Total debt now: ${formatCurrency(newBal)}`) +
       `\nThank you! - From ${currentStore?.name || "Store"}`;
   }, [currentBal, amountVal, paidVal, tx.items, newBal, currentStore]);
 
@@ -303,17 +191,11 @@ export const RecordPage = () => {
       <PageHeader title="Record Sale" onBack={() => setView("home")} />
 
       <div className="p-4 space-y-4 max-w-lg mx-auto">
-        
         {mode === "search" && (
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-              <input 
-                value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search customer name or phone..."
-                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
-                autoFocus
-              />
+              <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search customer name or phone..." className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" autoFocus />
             </div>
             <div className="mt-3 space-y-2 max-h-60 overflow-y-auto">
               {searchResults.map(c => (
@@ -329,10 +211,7 @@ export const RecordPage = () => {
               {searchQuery.trim() && searchResults.length === 0 && (
                 <button onClick={handleCreateInline} className="w-full flex items-center gap-3 p-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 transition text-left">
                   <PlusCircle size={20} className="flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm">Create new customer</p>
-                    <p className="text-xs opacity-80 truncate">Use "{searchQuery}"</p>
-                  </div>
+                  <div className="flex-1 min-w-0"><p className="font-semibold text-sm">Create new customer</p><p className="text-xs opacity-80 truncate">Use "{searchQuery}"</p></div>
                 </button>
               )}
             </div>
@@ -365,43 +244,15 @@ export const RecordPage = () => {
               <div className="flex items-center gap-2"><User size={16} className="text-gray-400" /><p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">New Customer</p></div>
               <button onClick={resetToSearch} className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 hover:text-green-600"><ArrowLeft size={12} /> Back</button>
             </div>
-            <input 
-              placeholder="Customer Name" 
-              value={tx.name} 
-              onChange={e => { setTx({...tx, name: e.target.value}); setPhoneError(""); }} 
-              className="w-full text-lg font-semibold border-b border-gray-200 dark:border-gray-700 pb-2 outline-none focus:border-green-600 dark:text-white bg-transparent" 
-            />
+            <input placeholder="Customer Name" value={tx.name} onChange={e => { setTx({...tx, name: e.target.value}); setPhoneError(""); }} className="w-full text-lg font-semibold border-b border-gray-200 dark:border-gray-700 pb-2 outline-none focus:border-green-600 dark:text-white bg-transparent" />
             <div>
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <input 
-                    type="tel" 
-                    inputMode="tel" 
-                    placeholder="e.g., 024 123 4567" 
-                    value={tx.phone} 
-                    onChange={e => { 
-                      setTx({...tx, phone: e.target.value}); 
-                      setPhoneError(""); 
-                    }} 
-                    className={`w-full text-lg border-b pb-2 outline-none focus:border-green-600 bg-transparent ${
-                      phoneError ? "text-red-600 border-red-500" : "text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700"
-                    }`} 
-                  />
+                  <input type="tel" inputMode="tel" placeholder="e.g., 024 123 4567" value={tx.phone} onChange={e => { setTx({...tx, phone: e.target.value}); setPhoneError(""); }} className={`w-full text-lg border-b pb-2 outline-none focus:border-green-600 bg-transparent ${phoneError ? "text-red-600 border-red-500" : "text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700"}`} />
                 </div>
-                <button 
-                  type="button"
-                  onClick={handlePickContact}
-                  className="flex-shrink-0 p-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition active:scale-90 mb-1"
-                  title="Pick from contacts"
-                >
-                  <Contact size={22} />
-                </button>
+                <button type="button" onClick={handlePickContact} className="flex-shrink-0 p-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition active:scale-90 mb-1" title="Pick from contacts"><Contact size={22} /></button>
               </div>
-              {phoneError && (
-                <p className="text-xs text-red-600 dark:text-red-400 mt-1 flex items-center gap-1">
-                  <AlertCircle size={12} /> {phoneError}
-                </p>
-              )}
+              {phoneError && <p className="text-xs text-red-600 dark:text-red-400 mt-1 flex items-center gap-1"><AlertCircle size={12} /> {phoneError}</p>}
             </div>
           </div>
         )}
@@ -409,23 +260,15 @@ export const RecordPage = () => {
         {(mode === "existing" || mode === "new") && (
           <>
             <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
-              <button onClick={() => setRecordMode("quick")} className={`flex-1 py-2 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 ${recordMode === "quick" ? "bg-white dark:bg-gray-700 shadow-sm text-green-700 dark:text-green-400" : "text-gray-500"}`}>
-                <FileText size={16} /> Quick Note
-              </button>
-              <button onClick={() => setRecordMode("detailed")} className={`flex-1 py-2 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 ${recordMode === "detailed" ? "bg-white dark:bg-gray-700 shadow-sm text-green-700 dark:text-green-400" : "text-gray-500"}`}>
-                <Package size={16} /> Detailed Invoice
-              </button>
+              <button onClick={() => setRecordMode("quick")} className={`flex-1 py-2 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 ${recordMode === "quick" ? "bg-white dark:bg-gray-700 shadow-sm text-green-700 dark:text-green-400" : "text-gray-500"}`}><FileText size={16} /> Quick Note</button>
+              <button onClick={() => setRecordMode("detailed")} className={`flex-1 py-2 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 ${recordMode === "detailed" ? "bg-white dark:bg-gray-700 shadow-sm text-green-700 dark:text-green-400" : "text-gray-500"}`}><Package size={16} /> Detailed Invoice</button>
             </div>
 
             {recordMode === "quick" && (
               <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <div>
                   <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Items Bought</label>
-                  <textarea 
-                    placeholder="e.g., 2 tins milk, one bag rice" 
-                    value={tx.items} onChange={e => setTx({...tx, items: e.target.value})} 
-                    className="w-full text-lg mt-1 outline-none dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2" rows="2"
-                  />
+                  <textarea placeholder="e.g., 2 tins milk, one bag rice" value={tx.items} onChange={e => setTx({...tx, items: e.target.value})} className="w-full text-lg mt-1 outline-none dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2" rows="2" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -440,6 +283,7 @@ export const RecordPage = () => {
               </div>
             )}
 
+            {/* 👇 REDESIGNED: COMPACT POS STYLE DETAILED INVOICE 👇 */}
             {recordMode === "detailed" && (
               <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <div className="relative">
@@ -448,52 +292,67 @@ export const RecordPage = () => {
                 </div>
                 
                 {productSearch && (
-                  <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 max-h-48 overflow-y-auto shadow-lg absolute z-10 w-full max-w-lg mx-auto left-0 right-0">
+                  <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 max-h-48 overflow-y-auto shadow-lg absolute z-10 w-full left-0 right-0">
                     {filteredProducts.length > 0 ? filteredProducts.map(p => (
                       <button key={p.id} onClick={() => addProductToInvoice(p)} className="w-full flex justify-between items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-0 text-left">
-                        <div>
-                          <p className="font-semibold text-gray-900 dark:text-white text-sm">{p.name}</p>
-                          <p className="text-xs text-gray-500">{formatCurrency(p.price)} {p.unit && `/ ${p.unit}`}</p>
-                        </div>
+                        <div><p className="font-semibold text-gray-900 dark:text-white text-sm">{p.name}</p><p className="text-xs text-gray-500">{formatCurrency(p.price)} {p.unit && `/ ${p.unit}`}</p></div>
                         <PlusCircle size={18} className="text-green-600" />
                       </button>
                     )) : (
-                      <button onClick={() => { setNewProduct({...newProduct, name: productSearch}); setShowInlineProduct(true); }} className="w-full p-3 text-green-700 dark:text-green-400 font-semibold flex items-center gap-2">
-                        <PlusCircle size={18} /> Create "{productSearch}"
-                      </button>
+                      <button onClick={() => { setNewProduct({...newProduct, name: productSearch}); setShowInlineProduct(true); }} className="w-full p-3 text-green-700 dark:text-green-400 font-semibold flex items-center gap-2"><PlusCircle size={18} /> Create "{productSearch}"</button>
                     )}
                   </div>
                 )}
 
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {invoiceItems.length === 0 ? (
                     <p className="text-center text-gray-400 dark:text-gray-500 py-4 text-sm">No items added yet. Search above to add products.</p>
                   ) : invoiceItems.map((item, index) => (
-                    <div key={index} className="bg-gray-50 dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-bold text-gray-900 dark:text-white text-sm flex-1 truncate pr-2">
+                    // 👇 NEW COMPACT CARD DESIGN
+                    <div key={index} className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
+                      {/* Row 1: Name & Delete */}
+                      <div className="flex justify-between items-center mb-2">
+                        <p className="font-bold text-gray-900 dark:text-white text-sm truncate pr-2">
                           {item.name} 
                           {item.isOneTime && <span className="text-xs text-blue-500 font-normal ml-1">(One-time)</span>}
                         </p>
-                        <button onClick={() => removeItem(index)} className="text-red-500 p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition">
+                        <button onClick={() => removeItem(index)} className="text-red-400 p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition active:scale-90">
                           <Trash2 size={16} />
                         </button>
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Qty</label>
-                          <input type="number" inputMode="decimal" value={item.quantity} onChange={e => updateItem(index, 'quantity', e.target.value)} className={`w-full px-3 py-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 text-sm font-bold text-center focus:ring-1 focus:ring-green-500 outline-none ${noSpinnerClass}`} />
+                      {/* Row 2: The Equation (Qty × Price = Total) */}
+                      <div className="flex items-center gap-2">
+                        {/* QTY INPUT (Blue) */}
+                        <div className="relative flex-1">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-blue-500 dark:text-blue-400 pointer-events-none">QTY</span>
+                          <input 
+                            type="number" inputMode="decimal" value={item.quantity} 
+                            onChange={e => updateItem(index, 'quantity', e.target.value)} 
+                            className={`w-full pl-9 pr-2 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm font-bold text-center outline-none focus:ring-1 focus:ring-blue-500 ${noSpinnerClass}`} 
+                          />
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Unit Price</label>
-                          <input type="number" inputMode="decimal" value={item.price} onChange={e => updateItem(index, 'price', e.target.value)} className={`w-full px-3 py-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 text-sm font-bold text-right focus:ring-1 focus:ring-green-500 outline-none ${noSpinnerClass}`} />
+
+                        <span className="text-gray-400 dark:text-gray-500 font-bold text-lg">×</span>
+
+                        {/* PRICE INPUT (Purple) */}
+                        <div className="relative flex-1">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-purple-500 dark:text-purple-400 pointer-events-none">PRICE</span>
+                          <input 
+                            type="number" inputMode="decimal" value={item.price} 
+                            onChange={e => updateItem(index, 'price', e.target.value)} 
+                            className={`w-full pl-12 pr-2 py-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-sm font-bold text-center outline-none focus:ring-1 focus:ring-purple-500 ${noSpinnerClass}`} 
+                          />
                         </div>
-                      </div>
-                      
-                      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600 flex justify-between items-center">
-                        <span className="text-xs text-gray-500 dark:text-gray-400 font-semibold">Line Total:</span>
-                        <span className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency(item.quantity * item.price)}</span>
+
+                        <span className="text-gray-400 dark:text-gray-500 font-bold text-lg">=</span>
+
+                        {/* TOTAL OUTPUT */}
+                        <div className="flex-1 text-right">
+                          <p className="text-sm font-bold text-gray-900 dark:text-white">
+                            {formatCurrency(item.quantity * item.price)}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -515,36 +374,17 @@ export const RecordPage = () => {
             {isOverpayment && (
               <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-300 p-4 rounded-xl flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-bold text-sm">Overpayment Detected</p>
-                  <p className="text-sm mt-1">This creates a <span className="font-bold">credit of {formatCurrency(Math.abs(newBal))}</span>.</p>
-                </div>
+                <div><p className="font-bold text-sm">Overpayment Detected</p><p className="text-sm mt-1">This creates a <span className="font-bold">credit of {formatCurrency(Math.abs(newBal))}</span>.</p></div>
               </div>
             )}
 
             {smsMessage && (
               <div className="bg-gray-900 text-gray-100 p-5 rounded-2xl shadow-xl relative">
-                <div className="absolute top-3 right-3 bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1">
-                  <MessageSquare size={12} /> SMS Preview
-                </div>
+                <div className="absolute top-3 right-3 bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1"><MessageSquare size={12} /> SMS Preview</div>
                 <p className="text-xs text-gray-400 mb-2 uppercase tracking-wider">Message to {tx.name || "Customer"}:</p>
-                <div className="font-mono text-sm leading-relaxed whitespace-pre-line mb-4 bg-black/20 p-3 rounded-lg border border-gray-700">
-                  {smsMessage}
-                </div>
-                
-                <button 
-                  onClick={handleCopySMS}
-                  className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg mb-3"
-                >
-                  <Copy size={18} /> Copy Message
-                </button>
-
-                <button 
-                  onClick={() => openSMS(tx.phone, smsMessage)}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
-                >
-                  <MessageSquare size={18} /> Send via SMS App
-                </button>
+                <div className="font-mono text-sm leading-relaxed whitespace-pre-line mb-4 bg-black/20 p-3 rounded-lg border border-gray-700">{smsMessage}</div>
+                <button onClick={handleCopySMS} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg mb-3"><Copy size={18} /> Copy Message</button>
+                <button onClick={() => openSMS(tx.phone, smsMessage)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"><MessageSquare size={18} /> Send via SMS App</button>
               </div>
             )}
 
@@ -580,8 +420,7 @@ export const RecordPage = () => {
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6 text-center">
             <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2">Update Default Price?</h3>
             <p className="text-gray-600 dark:text-gray-400 text-sm mb-6">
-              You changed the price from <span className="font-bold">{formatCurrency(priceUpdateModal.oldPrice)}</span> to <span className="font-bold text-green-600">{formatCurrency(priceUpdateModal.newPrice)}</span>. 
-              Do you want to update the default price for this product in your catalogue?
+              You changed the price from <span className="font-bold">{formatCurrency(priceUpdateModal.oldPrice)}</span> to <span className="font-bold text-green-600">{formatCurrency(priceUpdateModal.newPrice)}</span>. Do you want to update the default price for this product in your catalogue?
             </p>
             <div className="flex gap-3">
               <button onClick={() => handlePriceUpdate(false)} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">No, Just for this invoice</button>

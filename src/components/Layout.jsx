@@ -20,7 +20,7 @@ export const Layout = ({ children }) => {
     setIsMobileMenuOpen(false);
   };
 
-  // 👇 FIXED: Removed all trailing spaces from view strings so routing works
+  // 👇 FIXED: Removed all trailing spaces from view strings
   const menuItems = [
     { icon: Home, label: "Home", view: "home" },
     { icon: Users, label: "Customers", view: "customers" },
@@ -33,7 +33,6 @@ export const Layout = ({ children }) => {
   // 👇 FIXED: Removed the space in "() =>"
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
-      {/* Header with Store Info */}
       <div className="bg-gradient-to-br from-green-700 to-green-900 text-white p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold">
@@ -44,7 +43,6 @@ export const Layout = ({ children }) => {
             <p className="text-green-100 text-sm truncate">Welcome back!</p>
           </div>
         </div>
-
         <div className="space-y-1 text-sm">
           <div className="flex items-center gap-2 text-green-100">
             <User size={14} />
@@ -57,10 +55,8 @@ export const Layout = ({ children }) => {
         </div>
       </div>
 
-      {/* Menu Items */}
       <div className="flex-1 p-4 space-y-1 overflow-y-auto">
         <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase px-3 mb-2">Navigation</p>
-        
         {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive = view === item.view;
@@ -79,34 +75,20 @@ export const Layout = ({ children }) => {
             </button>
           );
         })}
-
-        {/* Divider */}
         <div className="border-t border-gray-200 dark:border-gray-700 my-4" />
-
-        {/* Theme Toggle */}
         <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase px-3 mb-2">Preferences</p>
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all text-left"
         >
           {theme === "dark" ? (
-            <>
-              <Sun size={20} className="text-yellow-500" />
-              <span className="font-medium">Light Mode</span>
-            </>
+            <><Sun size={20} className="text-yellow-500" /><span className="font-medium">Light Mode</span></>
           ) : (
-            <>
-              <Moon size={20} className="text-gray-500" />
-              <span className="font-medium">Dark Mode</span>
-            </>
+            <><Moon size={20} className="text-gray-500" /><span className="font-medium">Dark Mode</span></>
           )}
         </button>
-
-        {/* About */}
         <button
-          onClick={() => {
-            alert("CreditBook v2.0\n\nBuilt for small businesses.\n\nOffline-first with IndexedDB.\nNo login required!");
-          }}
+          onClick={() => alert("CreditBook v2.0\n\nBuilt for small businesses.\n\nOffline-first with IndexedDB.\nNo login required!")}
           className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all text-left"
         >
           <Info size={20} className="text-gray-500 dark:text-gray-400" />
@@ -118,12 +100,9 @@ export const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex">
-      {/* Desktop Sidebar - Always Visible */}
       <aside className="hidden lg:flex lg:flex-col lg:w-72 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 fixed h-screen">
         <SidebarContent />
       </aside>
-
-      {/* Mobile Menu Button */}
       <button
         onClick={() => setIsMobileMenuOpen(true)}
         className="lg:hidden fixed top-4 left-4 z-40 p-2 bg-white dark:bg-gray-800 rounded-full shadow-lg border border-gray-200 dark:border-gray-700"
@@ -131,27 +110,18 @@ export const Layout = ({ children }) => {
       >
         <Menu size={24} className="text-gray-700 dark:text-gray-200" />
       </button>
-
-      {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && (
         <>
-          <div 
-            className="lg:hidden fixed inset-0 bg-black/50 z-40"
-            onClick={() => setIsMobileMenuOpen(false)}
-          />
+          <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setIsMobileMenuOpen(false)} />
           <aside className="lg:hidden fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-white dark:bg-gray-900 z-50 shadow-2xl">
-            <button
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="absolute top-4 right-4 p-2 bg-gray-100 dark:bg-gray-800 rounded-full"
-            >
+            <button onClick={() => setIsMobileMenuOpen(false)} className="absolute top-4 right-4 p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
               <X size={20} className="text-gray-700 dark:text-gray-200" />
             </button>
             <SidebarContent />
           </aside>
         </>
       )}
-
-      {/* 👇 Main Content - Added overflow-x-hidden to prevent mobile horizontal scrolling */}
+      {/* 👇 Added overflow-x-hidden to prevent mobile horizontal scrolling */}
       <main className="flex-1 lg:ml-72 w-full max-w-full overflow-x-hidden">
         {children}
       </main>
