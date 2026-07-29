@@ -1,14 +1,13 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Check, MessageSquare, AlertCircle, User, Search, PlusCircle, ArrowLeft, Trash2, X, Package, FileText } from "lucide-react";
-import useStore from "../store/useStore"; // 👈 CHANGED TO useStore
-import { formatDate, formatCurrency } from "../utils/helpers";
+import { Check, MessageSquare, AlertCircle, User, Search, PlusCircle, ArrowLeft, Trash2, X, Package, FileText, Copy } from "lucide-react";
+import useStore from "../store/useStore";
+import { formatDate, formatCurrency, isValidPhone } from "../utils/helpers";
 import { openSMS } from "../utils/communication";
 import { CustomerService } from "../services/CustomerService";
 import { ProductService } from "../services/ProductService";
 import { PageHeader } from "../components/PageHeader";
 
 export const RecordPage = () => {
-  // 👈 CHANGED TO useStore
   const { 
     currentStore, 
     customers, 
@@ -169,6 +168,19 @@ export const RecordPage = () => {
     const paid = parseFloat(tx.paid) || 0;
     if (amount === 0 && paid === 0) return;
 
+    if (!currentStore || !currentStore.id) {
+      showToast("Database not ready. Please wait 2 seconds and try again.");
+      return;
+    }
+
+    // 👇 UPDATED: Strict Phone Validation with a clear Toast message
+    if (!tx.customerId && !isValidPhone(tx.phone)) {
+      const errorMsg = "Phone number must be 7 to 15 digits.";
+      setPhoneError(errorMsg);
+      showToast(`⚠️ ${errorMsg}`); // 👈 This triggers the toast at the bottom of the screen
+      return; // Stop the save process
+    }
+
     setPhoneError("");
     try {
       const itemsString = recordMode === "detailed" 
@@ -194,17 +206,23 @@ export const RecordPage = () => {
       showToast("Transaction saved");
     } catch (error) {
       console.error("Failed to save transaction", error);
-      
-      // 👇 CHANGED: Show the ACTUAL error message on your phone screen
       const realError = error.message || error.toString();
-      
       if (realError.includes("already exists")) {
         setPhoneError(realError);
         showToast(realError);
       } else {
-        // This will tell us exactly what Dexie/IndexedDB is complaining about
-        showToast(`Error: ${realError.substring(0, 60)}`); 
+        showToast(`Error: ${realError.substring(0, 60)}`);
       }
+    }
+  };
+
+    // 👇 NEW: Function to copy the SMS message
+  const handleCopySMS = async () => {
+    try {
+      await navigator.clipboard.writeText(smsMessage);
+      showToast("Message copied to clipboard!");
+    } catch (err) {
+      showToast("Failed to copy message");
     }
   };
 
@@ -229,11 +247,15 @@ export const RecordPage = () => {
       `\nThank you! - From ${currentStore?.name || "Store"}`;
   }, [currentBal, amountVal, paidVal, tx.items, newBal, currentStore]);
 
+  // 👇 CSS class to hide number input spinners across all browsers
+  const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <PageHeader title="Record Sale" onBack={() => setView("home")} />
 
       <div className="p-4 space-y-4 max-w-lg mx-auto">
+        
         {/* 1. CUSTOMER SELECTION */}
         {mode === "search" && (
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
@@ -296,10 +318,35 @@ export const RecordPage = () => {
               <div className="flex items-center gap-2"><User size={16} className="text-gray-400" /><p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">New Customer</p></div>
               <button onClick={resetToSearch} className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 hover:text-green-600"><ArrowLeft size={12} /> Back</button>
             </div>
-            <input placeholder="Customer Name" value={tx.name} onChange={e => { setTx({...tx, name: e.target.value}); setPhoneError(""); }} className="w-full text-lg font-semibold border-b border-gray-200 dark:border-gray-700 pb-2 outline-none focus:border-green-600 dark:text-white bg-transparent" />
+            
+            <input 
+              placeholder="Customer Name" 
+              value={tx.name} 
+              onChange={e => { setTx({...tx, name: e.target.value}); setPhoneError(""); }} 
+              className="w-full text-lg font-semibold border-b border-gray-200 dark:border-gray-700 pb-2 outline-none focus:border-green-600 dark:text-white bg-transparent" 
+            />
+            
             <div>
-              <input placeholder="Phone Number (024...)" value={tx.phone} onChange={e => { setTx({...tx, phone: e.target.value}); setPhoneError(""); }} className={`w-full text-lg border-b pb-2 outline-none focus:border-green-600 bg-transparent ${phoneError ? "text-red-600 border-red-500" : "text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700"}`} />
-              {phoneError && <p className="text-xs text-red-600 dark:text-red-400 mt-1 flex items-center gap-1"><AlertCircle size={12} /> {phoneError}</p>}
+              <input 
+                type="tel" 
+                inputMode="numeric" // 👈 Forces numeric keypad on mobile
+                placeholder="Phone Number (e.g., 0241234567)" 
+                value={tx.phone} 
+                onChange={e => { 
+                  // 👇 NEW: Physically prevents typing letters or symbols
+                  const val = e.target.value.replace(/\D/g, ''); 
+                  setTx({...tx, phone: val}); 
+                  setPhoneError(""); 
+                }} 
+                className={`w-full text-lg border-b pb-2 outline-none focus:border-green-600 bg-transparent ${
+                  phoneError ? "text-red-600 border-red-500" : "text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700"
+                }`} 
+              />
+              {phoneError && (
+                <p className="text-xs text-red-600 dark:text-red-400 mt-1 flex items-center gap-1">
+                  <AlertCircle size={12} /> {phoneError}
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -330,11 +377,25 @@ export const RecordPage = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Total Amount</label>
-                    <input type="number" placeholder="0.00" value={tx.amount} onChange={e => setTx({...tx, amount: e.target.value})} className="w-full text-2xl font-bold text-gray-900 dark:text-white mt-1 outline-none bg-transparent" />
+                    <input 
+                      type="number" 
+                      inputMode="decimal"
+                      placeholder="0.00" 
+                      value={tx.amount} 
+                      onChange={e => setTx({...tx, amount: e.target.value})} 
+                      className={`w-full text-2xl font-bold text-gray-900 dark:text-white mt-1 outline-none bg-transparent ${noSpinnerClass}`} 
+                    />
                   </div>
                   <div>
                     <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Money Paid</label>
-                    <input type="number" placeholder="0.00" value={tx.paid} onChange={e => setTx({...tx, paid: e.target.value})} className="w-full text-2xl font-bold text-green-700 dark:text-green-400 mt-1 outline-none bg-transparent" />
+                    <input 
+                      type="number" 
+                      inputMode="decimal"
+                      placeholder="0.00" 
+                      value={tx.paid} 
+                      onChange={e => setTx({...tx, paid: e.target.value})} 
+                      className={`w-full text-2xl font-bold text-green-700 dark:text-green-400 mt-1 outline-none bg-transparent ${noSpinnerClass}`} 
+                    />
                   </div>
                 </div>
               </div>
@@ -370,22 +431,48 @@ export const RecordPage = () => {
                   </div>
                 )}
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {invoiceItems.length === 0 ? (
                     <p className="text-center text-gray-400 dark:text-gray-500 py-4 text-sm">No items added yet. Search above to add products.</p>
                   ) : invoiceItems.map((item, index) => (
-                    <div key={index} className="bg-gray-50 dark:bg-gray-800 p-3 rounded-xl flex items-center gap-2 border border-gray-100 dark:border-gray-700">
-                      <div className="flex-1">
-                        <p className="font-bold text-gray-900 dark:text-white text-sm">{item.name} {item.isOneTime && <span className="text-xs text-blue-500 font-normal">(One-time)</span>}</p>
-                        <div className="flex gap-2 mt-1 items-center">
-                          <input type="number" value={item.quantity} onChange={e => updateItem(index, 'quantity', e.target.value)} className="w-14 px-2 py-1 bg-white dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600 text-sm font-bold text-center" />
-                          <span className="text-xs text-gray-500">x</span>
-                          <input type="number" value={item.price} onChange={e => updateItem(index, 'price', e.target.value)} className="w-20 px-2 py-1 bg-white dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600 text-sm font-bold" />
+                    <div key={index} className="bg-gray-50 dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
+                      <div className="flex justify-between items-start mb-2">
+                        <p className="font-bold text-gray-900 dark:text-white text-sm flex-1 truncate pr-2">
+                          {item.name} 
+                          {item.isOneTime && <span className="text-xs text-blue-500 font-normal ml-1">(One-time)</span>}
+                        </p>
+                        <button onClick={() => removeItem(index)} className="text-red-500 p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                      
+                      {/* 👇 CLEAR LABELS & NO SPINNERS */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Qty</label>
+                          <input 
+                            type="number" 
+                            inputMode="decimal"
+                            value={item.quantity} 
+                            onChange={e => updateItem(index, 'quantity', e.target.value)} 
+                            className={`w-full px-3 py-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 text-sm font-bold text-center focus:ring-1 focus:ring-green-500 outline-none ${noSpinnerClass}`} 
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Unit Price</label>
+                          <input 
+                            type="number" 
+                            inputMode="decimal"
+                            value={item.price} 
+                            onChange={e => updateItem(index, 'price', e.target.value)} 
+                            className={`w-full px-3 py-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 text-sm font-bold text-right focus:ring-1 focus:ring-green-500 outline-none ${noSpinnerClass}`} 
+                          />
                         </div>
                       </div>
-                      <div className="text-right flex flex-col items-end">
-                        <p className="font-bold text-gray-900 dark:text-white">{formatCurrency(item.quantity * item.price)}</p>
-                        <button onClick={() => removeItem(index)} className="text-red-500 text-xs mt-1 flex items-center gap-1"><Trash2 size={12} /> Remove</button>
+                      
+                      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600 flex justify-between items-center">
+                        <span className="text-xs text-gray-500 dark:text-gray-400 font-semibold">Line Total:</span>
+                        <span className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency(item.quantity * item.price)}</span>
                       </div>
                     </div>
                   ))}
@@ -398,7 +485,14 @@ export const RecordPage = () => {
                   </div>
                   <div>
                     <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Money Paid</label>
-                    <input type="number" placeholder="0.00" value={tx.paid} onChange={e => setTx({...tx, paid: e.target.value})} className="w-full text-2xl font-bold text-green-700 dark:text-green-400 mt-1 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2" />
+                    <input 
+                      type="number" 
+                      inputMode="decimal"
+                      placeholder="0.00" 
+                      value={tx.paid} 
+                      onChange={e => setTx({...tx, paid: e.target.value})} 
+                      className={`w-full text-2xl font-bold text-green-700 dark:text-green-400 mt-1 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`} 
+                    />
                   </div>
                 </div>
               </div>
@@ -426,6 +520,15 @@ export const RecordPage = () => {
                   {smsMessage}
                 </div>
                 
+                {/* 👇 NEW: Copy Message Button */}
+                <button 
+                  onClick={handleCopySMS}
+                  className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg mb-3"
+                >
+                  <Copy size={18} /> Copy Message
+                </button>
+
+                {/* Send via SMS App Button */}
                 <button 
                   onClick={() => openSMS(tx.phone, smsMessage)}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
@@ -454,7 +557,7 @@ export const RecordPage = () => {
             <div className="space-y-3">
               <input placeholder="Product Name" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" autoFocus />
               <div className="grid grid-cols-2 gap-3">
-                <input type="number" placeholder="Default Price" value={newProduct.price} onChange={e => setNewProduct({...newProduct, price: e.target.value})} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" />
+                <input type="number" inputMode="decimal" placeholder="Default Price" value={newProduct.price} onChange={e => setNewProduct({...newProduct, price: e.target.value})} className={`w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white ${noSpinnerClass}`} />
                 <input placeholder="Unit (e.g. kg)" value={newProduct.unit} onChange={e => setNewProduct({...newProduct, unit: e.target.value})} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" />
               </div>
               <input placeholder="Category (Optional)" value={newProduct.category} onChange={e => setNewProduct({...newProduct, category: e.target.value})} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" />

@@ -4,18 +4,14 @@ import { db } from '../database/db';
 
 export const CustomerService = {
   getAllWithHistory: async (storeId, includeArchived = false) => {
-    // 1. Fetch all customers for this store (avoids compound index errors)
     const allCustomers = await db.customers.where('storeId').equals(storeId).toArray();
     
-    // 2. Filter in memory (treats undefined or missing isArchived as false)
-    const filtered = includeArchived 
-      ? allCustomers 
-      : allCustomers.filter(c => c.isArchived !== true);
-    
-    // 3. Enrich with transaction history
-    const enriched = await Promise.all(filtered.map(async (c) => {
+    const enriched = await Promise.all(allCustomers.map(async (c) => {
       const history = await TransactionRepository.getByCustomerId(storeId, c.id);
-      const balance = history.reduce((sum, t) => sum + (t.amount || 0) - (t.paid || 0), 0);
+      const balance = history.reduce((sum, t) => {
+        if (t.isVoid) return sum; 
+        return sum + (t.amount || 0) - (t.paid || 0);
+      }, 0);
       return { ...c, history, balance };
     }));
 
@@ -36,13 +32,16 @@ export const CustomerService = {
         name: customerName,
         phone: customerPhone,
         joined: new Date().toISOString(),
-        isArchived: false
       });
       targetCustomer = await CustomerRepository.getById(storeId, newId);
     }
 
     const history = await TransactionRepository.getByCustomerId(storeId, targetCustomer.id);
-    const prevBalance = history.reduce((sum, t) => sum + (t.amount || 0) - (t.paid || 0), 0);
+    const prevBalance = history.reduce((sum, t) => {
+      if (t.isVoid) return sum;
+      return sum + (t.amount || 0) - (t.paid || 0);
+    }, 0);
+    
     const newBalance = prevBalance + amount - paid;
 
     const newTx = {
@@ -69,7 +68,10 @@ export const CustomerService = {
     if (!customer) return null;
     
     const history = await TransactionRepository.getByCustomerId(storeId, customerId);
-    const currentBalance = history.reduce((sum, t) => sum + (t.amount || 0) - (t.paid || 0), 0);
+    const currentBalance = history.reduce((sum, t) => {
+      if (t.isVoid) return sum;
+      return sum + (t.amount || 0) - (t.paid || 0);
+    }, 0);
 
     if (currentBalance <= 0) return null;
 
@@ -93,39 +95,25 @@ export const CustomerService = {
     return await CustomerRepository.getById(storeId, customerId);
   },
 
-  archiveCustomer: async (storeId, customerId) => {
-    await CustomerRepository.update(storeId, customerId, { isArchived: true });
-    return true;
-  },
-
-  restoreCustomer: async (storeId, customerId) => {
-    await CustomerRepository.update(storeId, customerId, { isArchived: false });
+  //  NEW: Actual Deletion (Removes customer and their transactions)
+  deleteCustomer: async (storeId, customerId) => {
+    // 1. Delete all transactions associated with this customer
+    await db.transactions.where('customerId').equals(customerId).delete();
+    // 2. Delete the customer record
+    await db.customers.delete(customerId);
     return true;
   },
 
   voidTransaction: async (storeId, customerId, transactionId) => {
+    await db.transactions.update(transactionId, { isVoid: true });
+
     const history = await TransactionRepository.getByCustomerId(storeId, customerId);
-    const originalTx = history.find(t => t.id === transactionId);
-    if (!originalTx) return null;
+    const newBalance = history.reduce((sum, t) => {
+      if (t.isVoid) return sum;
+      return sum + (t.amount || 0) - (t.paid || 0);
+    }, 0);
 
-    const voidTx = {
-      customerId,
-      date: new Date().toISOString(),
-      amount: -originalTx.amount,
-      paid: -originalTx.paid,
-      items: `VOIDED: ${originalTx.items || 'General Purchase'}`,
-      invoiceItems: originalTx.invoiceItems ? originalTx.invoiceItems.map(i => ({...i, quantity: -i.quantity, total: -i.total})) : null,
-      mode: originalTx.mode,
-      prevBalance: 0,
-      newBalance: 0,
-      isVoid: true
-    };
-
-    await TransactionRepository.add(storeId, voidTx);
-    const updatedHistory = await TransactionRepository.getByCustomerId(storeId, customerId);
     const customer = await CustomerRepository.getById(storeId, customerId);
-    const newBalance = updatedHistory.reduce((sum, t) => sum + (t.amount || 0) - (t.paid || 0), 0);
-    
-    return { ...customer, history: updatedHistory, balance: newBalance };
+    return { ...customer, history, balance: newBalance };
   }
 };

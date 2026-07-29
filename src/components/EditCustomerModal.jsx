@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { X, Save, User, Phone, MapPin, FileText } from "lucide-react";
-import { useApp } from "../contexts/AppContext";
+import useStore from "../store/useStore";
 import { CustomerService } from "../services/CustomerService";
 import { CustomerRepository } from "../repositories/CustomerRepository";
+import { isValidPhone } from "../utils/helpers"; // 👈 IMPORT VALIDATION
 
 export const EditCustomerModal = ({ customer, onClose }) => {
-  const { currentStore, refreshCustomers, setSelectedCustomer, showToast } = useApp();
+  const { currentStore, refreshCustomers, setSelectedCustomer, showToast } = useStore();
   const [form, setForm] = useState({ name: "", phone: "", altPhone: "", address: "", notes: "" });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
@@ -24,8 +25,14 @@ export const EditCustomerModal = ({ customer, onClose }) => {
 
   const handleSave = async () => {
     setError("");
-    if (!form.name.trim() || !form.phone.trim()) {
-      setError("Name and Phone are required");
+    if (!form.name.trim()) {
+      setError("Name is required");
+      return;
+    }
+
+    // 👇 NEW: Strict Phone Validation
+    if (!isValidPhone(form.phone)) {
+      setError("Please enter a valid phone number (7-15 digits).");
       return;
     }
 
@@ -70,7 +77,7 @@ export const EditCustomerModal = ({ customer, onClose }) => {
         </div>
 
         <div className="p-5 space-y-4">
-          {error && <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 p-3 rounded-xl text-sm">{error}</div>}
+          {error && <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 p-3 rounded-xl text-sm font-semibold">{error}</div>}
 
           <div>
             <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Name *</label>
@@ -84,7 +91,14 @@ export const EditCustomerModal = ({ customer, onClose }) => {
             <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Phone *</label>
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-              <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" />
+              {/* 👇 UPDATED: Strict numeric input */}
+              <input 
+                type="tel" 
+                inputMode="numeric"
+                value={form.phone} 
+                onChange={e => setForm({...form, phone: e.target.value.replace(/\D/g, '')})} 
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
+              />
             </div>
           </div>
 
@@ -92,7 +106,13 @@ export const EditCustomerModal = ({ customer, onClose }) => {
             <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Alt. Phone (Optional)</label>
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-              <input value={form.altPhone} onChange={e => setForm({...form, altPhone: e.target.value})} className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" />
+              <input 
+                type="tel" 
+                inputMode="numeric"
+                value={form.altPhone} 
+                onChange={e => setForm({...form, altPhone: e.target.value.replace(/\D/g, '')})} 
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
+              />
             </div>
           </div>
 

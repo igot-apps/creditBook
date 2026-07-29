@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Phone, PlusCircle, MessageCircle, MessageSquare, Edit3, Archive, ShoppingBag, CreditCard, Ban, Clock, MapPin, FileText, ArrowLeft } from "lucide-react";
-import useStore from "../store/useStore"; // 👈 CHANGED
+import { Phone, PlusCircle, MessageCircle, MessageSquare, Edit3, Trash2, ShoppingBag, CreditCard, Ban, Clock, FileText } from "lucide-react";
+import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openSMS, openWhatsApp, openDialer } from "../utils/communication";
 import { CustomerService } from "../services/CustomerService";
@@ -9,49 +9,31 @@ import { InvoiceModal } from "../components/InvoiceModal";
 import { EditCustomerModal } from "../components/EditCustomerModal";
 
 export const ProfilePage = () => {
-  // 👈 CHANGED to useStore
   const { currentStore, selectedCustomer, setSelectedCustomer, setView, refreshCustomers, showToast, triggerConfetti, setPrefillTransaction } = useStore();
   
   const [viewingInvoice, setViewingInvoice] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [isArchiving, setIsArchiving] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [showClearDebtModal, setShowClearDebtModal] = useState(false);
   const [confirmText, setConfirmText] = useState("");
 
   if (!selectedCustomer) return null;
 
   const history = selectedCustomer.history || [];
-  
-  // Calculate Stats
   const totalPurchases = history.reduce((sum, t) => sum + (t.amount > 0 ? t.amount : 0), 0);
   const totalPaid = history.reduce((sum, t) => sum + (t.paid || 0), 0);
-  const lastPurchase = [...history].reverse().find(t => t.amount > 0 && !t.isVoid);
-  const lastPayment = [...history].reverse().find(t => t.paid > 0 && !t.isVoid);
 
   const generateReminderMessage = (c) =>
     `Hello ${c.name}, this is a reminder from ${currentStore.name}. You have an outstanding debt of ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
 
   const handleRecordPayment = () => {
-    setPrefillTransaction({
-      customerId: selectedCustomer.id,
-      name: selectedCustomer.name,
-      phone: selectedCustomer.phone,
-      items: "Payment",
-      amount: "0",
-      paid: ""
-    });
+    setPrefillTransaction({ customerId: selectedCustomer.id, name: selectedCustomer.name, phone: selectedCustomer.phone, items: "Payment", amount: "0", paid: "" });
     setView("record");
   };
 
   const handleAddPurchase = () => {
-    setPrefillTransaction({
-      customerId: selectedCustomer.id,
-      name: selectedCustomer.name,
-      phone: selectedCustomer.phone,
-      items: "",
-      amount: "",
-      paid: ""
-    });
+    setPrefillTransaction({ customerId: selectedCustomer.id, name: selectedCustomer.name, phone: selectedCustomer.phone, items: "", amount: "", paid: "" });
     setView("record");
   };
 
@@ -68,17 +50,18 @@ export const ProfilePage = () => {
     } catch (error) { showToast("Failed to clear debt"); }
   };
 
-  const handleArchive = async () => {
-    if (!window.confirm(`Archive ${selectedCustomer.name}? They will be hidden but data is kept.`)) return;
-    setIsArchiving(true);
+  // 👇 NEW: Execute actual deletion
+  const executeDelete = async () => {
+    if (deleteConfirmText.toLowerCase().trim() !== "yes") return;
+    setShowDeleteModal(false);
+    setDeleteConfirmText("");
     try {
-      await CustomerService.archiveCustomer(currentStore.id, selectedCustomer.id);
+      await CustomerService.deleteCustomer(currentStore.id, selectedCustomer.id);
       await refreshCustomers();
       setSelectedCustomer(null);
       setView("home");
-      showToast("Customer archived");
-    } catch (error) { showToast("Failed to archive"); }
-    finally { setIsArchiving(false); }
+      showToast("Customer deleted permanently");
+    } catch (error) { showToast("Failed to delete customer"); }
   };
 
   const handleVoidTransaction = async (tx) => {
@@ -91,12 +74,11 @@ export const ProfilePage = () => {
     } catch (error) { showToast("Failed to void"); }
   };
 
-  // Timeline Icon Logic
   const getTimelineIcon = (tx) => {
     if (tx.isVoid) return <Ban size={16} className="text-gray-500" />;
     if (tx.amount > 0 && tx.paid === 0) return <ShoppingBag size={16} className="text-orange-500" />;
     if (tx.amount === 0 && tx.paid > 0) return <CreditCard size={16} className="text-green-500" />;
-    return <ShoppingBag size={16} className="text-blue-500" />; // Mixed
+    return <ShoppingBag size={16} className="text-blue-500" />;
   };
 
   const getTimelineColor = (tx) => {
@@ -166,8 +148,9 @@ export const ProfilePage = () => {
           <button onClick={() => setIsEditing(true)} className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
             <Edit3 size={18} /> <span className="text-[10px] font-bold">Edit</span>
           </button>
-          <button onClick={handleArchive} disabled={isArchiving} className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition disabled:opacity-50">
-            <Archive size={18} /> <span className="text-[10px] font-bold">Archive</span>
+          {/* 👇 CHANGED: Archive button replaced with Delete button */}
+          <button onClick={() => setShowDeleteModal(true)} className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
+            <Trash2 size={18} /> <span className="text-[10px] font-bold">Delete</span>
           </button>
         </div>
 
@@ -183,30 +166,27 @@ export const ProfilePage = () => {
             ) : (
               [...history].reverse().map((tx, index) => (
                 <div key={tx.id} className="relative pl-8 pb-6 last:pb-0">
-                  {/* Vertical Line */}
                   {index !== history.length - 1 && (
-                    <div className="absolute left-[11px] top-6 bottom-0 w-0.5 bg-gray-200 dark:bg-gray-700"></div>
+                    <div className={`absolute left-[11px] top-6 bottom-0 w-0.5 ${tx.isVoid ? 'bg-gray-100 dark:bg-gray-800' : 'bg-gray-200 dark:bg-gray-700'}`}></div>
                   )}
-                  {/* Dot */}
-                  <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-600 flex items-center justify-center z-10">
-                    {getTimelineIcon(tx)}
+                  <div className={`absolute left-0 top-1 w-6 h-6 rounded-full bg-white dark:bg-gray-800 border-2 flex items-center justify-center z-10 ${tx.isVoid ? 'border-red-300 dark:border-red-800' : 'border-gray-200 dark:border-gray-600'}`}>
+                    {tx.isVoid ? <Ban size={14} className="text-red-500" /> : getTimelineIcon(tx)}
                   </div>
                   
-                  {/* Content Card */}
-                  <div className={`p-3 rounded-xl border ${getTimelineColor(tx)}`}>
+                  <div className={`p-3 rounded-xl border transition-all ${tx.isVoid ? 'border-red-200 dark:border-red-900/30 bg-red-50/30 dark:bg-red-900/5 opacity-80' : getTimelineColor(tx)}`}>
                     <div className="flex justify-between items-start mb-1">
-                      <p className={`font-bold text-sm ${tx.isVoid ? 'text-gray-500 line-through' : 'text-gray-900 dark:text-white'}`}>
-                        {tx.isVoid ? 'Voided Transaction' : (tx.items || "General Transaction")}
+                      <p className={`font-bold text-sm flex items-center flex-wrap gap-2 ${tx.isVoid ? 'text-gray-500 line-through decoration-red-500 decoration-2' : 'text-gray-900 dark:text-white'}`}>
+                        {tx.items || "General Transaction"} 
+                        {tx.isVoid && <span className="text-[10px] text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 rounded font-bold no-underline tracking-wider">VOIDED</span>}
                       </p>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap ml-2">{formatDate(tx.date)}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap ml-2 mt-0.5">{formatDate(tx.date)}</span>
                     </div>
                     
                     <div className="flex justify-between items-center text-sm mt-2">
                       <div className="space-y-0.5">
-                        {tx.amount > 0 && <p className="text-gray-600 dark:text-gray-300">Purchase: <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(tx.amount)}</span></p>}
-                        {tx.paid > 0 && <p className="text-green-600 dark:text-green-400">Paid: <span className="font-bold">{formatCurrency(tx.paid)}</span></p>}
+                        {tx.amount > 0 && <p className={`text-gray-600 dark:text-gray-300 ${tx.isVoid ? 'line-through' : ''}`}>Purchase: <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(tx.amount)}</span></p>}
+                        {tx.paid > 0 && <p className={`text-green-600 dark:text-green-400 ${tx.isVoid ? 'line-through' : ''}`}>Paid: <span className="font-bold">{formatCurrency(tx.paid)}</span></p>}
                       </div>
-                      
                       <div className="flex gap-1">
                         <button onClick={() => setViewingInvoice(tx)} className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-green-600 transition shadow-sm">
                           <FileText size={14} />
@@ -225,7 +205,6 @@ export const ProfilePage = () => {
           </div>
         </div>
 
-        {/* Notes Section (if exists) */}
         {selectedCustomer.notes && (
           <div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800/30 p-4 rounded-2xl">
             <p className="text-xs font-bold text-yellow-800 dark:text-yellow-400 uppercase mb-1">Notes</p>
@@ -238,15 +217,49 @@ export const ProfilePage = () => {
       {viewingInvoice && <InvoiceModal onClose={() => setViewingInvoice(null)} transaction={viewingInvoice} />}
       {isEditing && <EditCustomerModal customer={selectedCustomer} onClose={() => setIsEditing(false)} />}
       
+      {/* Clear Debt Modal */}
       {showClearDebtModal && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
             <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Clear Debt?</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">Type <span className="text-red-600 font-mono bg-red-50 px-1 rounded">yes</span> to clear {formatCurrency(selectedCustomer.balance)}.</p>
-            <input type="text" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && confirmText.toLowerCase().trim() === 'yes' && executeClearDebt()} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white mb-4 text-center font-mono" placeholder="yes" autoFocus />
+            <input type="text" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white mb-4 text-center font-mono" placeholder="yes" autoFocus />
             <div className="flex gap-3">
               <button onClick={() => setShowClearDebtModal(false)} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Cancel</button>
               <button onClick={executeClearDebt} disabled={confirmText.toLowerCase().trim() !== "yes"} className="flex-1 bg-green-700 text-white font-bold py-3 rounded-xl disabled:opacity-50">Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 👇 NEW: Strict Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
+            <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Delete Customer?</h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">
+              This will permanently delete <span className="font-bold text-red-600">{selectedCustomer.name}</span> and all their transaction history. This cannot be undone.
+            </p>
+            <p className="text-gray-600 dark:text-gray-400 mb-2 text-sm">
+              Type <span className="text-red-600 font-mono bg-red-50 dark:bg-red-900/30 px-1 rounded">yes</span> to confirm.
+            </p>
+            <input 
+              type="text" 
+              value={deleteConfirmText} 
+              onChange={(e) => setDeleteConfirmText(e.target.value)} 
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-red-500 dark:text-white mb-4 text-center font-mono" 
+              placeholder="yes" 
+              autoFocus 
+            />
+            <div className="flex gap-3">
+              <button onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(""); }} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Cancel</button>
+              <button 
+                onClick={executeDelete} 
+                disabled={deleteConfirmText.toLowerCase().trim() !== "yes"} 
+                className="flex-1 bg-red-600 text-white font-bold py-3 rounded-xl disabled:opacity-50"
+              >
+                Delete Permanently
+              </button>
             </div>
           </div>
         </div>
