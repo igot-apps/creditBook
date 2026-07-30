@@ -1,6 +1,7 @@
 import { CustomerRepository } from '../repositories/CustomerRepository';
 import { TransactionRepository } from '../repositories/TransactionRepository';
 import { db } from '../database/db';
+import { generateInvoiceNumber } from '../utils/invoiceGenerator'; // 👈 NEW: Import the generator
 
 export const CustomerService = {
   // 1. Get all customers and calculate their live balance (Ignoring voided transactions)
@@ -54,6 +55,9 @@ export const CustomerService = {
     
     const newBalance = prevBalance + amount - paid;
 
+    // 👇 NEW: Generate human-readable invoice number (e.g., "INV-2024-001")
+    const invoiceNumber = await generateInvoiceNumber(storeId);
+
     const newTx = {
       customerId: targetCustomer.id,
       storeId: storeId, // Ensure storeId is saved for querying
@@ -65,7 +69,8 @@ export const CustomerService = {
       mode: invoiceItems ? 'detailed' : 'quick',
       prevBalance,
       newBalance,
-      isVoid: false
+      isVoid: false,
+      invoiceNumber: invoiceNumber // 👈 NEW: Save the invoice number
     };
     
     await TransactionRepository.add(storeId, newTx);
@@ -87,6 +92,8 @@ export const CustomerService = {
 
     if (currentBalance <= 0) return null;
 
+    const invoiceNumber = await generateInvoiceNumber(storeId); // 👈 NEW
+
     await TransactionRepository.add(storeId, {
       customerId,
       storeId: storeId,
@@ -96,7 +103,8 @@ export const CustomerService = {
       items: 'Balance clearance',
       prevBalance: currentBalance,
       newBalance: 0,
-      isVoid: false
+      isVoid: false,
+      invoiceNumber: invoiceNumber // 👈 NEW
     });
     
     const updatedHistory = await TransactionRepository.getByCustomerId(storeId, customerId);

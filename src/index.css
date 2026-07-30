@@ -26,3 +26,23 @@ html, body, #root {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* 👇 PRINT STYLES FOR INVOICE */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print\\:block, .print\\:block * {
+    visibility: visible;
+  }
+  .print\\:hidden {
+    display: none !important;
+  }
+  /* Remove shadows and rounded corners for clean paper printing */
+  .print\\:rounded-none {
+    border-radius: 0 !important;
+  }
+  .print\\:shadow-none {
+    box-shadow: none !important;
+  }
+}

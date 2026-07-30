@@ -2,7 +2,6 @@ import Dexie from 'dexie';
 
 export const db = new Dexie('CreditBookDB');
 
-// Original Version 1
 db.version(1).stores({
   stores: '++id, createdAt',
   customers: '++id, storeId, phone, name',
@@ -10,7 +9,12 @@ db.version(1).stores({
   products: '++id, storeId, name'
 });
 
-// 👇 NEW: Bump to Version 2 to add the drafts table
 db.version(2).stores({
   drafts: '++id, storeId, createdAt'
+});
+
+// 👇 NEW: Version 3 to add invoice number support
+db.version(3).stores({
+  transactions: '++id, [storeId+customerId], date, invoiceNumber',
+  invoiceCounters: '++id, [storeId+year]' // Track invoice numbers per store per year
 });

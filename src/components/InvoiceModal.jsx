@@ -1,99 +1,145 @@
-import { X, Printer } from "lucide-react";
+import { X, Printer, Share2, Store, Phone, Mail, MapPin, FileText } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 
-export const InvoiceModal = ({ transaction, onClose }) => {
-  const { currentStore, customers } = useStore();
-
-  if (!transaction || !currentStore) return null;
-
-  const customer = customers.find(c => c.id === transaction.customerId) || { name: "Walk-in Customer", phone: "" };
+export const InvoiceModal = ({ onClose, transaction, customerName, customerPhone }) => {
+  const { currentStore } = useStore();
+  if (!transaction) return null;
 
   const handlePrint = () => {
     window.print();
   };
 
+  const handleShare = () => {
+    // You can integrate WhatsApp/SMS sharing here later
+    alert("Share functionality coming soon!");
+  };
+
+  const balanceDue = (transaction.amount || 0) - (transaction.paid || 0);
+
   return (
-    <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm print:bg-white print:p-0">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden print:shadow-none print:rounded-none print:max-w-full">
+    <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-4 backdrop-blur-sm print:bg-white print:p-0 print:block">
+      
+      {/* Action Buttons (Hidden when printing) */}
+      <div className="absolute top-4 right-4 flex gap-2 print:hidden">
+        <button onClick={handlePrint} className="p-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-full shadow-lg hover:scale-105 transition" title="Print Receipt">
+          <Printer size={20} />
+        </button>
+        <button onClick={handleShare} className="p-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-full shadow-lg hover:scale-105 transition" title="Share">
+          <Share2 size={20} />
+        </button>
+        <button onClick={onClose} className="p-2 bg-red-500 text-white rounded-full shadow-lg hover:scale-105 transition" title="Close">
+          <X size={20} />
+        </button>
+      </div>
+
+      {/* The Receipt Paper */}
+      <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto print:rounded-none print:shadow-none print:max-h-none print:w-full print:overflow-visible">
         
-        {/* Modal Header (Hidden when printing) */}
-        <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700 print:hidden">
-          <h3 className="font-bold text-lg text-gray-900 dark:text-white">Transaction Receipt</h3>
-          <button onClick={onClose} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition">
-            <X size={20} className="text-gray-700 dark:text-gray-200" />
-          </button>
+        {/* --- RECEIPT HEADER (Business Info) --- */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 p-6 text-center border-b border-dashed border-gray-200 dark:border-gray-700">
+          <div className="w-16 h-16 bg-green-700 text-white rounded-full mx-auto mb-3 flex items-center justify-center text-2xl font-bold shadow-md">
+            {currentStore?.name?.charAt(0) || <Store size={24} />}
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">{currentStore?.name || "Business Name"}</h2>
+          
+          <div className="mt-3 space-y-1 text-xs text-gray-500 dark:text-gray-400">
+            {currentStore?.address && (
+              <p className="flex items-center justify-center gap-1.5"><MapPin size={12} /> {currentStore.address}</p>
+            )}
+            {currentStore?.phone && (
+              <p className="flex items-center justify-center gap-1.5"><Phone size={12} /> {currentStore.phone}</p>
+            )}
+            {currentStore?.email && (
+              <p className="flex items-center justify-center gap-1.5"><Mail size={12} /> {currentStore.email}</p>
+            )}
+          </div>
         </div>
 
-        {/* Invoice Content */}
-        <div className="p-6 print:p-0">
-          {/* Store Header */}
-          <div className="text-center mb-6 border-b border-dashed border-gray-300 dark:border-gray-600 pb-4">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{currentStore.name}</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{currentStore.phone}</p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{formatDate(transaction.date)}</p>
-          </div>
-
-          {/* Customer Info */}
-          <div className="mb-6">
-            <p className="text-xs font-bold text-gray-400 uppercase mb-1">Billed To:</p>
-            <p className="font-bold text-gray-900 dark:text-white text-lg">{customer.name}</p>
-            {customer.phone && <p className="text-sm text-gray-500 dark:text-gray-400">{customer.phone}</p>}
-          </div>
-
-          {/* Transaction Details */}
-          <div className="space-y-3 mb-6">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500 dark:text-gray-400">Items:</span>
-              <span className="font-medium text-gray-900 dark:text-white text-right max-w-[60%]">{transaction.items || "General Purchase"}</span>
+        {/* --- INVOICE META & CUSTOMER INFO --- */}
+        <div className="p-6 space-y-4">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Invoice Number</p>
+              <p className="text-lg font-mono font-bold text-gray-900 dark:text-white">
+                {transaction.invoiceNumber || `#${transaction.id}`}
+              </p>
             </div>
+            <div className="text-right">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Date Issued</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                {formatDate(transaction.date)}
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Billed To</p>
+            <p className="font-bold text-gray-900 dark:text-white">{customerName || "Walk-in Customer"}</p>
+            {customerPhone && <p className="text-xs text-gray-500 dark:text-gray-400">{customerPhone}</p>}
+          </div>
+
+          {/* --- ITEMS LIST --- */}
+          <div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Items & Description</p>
             
-            {transaction.invoiceItems && transaction.invoiceItems.length > 0 && (
-              <div className="mt-3 border-t border-b border-gray-100 dark:border-gray-700 py-2 space-y-2">
-                {transaction.invoiceItems.map((item, idx) => (
-                  <div key={idx} className="flex justify-between text-xs text-gray-600 dark:text-gray-300">
-                    <span>{item.quantity}x {item.name}</span>
-                    <span>{formatCurrency(item.quantity * item.price)}</span>
+            {transaction.invoiceItems && transaction.invoiceItems.length > 0 ? (
+              <div className="space-y-2">
+                {transaction.invoiceItems.map((item, index) => (
+                  <div key={index} className="flex justify-between items-center text-sm border-b border-gray-100 dark:border-gray-800 pb-2 last:border-0">
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900 dark:text-white">{item.name}</p>
+                      <p className="text-xs text-gray-500">
+                        {item.quantity} {item.unit ? `× ${item.unit}` : 'pcs'} @ {formatCurrency(item.price)}
+                      </p>
+                    </div>
+                    <p className="font-bold text-gray-900 dark:text-white ml-4">
+                      {formatCurrency(item.quantity * item.price)}
+                    </p>
                   </div>
                 ))}
               </div>
+            ) : (
+              <div className="text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                {transaction.items || "General Purchase"}
+              </div>
             )}
+          </div>
 
-            <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200 dark:border-gray-700">
-              <span className="text-gray-900 dark:text-white">Total Amount</span>
-              <span className="text-gray-900 dark:text-white">{formatCurrency(transaction.amount)}</span>
-            </div>
+          {/* --- TOTALS SECTION --- */}
+          <div className="pt-4 border-t-2 border-gray-200 dark:border-gray-700 space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-green-600 dark:text-green-400">Amount Paid</span>
-              <span className="text-green-600 dark:text-green-400 font-semibold">-{formatCurrency(transaction.paid)}</span>
+              <span className="text-gray-500 dark:text-gray-400">Total Amount</span>
+              <span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(transaction.amount)}</span>
             </div>
-            <div className={`flex justify-between text-xl font-bold pt-2 border-t-2 border-gray-900 dark:border-gray-100 ${transaction.newBalance > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
-              <span>Balance Due</span>
-              <span>{formatCurrency(transaction.newBalance)}</span>
+            {transaction.paid > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Amount Paid</span>
+                <span className="font-semibold text-green-600 dark:text-green-400">-{formatCurrency(transaction.paid)}</span>
+              </div>
+            )}
+            <div className="flex justify-between items-center pt-3 border-t border-dashed border-gray-300 dark:border-gray-600">
+              <span className="text-base font-bold text-gray-900 dark:text-white">Balance Due</span>
+              <span className={`text-2xl font-bold font-mono ${
+                balanceDue > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
+              }`}>
+                {formatCurrency(balanceDue)}
+              </span>
             </div>
           </div>
 
-          {/* Footer */}
-          <div className="text-center text-xs text-gray-400 dark:text-gray-500 pt-4 border-t border-dashed border-gray-300 dark:border-gray-600">
-            <p>Thank you for your business!</p>
-            <p className="mt-1">This is a computer-generated receipt.</p>
+          {/* --- FOOTER --- */}
+          <div className="pt-6 text-center">
+            <p className="text-sm font-bold text-gray-900 dark:text-white">Thank you for your business!</p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2 font-mono">
+              Generated by CreditBook
+            </p>
+            {transaction.isVoid && (
+              <div className="mt-4 border-2 border-red-500 text-red-500 font-bold text-xl py-2 px-4 rounded-lg transform -rotate-12 inline-block opacity-80">
+                VOIDED
+              </div>
+            )}
           </div>
-        </div>
-
-        {/* Action Buttons (Hidden when printing) */}
-        <div className="p-4 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex gap-3 print:hidden">
-          <button 
-            onClick={handlePrint}
-            className="flex-1 bg-gray-900 dark:bg-gray-700 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"
-          >
-            <Printer size={18} /> Print / Save PDF
-          </button>
-          <button 
-            onClick={onClose}
-            className="flex-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 font-semibold py-3 rounded-xl active:scale-95 transition"
-          >
-            Close
-          </button>
         </div>
       </div>
     </div>

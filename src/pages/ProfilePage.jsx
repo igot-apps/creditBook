@@ -46,24 +46,21 @@ export const ProfilePage = () => {
     setView("record");
   };
 
-  // 👇 NEW: Void & Duplicate (Redo) Logic
   const handleRedoTransaction = async (tx) => {
     if (!window.confirm(`This will VOID this invoice and open a corrected copy for you to fix. Continue?`)) return;
     
     try {
-      // 1. Void the old transaction immediately
       await CustomerService.voidTransaction(currentStore.id, selectedCustomer.id, tx.id);
       await refreshCustomers();
       
-      // 2. Pre-fill the Record page with the old data so they don't have to re-type
       setPrefillTransaction({
-        customerId: selectedCustomer.id, // Use current customer ID
+        customerId: selectedCustomer.id,
         name: selectedCustomer.name,
         phone: selectedCustomer.phone,
         items: tx.items || "",
         amount: tx.amount.toString(),
         paid: tx.paid.toString(),
-        invoiceItems: tx.invoiceItems || null // Pass detailed items if they exist!
+        invoiceItems: tx.invoiceItems || null
       });
       
       showToast("Old invoice voided. Please correct and save the new one.");
@@ -209,10 +206,22 @@ export const ProfilePage = () => {
                   
                   <div className={`p-3 rounded-xl border transition-all ${tx.isVoid ? 'border-red-200 dark:border-red-900/30 bg-red-50/30 dark:bg-red-900/5 opacity-80' : getTimelineColor(tx)}`}>
                     <div className="flex justify-between items-start mb-1">
-                      <p className={`font-bold text-sm flex items-center flex-wrap gap-2 ${tx.isVoid ? 'text-gray-500 line-through decoration-red-500 decoration-2' : 'text-gray-900 dark:text-white'}`}>
-                        {tx.items || "General Transaction"} 
-                        {tx.isVoid && <span className="text-[10px] text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 rounded font-bold no-underline tracking-wider">VOIDED</span>}
-                      </p>
+                      <div className="flex-1 min-w-0">
+                        {/* 👇 NEW: Display Human-Readable Invoice Number */}
+                        {tx.invoiceNumber && (
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <FileText size={12} className="text-gray-400 flex-shrink-0" />
+                            <span className="text-[10px] font-mono font-bold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+                              {tx.invoiceNumber}
+                            </span>
+                          </div>
+                        )}
+                        
+                        <p className={`font-bold text-sm flex items-center flex-wrap gap-2 ${tx.isVoid ? 'text-gray-500 line-through decoration-red-500 decoration-2' : 'text-gray-900 dark:text-white'}`}>
+                          {tx.items || "General Transaction"} 
+                          {tx.isVoid && <span className="text-[10px] text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 rounded font-bold no-underline tracking-wider">VOIDED</span>}
+                        </p>
+                      </div>
                       <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap ml-2 mt-0.5">{formatDate(tx.date)}</span>
                     </div>
                     
@@ -222,7 +231,6 @@ export const ProfilePage = () => {
                         {tx.paid > 0 && <p className={`text-green-600 dark:text-green-400 ${tx.isVoid ? 'line-through' : ''}`}>Paid: <span className="font-bold">{formatCurrency(tx.paid)}</span></p>}
                       </div>
                       <div className="flex gap-1">
-                        {/* 👇 NEW: Redo Button (Void & Duplicate) */}
                         {!tx.isVoid && (
                           <button 
                             onClick={() => handleRedoTransaction(tx)} 
@@ -268,7 +276,14 @@ export const ProfilePage = () => {
       </div>
 
       {/* Modals */}
-      {viewingInvoice && <InvoiceModal onClose={() => setViewingInvoice(null)} transaction={viewingInvoice} />}
+      {viewingInvoice && (
+        <InvoiceModal 
+          onClose={() => setViewingInvoice(null)} 
+          transaction={viewingInvoice} 
+          customerName={selectedCustomer.name} // 👈 Pass customer name
+          customerPhone={selectedCustomer.phone} // 👈 Pass customer phone
+        />
+      )}
       {isEditing && <EditCustomerModal customer={selectedCustomer} onClose={() => setIsEditing(false)} />}
       
       {/* Clear Debt Modal */}

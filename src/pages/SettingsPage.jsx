@@ -1,130 +1,196 @@
-import { useState } from "react";
-import { Store, User, Mail, Phone, Save, AlertCircle } from "lucide-react";
-import useStore from "../store/useStore"; // 👈 CHANGED
-import { PageHeader } from "../components/PageHeader";
+import { useState, useEffect } from "react";
+import { Save, Store, User, Mail, Phone, MapPin, CreditCard } from "lucide-react";
+import useStore from "../store/useStore";
+import { StoreRepository } from "../repositories/StoreRepository";
 
 export const SettingsPage = () => {
-  const { currentStore, setCurrentStore, showToast, setView } = useStore(); // 👈 CHANGED
-  const [form, setForm] = useState({
-    name: currentStore?.name || "",
-    ownerName: currentStore?.ownerName || "",
-    email: currentStore?.email || "",
-    phone: currentStore?.phone || ""
+  const { currentStore, showToast } = useStore();
+  
+  const [formData, setFormData] = useState({
+    name: "",
+    ownerName: "",
+    email: "",
+    phone: "",
+    address: "",
+    currency: "GHS"
   });
   const [isSaving, setIsSaving] = useState(false);
 
-  const handleSave = async (e) => {
-    e.preventDefault();
+  // 1. Load current store data into the form when the page loads
+  useEffect(() => {
+    if (currentStore) {
+      setFormData({
+        name: currentStore.name || "",
+        ownerName: currentStore.ownerName || "",
+        email: currentStore.email || "",
+        phone: currentStore.phone || "",
+        address: currentStore.address || "",
+        currency: currentStore.currency || "GHS"
+      });
+    }
+  }, [currentStore]);
+
+  // 2. Handle the save action
+  const handleSave = async () => {
+    if (!formData.name.trim()) {
+      showToast("⚠️ Business name is required!");
+      return;
+    }
+
     setIsSaving(true);
     try {
-      // Update local state (In a full app, you'd also save this to IndexedDB via a service)
-      const updatedStore = { ...currentStore, ...form };
-      setCurrentStore(updatedStore);
-      showToast("Settings saved successfully!");
+      // A. Update the database
+      const updatedStore = await StoreRepository.update(currentStore.id, {
+        name: formData.name.trim(),
+        ownerName: formData.ownerName.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        address: formData.address.trim(),
+        currency: formData.currency
+      });
+
+      // B. Update the global Zustand store so the whole app (like Layout sidebar) updates instantly
+      useStore.getState().setCurrentStore(updatedStore);
+
+      showToast("✅ Business profile updated successfully!");
     } catch (error) {
-      console.error(error);
-      showToast("Failed to save settings");
+      console.error("Failed to save store:", error);
+      showToast("❌ Failed to save business profile.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (!currentStore) return null;
+  const handleChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  if (!currentStore) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <p className="text-gray-500">Loading settings...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      <PageHeader title="Settings" subtitle="Manage your business profile" />
+      <div className="bg-green-700 dark:bg-gray-900 text-white p-6 pb-8 rounded-b-[2rem] shadow-lg">
+        <h1 className="text-2xl font-bold">Business Settings</h1>
+        <p className="text-green-100 text-sm mt-1">Manage your store profile and preferences</p>
+      </div>
 
-      <div className="p-4 max-w-lg mx-auto space-y-4">
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full flex items-center justify-center font-bold text-xl">
-              {currentStore.name.charAt(0)}
-            </div>
-            <div>
-              <h2 className="font-bold text-gray-900 dark:text-white text-lg">Business Profile</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Update your store details</p>
-            </div>
-          </div>
-
-          <form onSubmit={handleSave} className="space-y-4">
-            <div>
-              <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Business Name</label>
-              <div className="relative">
-                <Store className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input 
-                  value={form.name} 
-                  onChange={e => setForm({...form, name: e.target.value})}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Owner Name</label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input 
-                  value={form.ownerName} 
-                  onChange={e => setForm({...form, ownerName: e.target.value})}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Email (Optional)</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input 
-                  type="email"
-                  value={form.email} 
-                  onChange={e => setForm({...form, email: e.target.value})}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Phone Number</label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input 
-                  type="tel"
-                  value={form.phone} 
-                  onChange={e => setForm({...form, phone: e.target.value})}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
-                  required
-                />
-              </div>
-            </div>
-
-            <button 
-              type="submit"
-              disabled={isSaving}
-              className="w-full bg-green-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-70 mt-4"
-            >
-              {isSaving ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              ) : (
-                <>
-                  <Save size={20} /> Save Changes
-                </>
-              )}
-            </button>
-          </form>
-        </div>
-
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-4 rounded-2xl flex items-start gap-3">
-          <AlertCircle className="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" size={20} />
+      <div className="p-4 max-w-lg mx-auto space-y-6 -mt-4">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
+          
+          {/* Business Name */}
           <div>
-            <p className="font-bold text-sm text-blue-800 dark:text-blue-300">Offline Mode Active</p>
-            <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
-              All your data is stored securely on this device. No internet connection is required to use CreditBook.
-            </p>
+            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 block">Business Name *</label>
+            <div className="relative">
+              <Store className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <input 
+                type="text" 
+                value={formData.name} 
+                onChange={(e) => handleChange("name", e.target.value)} 
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
+                placeholder="e.g., Kwame's Provisions"
+              />
+            </div>
           </div>
+
+          {/* Owner Name */}
+          <div>
+            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 block">Owner Name</label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <input 
+                type="text" 
+                value={formData.ownerName} 
+                onChange={(e) => handleChange("ownerName", e.target.value)} 
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
+                placeholder="Your full name"
+              />
+            </div>
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 block">Email Address</label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <input 
+                type="email" 
+                value={formData.email} 
+                onChange={(e) => handleChange("email", e.target.value)} 
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
+                placeholder="store@example.com"
+              />
+            </div>
+          </div>
+
+          {/* Phone */}
+          <div>
+            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 block">Business Phone</label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <input 
+                type="tel" 
+                value={formData.phone} 
+                onChange={(e) => handleChange("phone", e.target.value)} 
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
+                placeholder="024 123 4567"
+              />
+            </div>
+          </div>
+
+          {/* Address */}
+          <div>
+            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 block">Business Address</label>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-3 text-gray-400" size={20} />
+              <textarea 
+                value={formData.address} 
+                onChange={(e) => handleChange("address", e.target.value)} 
+                rows="2"
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white resize-none" 
+                placeholder="Street, City, Region"
+              />
+            </div>
+          </div>
+
+          {/* Currency */}
+          <div>
+            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 block">Default Currency</label>
+            <div className="relative">
+              <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <select 
+                value={formData.currency} 
+                onChange={(e) => handleChange("currency", e.target.value)} 
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white appearance-none"
+              >
+                <option value="GHS">GHS (₵) - Ghana Cedi</option>
+                <option value="USD">USD ($) - US Dollar</option>
+                <option value="NGN">NGN (₦) - Nigerian Naira</option>
+                <option value="KES">KES (KSh) - Kenyan Shilling</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Save Button */}
+          <button 
+            onClick={handleSave} 
+            disabled={isSaving}
+            className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg mt-4"
+          >
+            {isSaving ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <>
+                <Save size={20} /> Save Business Profile
+              </>
+            )}
+          </button>
+
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, FileText } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 
@@ -10,9 +10,13 @@ export const CustomerCard = ({ customer }) => {
     setView("profile");
   };
 
-  // Get the date of the last transaction
-  const lastActivity = customer.history && customer.history.length > 0 
-    ? formatDate(customer.history[customer.history.length - 1].date).split(',')[0] 
+  // Get the latest transaction for the card summary
+  const latestTx = customer.history && customer.history.length > 0 
+    ? customer.history[customer.history.length - 1] 
+    : null;
+
+  const lastActivity = latestTx 
+    ? formatDate(latestTx.date).split(',')[0] 
     : 'No activity';
 
   return (
@@ -25,10 +29,20 @@ export const CustomerCard = ({ customer }) => {
         {customer.name.charAt(0)}
       </div>
       
-      {/* Name & Phone */}
+      {/* Name, Phone & Latest Invoice */}
       <div className="flex-1 min-w-0">
         <h3 className="font-bold text-gray-900 dark:text-white truncate">{customer.name}</h3>
         <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{customer.phone}</p>
+        
+        {/* 👇 NEW: Show latest invoice number if it exists */}
+        {latestTx?.invoiceNumber && (
+          <div className="flex items-center gap-1 mt-1">
+            <FileText size={12} className="text-gray-400" />
+            <span className="text-[10px] font-mono font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+              {latestTx.invoiceNumber}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Balance & Date */}
