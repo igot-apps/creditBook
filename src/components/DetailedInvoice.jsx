@@ -14,9 +14,15 @@ export const DetailedInvoice = ({
   const [newProduct, setNewProduct] = useState({ name: "", price: "", unit: "", category: "" });
   const [priceUpdateIndex, setPriceUpdateIndex] = useState(null);
   const [discount, setDiscount] = useState("");
-  const [showSummary, setShowSummary] = useState(true); // 👈 NEW: Collapsible summary
+  const [showSummary, setShowSummary] = useState(true);
 
-  const totalInvoiceAmount = invoiceItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+  // 👇 FIX: Safely calculate totals even if fields are temporarily empty strings
+  const totalInvoiceAmount = invoiceItems.reduce((sum, item) => {
+    const qty = parseFloat(item.quantity) || 0;
+    const price = parseFloat(item.price) || 0;
+    return sum + (qty * price);
+  }, 0);
+
   const discountAmount = parseFloat(discount) || 0;
   const finalTotal = Math.max(0, totalInvoiceAmount - discountAmount);
 
@@ -41,11 +47,20 @@ export const DetailedInvoice = ({
     if (!isOneTime) ProductService.trackUsage(product.id);
   };
 
+  // 👇 FIX: Allow empty strings while typing to prevent the "05" ghost zero
   const updateItem = (index, field, value) => {
     const updated = [...invoiceItems];
-    updated[index][field] = field === 'name' ? value : parseFloat(value) || 0;
+    
+    if (field !== 'name') {
+      // If the user clears the field, keep it as an empty string "" instead of forcing 0
+      updated[index][field] = value === "" ? "" : (parseFloat(value) || 0);
+    } else {
+      updated[index][field] = value;
+    }
+
     if (field === 'price' && !updated[index].isOneTime) {
-      const oldPrice = updated[index].defaultPrice; const newPrice = parseFloat(value) || 0;
+      const oldPrice = updated[index].defaultPrice; 
+      const newPrice = parseFloat(value) || 0;
       if (oldPrice !== newPrice && newPrice > 0) setPriceUpdateIndex(index);
     }
     setInvoiceItems(updated);
@@ -53,10 +68,13 @@ export const DetailedInvoice = ({
 
   const handlePriceUpdate = (index, shouldUpdate) => {
     if (shouldUpdate) {
-      const productId = invoiceItems[index].productId; const newPrice = invoiceItems[index].price;
+      const productId = invoiceItems[index].productId; 
+      const newPrice = invoiceItems[index].price;
       ProductService.update(productId, { price: newPrice });
       setProducts(prev => prev.map(p => p.id === productId ? { ...p, price: newPrice } : p));
-      const updated = [...invoiceItems]; updated[index].defaultPrice = newPrice; setInvoiceItems(updated);
+      const updated = [...invoiceItems]; 
+      updated[index].defaultPrice = newPrice; 
+      setInvoiceItems(updated);
     }
     setPriceUpdateIndex(null);
   };
@@ -74,7 +92,7 @@ export const DetailedInvoice = ({
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col max-h-[95vh]">
+    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col max-h-[85vh]">
       
       {/* 1. STICKY SEARCH BAR */}
       <div className="sticky top-0 z-20 bg-white dark:bg-gray-800 p-3 border-b border-gray-100 dark:border-gray-700 shadow-sm">
@@ -105,7 +123,7 @@ export const DetailedInvoice = ({
         )}
       </div>
 
-      {/* 2. SCROLLABLE ITEMS LIST (Takes up most space) */}
+      {/* 2. SCROLLABLE ITEMS LIST */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-gray-50/50 dark:bg-gray-900/30 min-h-[200px]">
         {invoiceItems.length === 0 ? (
           <div className="text-center py-8">
@@ -123,15 +141,27 @@ export const DetailedInvoice = ({
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-blue-500 dark:text-blue-400 pointer-events-none">QTY</span>
-                <input type="number" inputMode="decimal" value={item.quantity} onChange={e => updateItem(index, 'quantity', e.target.value)} className={`w-full pl-9 pr-2 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm font-bold text-center outline-none ${noSpinnerClass}`} />
+                {/*  FIX: Show empty string if state is empty, otherwise show the number */}
+                <input 
+                  type="number" inputMode="decimal" 
+                  value={item.quantity === "" ? "" : Number(item.quantity)} 
+                  onChange={e => updateItem(index, 'quantity', e.target.value)} 
+                  className={`w-full pl-9 pr-2 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm font-bold text-center outline-none ${noSpinnerClass}`} 
+                />
               </div>
               <span className="text-gray-400 dark:text-gray-500 font-bold text-lg">×</span>
               <div className="relative flex-1">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-purple-500 dark:text-purple-400 pointer-events-none">PRICE</span>
-                <input type="number" inputMode="decimal" value={item.price} onChange={e => updateItem(index, 'price', e.target.value)} className={`w-full pl-12 pr-2 py-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-sm font-bold text-center outline-none ${noSpinnerClass}`} />
+                {/* 👇 FIX: Show empty string if state is empty, otherwise show the number */}
+                <input 
+                  type="number" inputMode="decimal" 
+                  value={item.price === "" ? "" : Number(item.price)} 
+                  onChange={e => updateItem(index, 'price', e.target.value)} 
+                  className={`w-full pl-12 pr-2 py-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-sm font-bold text-center outline-none ${noSpinnerClass}`} 
+                />
               </div>
               <span className="text-gray-400 dark:text-gray-500 font-bold text-lg">=</span>
-              <div className="flex-1 text-right"><p className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency(item.quantity * item.price)}</p></div>
+              <div className="flex-1 text-right"><p className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0))}</p></div>
             </div>
             {priceUpdateIndex === index && (
               <div className="mt-2 pt-2 border-t border-dashed border-yellow-300 dark:border-yellow-800 flex items-center justify-between text-xs">
@@ -145,12 +175,7 @@ export const DetailedInvoice = ({
 
       {/* 3. COMPACT COLLAPSIBLE SUMMARY */}
       <div className="sticky bottom-0 z-20 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-        
-        {/* Toggle Button */}
-        <button 
-          onClick={() => setShowSummary(!showSummary)}
-          className="w-full flex items-center justify-between p-2.5 bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-900 transition"
-        >
+        <button onClick={() => setShowSummary(!showSummary)} className="w-full flex items-center justify-between p-2.5 bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-900 transition">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Summary</span>
             <span className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(finalTotal)}</span>
@@ -158,10 +183,8 @@ export const DetailedInvoice = ({
           {showSummary ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronUp size={16} className="text-gray-400" />}
         </button>
 
-        {/* Expandable Summary Content */}
         {showSummary && (
           <div className="p-3 space-y-2 border-t border-gray-100 dark:border-gray-700">
-            {/* Subtotal & Discount Row */}
             <div className="flex items-center gap-2 text-xs">
               <span className="text-gray-500 dark:text-gray-400 flex-1">Subtotal: {formatCurrency(totalInvoiceAmount)}</span>
               <div className="flex items-center gap-1 bg-orange-50 dark:bg-orange-900/10 px-2 py-1 rounded border border-orange-100 dark:border-orange-900/30">
@@ -174,13 +197,11 @@ export const DetailedInvoice = ({
               </div>
             </div>
 
-            {/* Total Due */}
             <div className="flex justify-between items-center pt-1 border-t border-dashed border-gray-200 dark:border-gray-600">
               <span className="text-sm font-bold text-gray-900 dark:text-white">Total Due:</span>
               <span className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(finalTotal)}</span>
             </div>
 
-            {/* Money Paid */}
             <div>
               <label className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold uppercase">Money Paid</label>
               <input 
@@ -190,7 +211,6 @@ export const DetailedInvoice = ({
               />
             </div>
             
-            {/* Note */}
             <div className="relative">
               <FileText className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
               <input 
