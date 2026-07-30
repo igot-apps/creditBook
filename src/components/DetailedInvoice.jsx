@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { Search, PlusCircle, Trash2, X, Check } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Search, PlusCircle, Trash2, X, Check, Tag, FileText, ChevronUp, ChevronDown } from "lucide-react";
 import { ProductService } from "../services/ProductService";
 import { formatCurrency } from "../utils/helpers";
 
@@ -13,13 +13,16 @@ export const DetailedInvoice = ({
   const [showInlineProduct, setShowInlineProduct] = useState(false);
   const [newProduct, setNewProduct] = useState({ name: "", price: "", unit: "", category: "" });
   const [priceUpdateIndex, setPriceUpdateIndex] = useState(null);
+  const [discount, setDiscount] = useState("");
+  const [showSummary, setShowSummary] = useState(true); // 👈 NEW: Collapsible summary
 
   const totalInvoiceAmount = invoiceItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+  const discountAmount = parseFloat(discount) || 0;
+  const finalTotal = Math.max(0, totalInvoiceAmount - discountAmount);
 
-  // Sync total to main tx state
-  useState(() => {
-    setTx(prev => ({ ...prev, amount: totalInvoiceAmount.toString() }));
-  }, [totalInvoiceAmount]);
+  useEffect(() => {
+    setTx(prev => ({ ...prev, amount: finalTotal.toString() }));
+  }, [finalTotal, setTx]);
 
   const filteredProducts = useMemo(() => {
     if (!productSearch.trim()) return products.filter(p => p.isFavourite || p.usageCount > 0).slice(0, 5);
@@ -71,22 +74,21 @@ export const DetailedInvoice = ({
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col max-h-[70vh]">
+    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col max-h-[75vh]">
       
-      {/* 👇 1. STICKY SEARCH BAR (Always visible at the top) */}
-      <div className="sticky top-0 z-20 bg-white dark:bg-gray-800 p-4 border-b border-gray-100 dark:border-gray-700 shadow-sm">
+      {/* 1. STICKY SEARCH BAR */}
+      <div className="sticky top-0 z-20 bg-white dark:bg-gray-800 p-3 border-b border-gray-100 dark:border-gray-700 shadow-sm">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input 
             value={productSearch} 
             onChange={e => setProductSearch(e.target.value)} 
             placeholder="Search or add product..." 
-            className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
+            className="w-full pl-9 pr-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white text-sm" 
             autoFocus
           />
         </div>
         
-        {/* Search Dropdown */}
         {productSearch && (
           <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 max-h-48 overflow-y-auto shadow-xl z-30">
             {filteredProducts.length > 0 ? filteredProducts.map(p => (
@@ -103,8 +105,8 @@ export const DetailedInvoice = ({
         )}
       </div>
 
-      {/* 👇 2. SCROLLABLE ITEMS LIST (Takes up available middle space) */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50/50 dark:bg-gray-900/30">
+      {/* 2. SCROLLABLE ITEMS LIST (Takes up most space) */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-gray-50/50 dark:bg-gray-900/30 min-h-[200px]">
         {invoiceItems.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-gray-400 dark:text-gray-500 text-sm">No items added yet.</p>
@@ -141,23 +143,65 @@ export const DetailedInvoice = ({
         ))}
       </div>
 
-      {/* 👇 3. STICKY TOTALS & PAID (Always visible at the bottom) */}
-      <div className="sticky bottom-0 z-20 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4 space-y-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-        <div className="flex justify-between items-center">
-          <span className="text-gray-500 dark:text-gray-400 font-semibold">Total Amount:</span>
-          <span className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(totalInvoiceAmount)}</span>
-        </div>
-        <div>
-          <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Money Paid</label>
-          <input 
-            type="number" 
-            inputMode="decimal" 
-            placeholder="0.00" 
-            value={tx.paid} 
-            onChange={e => setTx({...tx, paid: e.target.value})} 
-            className={`w-full text-2xl font-bold text-green-700 dark:text-green-400 mt-1 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`} 
-          />
-        </div>
+      {/* 3. COMPACT COLLAPSIBLE SUMMARY */}
+      <div className="sticky bottom-0 z-20 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        
+        {/* Toggle Button */}
+        <button 
+          onClick={() => setShowSummary(!showSummary)}
+          className="w-full flex items-center justify-between p-2.5 bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-900 transition"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Summary</span>
+            <span className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(finalTotal)}</span>
+          </div>
+          {showSummary ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronUp size={16} className="text-gray-400" />}
+        </button>
+
+        {/* Expandable Summary Content */}
+        {showSummary && (
+          <div className="p-3 space-y-2 border-t border-gray-100 dark:border-gray-700">
+            {/* Subtotal & Discount Row */}
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-gray-500 dark:text-gray-400 flex-1">Subtotal: {formatCurrency(totalInvoiceAmount)}</span>
+              <div className="flex items-center gap-1 bg-orange-50 dark:bg-orange-900/10 px-2 py-1 rounded border border-orange-100 dark:border-orange-900/30">
+                <Tag className="text-orange-500" size={12} />
+                <input 
+                  type="number" inputMode="decimal" placeholder="Discount" 
+                  value={discount} onChange={e => setDiscount(e.target.value)}
+                  className={`w-16 bg-transparent text-right font-bold text-orange-700 dark:text-orange-400 outline-none text-xs ${noSpinnerClass}`} 
+                />
+              </div>
+            </div>
+
+            {/* Total Due */}
+            <div className="flex justify-between items-center pt-1 border-t border-dashed border-gray-200 dark:border-gray-600">
+              <span className="text-sm font-bold text-gray-900 dark:text-white">Total Due:</span>
+              <span className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(finalTotal)}</span>
+            </div>
+
+            {/* Money Paid */}
+            <div>
+              <label className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold uppercase">Money Paid</label>
+              <input 
+                type="number" inputMode="decimal" placeholder="0.00" 
+                value={tx.paid} onChange={e => setTx({...tx, paid: e.target.value})} 
+                className={`w-full text-lg font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-1 ${noSpinnerClass}`} 
+              />
+            </div>
+            
+            {/* Note */}
+            <div className="relative">
+              <FileText className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+              <input 
+                placeholder="Add note..." 
+                value={tx.note || ""} 
+                onChange={e => setTx({...tx, note: e.target.value})}
+                className="w-full pl-7 pr-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded outline-none focus:ring-1 focus:ring-blue-500 dark:text-white placeholder-gray-400"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Inline Create Product Modal */}

@@ -18,11 +18,11 @@ export const RecordPage = () => {
   // Core State
   const [mode, setMode] = useState("search");
   const [searchQuery, setSearchQuery] = useState("");
-  const [tx, setTx] = useState({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "" });
   const [phoneError, setPhoneError] = useState("");
   const [recordMode, setRecordMode] = useState("quick");
-    const [sendSmsOnSave, setSendSmsOnSave] = useState(false);
-  
+  const [sendSmsOnSave, setSendSmsOnSave] = useState(false);
+  const [tx, setTx] = useState({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "", note: "" });
+
   // Data State
   const [products, setProducts] = useState([]);
   const [invoiceItems, setInvoiceItems] = useState([]);
@@ -66,7 +66,7 @@ export const RecordPage = () => {
   };
 
   const resetToSearch = () => {
-    setTx({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "" });
+    setTx({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "", note: "" }); // 👈 Added note
     setInvoiceItems([]); setMode("search"); setSearchQuery(""); setPhoneError(""); setEditingDraftId(null);
   };
 
@@ -120,8 +120,9 @@ export const RecordPage = () => {
     
     setPhoneError("");
     try {
-      const itemsString = recordMode === "detailed" ? invoiceItems.map(i => `${i.quantity}x ${i.name}`).join(", ") : tx.items;
-      
+      const noteString = tx.note ? ` (Note: ${tx.note})` : "";
+      const itemsString = (recordMode === "detailed" ? invoiceItems.map(i => `${i.quantity}x ${i.name}`).join(", ") : tx.items) + noteString;
+
       // 1. Save to database FIRST
       await CustomerService.addTransaction(
         currentStore.id, tx.customerId, tx.name, tx.phone, amount, paid, itemsString, 
