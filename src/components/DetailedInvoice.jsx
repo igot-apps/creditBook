@@ -16,7 +16,6 @@ export const DetailedInvoice = ({
   const [discount, setDiscount] = useState("");
   const [showSummary, setShowSummary] = useState(true);
 
-  // 👇 FIX: Safely calculate totals even if fields are temporarily empty strings
   const totalInvoiceAmount = invoiceItems.reduce((sum, item) => {
     const qty = parseFloat(item.quantity) || 0;
     const price = parseFloat(item.price) || 0;
@@ -47,12 +46,9 @@ export const DetailedInvoice = ({
     if (!isOneTime) ProductService.trackUsage(product.id);
   };
 
-  // 👇 FIX: Allow empty strings while typing to prevent the "05" ghost zero
   const updateItem = (index, field, value) => {
     const updated = [...invoiceItems];
-    
     if (field !== 'name') {
-      // If the user clears the field, keep it as an empty string "" instead of forcing 0
       updated[index][field] = value === "" ? "" : (parseFloat(value) || 0);
     } else {
       updated[index][field] = value;
@@ -138,31 +134,41 @@ export const DetailedInvoice = ({
               </p>
               <button onClick={() => removeItem(index)} className="text-red-400 p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition active:scale-90"><Trash2 size={16} /></button>
             </div>
+            
+            {/* 👇 IMPROVED: Wider input fields with better layout */}
             <div className="flex items-center gap-2">
-              <div className="relative flex-1">
+              {/* QTY Field - Wider */}
+              <div className="relative flex-[1.5]">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-blue-500 dark:text-blue-400 pointer-events-none">QTY</span>
-                {/*  FIX: Show empty string if state is empty, otherwise show the number */}
                 <input 
                   type="number" inputMode="decimal" 
                   value={item.quantity === "" ? "" : Number(item.quantity)} 
                   onChange={e => updateItem(index, 'quantity', e.target.value)} 
-                  className={`w-full pl-9 pr-2 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm font-bold text-center outline-none ${noSpinnerClass}`} 
+                  className={`w-full pl-8 pr-3 py-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm font-bold text-left outline-none focus:ring-2 focus:ring-blue-500 ${noSpinnerClass}`} 
                 />
               </div>
-              <span className="text-gray-400 dark:text-gray-500 font-bold text-lg">×</span>
-              <div className="relative flex-1">
+              
+              <span className="text-gray-400 dark:text-gray-500 font-bold">×</span>
+              
+              {/* PRICE Field - Wider */}
+              <div className="relative flex-[2]">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-purple-500 dark:text-purple-400 pointer-events-none">PRICE</span>
-                {/* 👇 FIX: Show empty string if state is empty, otherwise show the number */}
                 <input 
                   type="number" inputMode="decimal" 
                   value={item.price === "" ? "" : Number(item.price)} 
                   onChange={e => updateItem(index, 'price', e.target.value)} 
-                  className={`w-full pl-12 pr-2 py-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-sm font-bold text-center outline-none ${noSpinnerClass}`} 
+                  className={`w-full pl-10 pr-3 py-2.5 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-sm font-bold text-left outline-none focus:ring-2 focus:ring-purple-500 ${noSpinnerClass}`} 
                 />
               </div>
-              <span className="text-gray-400 dark:text-gray-500 font-bold text-lg">=</span>
-              <div className="flex-1 text-right"><p className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0))}</p></div>
+              
+              <span className="text-gray-400 dark:text-gray-500 font-bold">=</span>
+              
+              {/* Total */}
+              <div className="flex-1 text-right min-w-[60px]">
+                <p className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0))}</p>
+              </div>
             </div>
+            
             {priceUpdateIndex === index && (
               <div className="mt-2 pt-2 border-t border-dashed border-yellow-300 dark:border-yellow-800 flex items-center justify-between text-xs">
                 <span className="text-yellow-700 dark:text-yellow-400 font-medium">Update default price?</span>
@@ -192,7 +198,7 @@ export const DetailedInvoice = ({
                 <input 
                   type="number" inputMode="decimal" placeholder="Discount" 
                   value={discount} onChange={e => setDiscount(e.target.value)}
-                  className={`w-16 bg-transparent text-right font-bold text-orange-700 dark:text-orange-400 outline-none text-xs ${noSpinnerClass}`} 
+                  className={`w-20 bg-transparent text-right font-bold text-orange-700 dark:text-orange-400 outline-none text-xs ${noSpinnerClass}`} 
                 />
               </div>
             </div>
