@@ -21,6 +21,7 @@ export const RecordPage = () => {
   const [tx, setTx] = useState({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "" });
   const [phoneError, setPhoneError] = useState("");
   const [recordMode, setRecordMode] = useState("quick");
+    const [sendSmsOnSave, setSendSmsOnSave] = useState(false);
   
   // Data State
   const [products, setProducts] = useState([]);
@@ -105,23 +106,49 @@ export const RecordPage = () => {
   };
 
   const saveTransaction = async () => {
-    const amount = parseFloat(tx.amount) || 0; const paid = parseFloat(tx.paid) || 0;
+    const amount = parseFloat(tx.amount) || 0; 
+    const paid = parseFloat(tx.paid) || 0;
+    
     if (amount === 0 && paid === 0) return;
     if (!currentStore?.id) { showToast("Database not ready."); return; }
-    if (!tx.customerId && !isValidPhone(tx.phone)) { setPhoneError("Please enter a valid phone number."); showToast("⚠️ Invalid phone number"); return; }
+    
+    if (!tx.customerId && !isValidPhone(tx.phone)) { 
+      setPhoneError("Please enter a valid phone number."); 
+      showToast("⚠️ Invalid phone number"); 
+      return; 
+    }
     
     setPhoneError("");
     try {
       const itemsString = recordMode === "detailed" ? invoiceItems.map(i => `${i.quantity}x ${i.name}`).join(", ") : tx.items;
-      await CustomerService.addTransaction(currentStore.id, tx.customerId, tx.name, tx.phone, amount, paid, itemsString, recordMode === "detailed" ? invoiceItems : null);
+      
+      // 1. Save to database FIRST
+      await CustomerService.addTransaction(
+        currentStore.id, tx.customerId, tx.name, tx.phone, amount, paid, itemsString, 
+        recordMode === "detailed" ? invoiceItems : null
+      );
+      
       if (editingDraftId) await deleteDraft(editingDraftId);
       await refreshCustomers();
+      
       if (amount - paid <= 0 && paid > 0) triggerConfetti();
-      resetToSearch(); setView("home"); showToast("Transaction saved");
+      
+      // 2. ONLY open SMS app if the toggle is ON and we have a message/phone
+      if (sendSmsOnSave && tx.phone && smsMessage) {
+        openSMS(tx.phone, smsMessage);
+      }
+
+      resetToSearch(); 
+      setView("home"); 
+      showToast(sendSmsOnSave ? "Saved & SMS ready!" : "Transaction saved");
     } catch (error) {
       const realError = error.message || error.toString();
-      if (realError.includes("already exists")) { setPhoneError(realError); showToast(realError); } 
-      else showToast(`Error: ${realError.substring(0, 60)}`);
+      if (realError.includes("already exists")) { 
+        setPhoneError(realError); 
+        showToast(realError); 
+      } else {
+        showToast(`Error: ${realError.substring(0, 60)}`);
+      }
     }
   };
 
@@ -252,25 +279,70 @@ export const RecordPage = () => {
               />
             )}
 
-            {isOverpayment && (<div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-300 p-4 rounded-xl flex items-start gap-3"><AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" /><div><p className="font-bold text-sm">Overpayment Detected</p><p className="text-sm mt-1">Credit of {formatCurrency(Math.abs(newBal))}.</p></div></div>)}
-
-            {smsMessage && (
-              <div className="bg-gray-900 text-gray-100 p-5 rounded-2xl shadow-xl relative">
-                <div className="absolute top-3 right-3 bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1"><MessageSquare size={12} /> SMS Preview</div>
-                <p className="text-xs text-gray-400 mb-2 uppercase tracking-wider">Message to {tx.name || "Customer"}:</p>
-                <div className="font-mono text-sm leading-relaxed whitespace-pre-line mb-4 bg-black/20 p-3 rounded-lg border border-gray-700">{smsMessage}</div>
-                <button onClick={handleCopySMS} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg mb-3"><Copy size={18} /> Copy Message</button>
-                <button onClick={() => openSMS(tx.phone, smsMessage)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"><MessageSquare size={18} /> Send via SMS App</button>
+            {isOverpayment && (
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-300 p-4 rounded-xl flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-sm">Overpayment Detected</p>
+                  <p className="text-sm mt-1">Credit of {formatCurrency(Math.abs(newBal))}.</p>
+                </div>
               </div>
             )}
 
-            <button onClick={handleSaveDraft} className="w-full bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-bold text-lg py-3 rounded-2xl shadow-sm active:scale-95 transition-transform flex items-center justify-center gap-2 mb-2">
-              <Save size={20} /> Save as Draft
-            </button>
+            {/* Compact SMS Preview Box */}
+            {smsMessage && (
+              <div className="bg-gray-900 text-gray-100 p-4 rounded-2xl shadow-xl relative">
+                <div className="flex justify-between items-center mb-2">
+                  <p className="text-xs text-gray-400 uppercase tracking-wider font-bold">SMS Preview</p>
+                  {/* Compact Copy Button */}
+                  <button 
+                    onClick={handleCopySMS}
+                    className="flex items-center gap-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white px-2.5 py-1.5 rounded-lg transition active:scale-95"
+                  >
+                    <Copy size={14} /> Copy
+                  </button>
+                </div>
+                
+                <div className="font-mono text-sm leading-relaxed whitespace-pre-line mb-3 bg-black/30 p-3 rounded-lg border border-gray-700 max-h-32 overflow-y-auto">
+                  {smsMessage}
+                </div>
+                
+                {/* Elegant Toggle Switch */}
+                <label className="flex items-center gap-3 p-2.5 bg-gray-800 rounded-xl cursor-pointer active:scale-[0.98] transition border border-gray-700">
+                  <div className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={sendSmsOnSave} 
+                      onChange={(e) => setSendSmsOnSave(e.target.checked)} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                  </div>
+                  <span className="text-sm font-medium text-gray-200">Send SMS after saving</span>
+                </label>
+              </div>
+            )}
 
-            <button onClick={saveTransaction} disabled={!tx.amount && !tx.paid} className="w-full bg-green-700 text-white font-bold text-xl py-4 rounded-2xl shadow-lg disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-2">
-              <Check size={24} /> {editingDraftId ? "Finalize & Save" : "Save Transaction"}
-            </button>
+            {/* Clean Action Buttons */}
+            <div className="space-y-3 pt-2">
+              {/* 1. Save as Draft */}
+              <button 
+                onClick={handleSaveDraft} 
+                className="w-full bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-bold text-lg py-3.5 rounded-2xl shadow-sm active:scale-95 transition-transform flex items-center justify-center gap-2"
+              >
+                <Save size={20} /> Save as Draft
+              </button>
+
+              {/* 2. Primary Save (Respects the SMS Toggle) */}
+              <button 
+                onClick={saveTransaction} 
+                disabled={!tx.amount && !tx.paid} 
+                className="w-full bg-green-700 hover:bg-green-800 text-white font-bold text-xl py-4 rounded-2xl shadow-lg disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-2"
+              >
+                <Check size={24} /> 
+                {editingDraftId ? "Finalize Transaction" : "Save Transaction"}
+              </button>
+            </div>
           </>
         )}
       </div>
