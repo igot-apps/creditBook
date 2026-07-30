@@ -71,35 +71,47 @@ export const DetailedInvoice = ({
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4 relative">
-      {/* Product Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-        <input value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search or add product..." className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" />
-      </div>
+    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col max-h-[70vh]">
       
-      {/* Search Dropdown */}
-      {productSearch && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 max-h-48 overflow-y-auto shadow-lg absolute z-10 w-full left-0 right-0 mt-1">
-          {filteredProducts.length > 0 ? filteredProducts.map(p => (
-            <button key={p.id} onClick={() => addProductToInvoice(p)} className="w-full flex justify-between items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-0 text-left">
-              <div><p className="font-semibold text-gray-900 dark:text-white text-sm">{p.name}</p><p className="text-xs text-gray-500">{formatCurrency(p.price)} {p.unit && `/ ${p.unit}`}</p></div>
-              <PlusCircle size={18} className="text-green-600" />
-            </button>
-          )) : (
-            <button onClick={() => { setNewProduct({...newProduct, name: productSearch}); setShowInlineProduct(true); }} className="w-full p-3 text-green-700 dark:text-green-400 font-semibold flex items-center gap-2">
-              <PlusCircle size={18} /> Create "{productSearch}"
-            </button>
-          )}
+      {/* 👇 1. STICKY SEARCH BAR (Always visible at the top) */}
+      <div className="sticky top-0 z-20 bg-white dark:bg-gray-800 p-4 border-b border-gray-100 dark:border-gray-700 shadow-sm">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+          <input 
+            value={productSearch} 
+            onChange={e => setProductSearch(e.target.value)} 
+            placeholder="Search or add product..." 
+            className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
+            autoFocus
+          />
         </div>
-      )}
+        
+        {/* Search Dropdown */}
+        {productSearch && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 max-h-48 overflow-y-auto shadow-xl z-30">
+            {filteredProducts.length > 0 ? filteredProducts.map(p => (
+              <button key={p.id} onClick={() => addProductToInvoice(p)} className="w-full flex justify-between items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-0 text-left">
+                <div><p className="font-semibold text-gray-900 dark:text-white text-sm">{p.name}</p><p className="text-xs text-gray-500">{formatCurrency(p.price)} {p.unit && `/ ${p.unit}`}</p></div>
+                <PlusCircle size={18} className="text-green-600" />
+              </button>
+            )) : (
+              <button onClick={() => { setNewProduct({...newProduct, name: productSearch}); setShowInlineProduct(true); }} className="w-full p-3 text-green-700 dark:text-green-400 font-semibold flex items-center gap-2 hover:bg-green-50 dark:hover:bg-green-900/20">
+                <PlusCircle size={18} /> Create "{productSearch}"
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
-      {/* Line Items */}
-      <div className="space-y-2">
+      {/* 👇 2. SCROLLABLE ITEMS LIST (Takes up available middle space) */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50/50 dark:bg-gray-900/30">
         {invoiceItems.length === 0 ? (
-          <p className="text-center text-gray-400 dark:text-gray-500 py-4 text-sm">No items added yet.</p>
+          <div className="text-center py-8">
+            <p className="text-gray-400 dark:text-gray-500 text-sm">No items added yet.</p>
+            <p className="text-gray-400 dark:text-gray-600 text-xs mt-1">Search above to start building the invoice.</p>
+          </div>
         ) : invoiceItems.map((item, index) => (
-          <div key={index} className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
+          <div key={index} className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
             <div className="flex justify-between items-center mb-2">
               <p className="font-bold text-gray-900 dark:text-white text-sm truncate pr-2">
                 {item.name} {item.isOneTime && <span className="text-xs text-blue-500 font-normal ml-1">(One-time)</span>}
@@ -129,15 +141,22 @@ export const DetailedInvoice = ({
         ))}
       </div>
 
-      {/* Totals & Paid */}
-      <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-3">
+      {/* 👇 3. STICKY TOTALS & PAID (Always visible at the bottom) */}
+      <div className="sticky bottom-0 z-20 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4 space-y-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
         <div className="flex justify-between items-center">
           <span className="text-gray-500 dark:text-gray-400 font-semibold">Total Amount:</span>
           <span className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(totalInvoiceAmount)}</span>
         </div>
         <div>
           <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Money Paid</label>
-          <input type="number" inputMode="decimal" placeholder="0.00" value={tx.paid} onChange={e => setTx({...tx, paid: e.target.value})} className={`w-full text-2xl font-bold text-green-700 dark:text-green-400 mt-1 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`} />
+          <input 
+            type="number" 
+            inputMode="decimal" 
+            placeholder="0.00" 
+            value={tx.paid} 
+            onChange={e => setTx({...tx, paid: e.target.value})} 
+            className={`w-full text-2xl font-bold text-green-700 dark:text-green-400 mt-1 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`} 
+          />
         </div>
       </div>
 
