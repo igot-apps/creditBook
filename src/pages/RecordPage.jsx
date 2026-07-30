@@ -1,66 +1,51 @@
 import { useState, useEffect, useMemo } from "react";
-import { Check, MessageSquare, AlertCircle, User, Search, PlusCircle, ArrowLeft, Trash2, X, Package, FileText, Copy, Contact, Save, Edit3 } from "lucide-react";
+import { Check, MessageSquare, AlertCircle, User, Search, PlusCircle, ArrowLeft, FileText, Copy, Contact, Save, Edit3, Package } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatDate, formatCurrency, isValidPhone } from "../utils/helpers";
 import { openSMS } from "../utils/communication";
 import { CustomerService } from "../services/CustomerService";
 import { ProductService } from "../services/ProductService";
 import { PageHeader } from "../components/PageHeader";
-import { EditCustomerModal } from "../components/EditCustomerModal"; // 👈 Ensure this is imported
+import { EditCustomerModal } from "../components/EditCustomerModal";
+import { DraftsCard } from "../components/DraftsCard";
+import { DetailedInvoice } from "../components/DetailedInvoice";
+
+const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
 export const RecordPage = () => {
-  const { currentStore, customers, refreshCustomers, showToast, triggerConfetti, setView, prefillTransaction, setPrefillTransaction, saveDraft, deleteDraft } = useStore();
+  const { currentStore, customers, refreshCustomers, showToast, triggerConfetti, setView, prefillTransaction, setPrefillTransaction, saveDraft, deleteDraft, drafts } = useStore();
   
+  // Core State
   const [mode, setMode] = useState("search");
   const [searchQuery, setSearchQuery] = useState("");
   const [tx, setTx] = useState({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "" });
   const [phoneError, setPhoneError] = useState("");
   const [recordMode, setRecordMode] = useState("quick");
   
+  // Data State
   const [products, setProducts] = useState([]);
   const [invoiceItems, setInvoiceItems] = useState([]);
-  const [productSearch, setProductSearch] = useState("");
-  const [showInlineProduct, setShowInlineProduct] = useState(false);
-  const [newProduct, setNewProduct] = useState({ name: "", price: "", unit: "", category: "" });
-  const [priceUpdateIndex, setPriceUpdateIndex] = useState(null);
+  
+  // UI State
   const [editingDraftId, setEditingDraftId] = useState(null);
-  const [isEditingCustomer, setIsEditingCustomer] = useState(false); // 👈 For editing existing customer details
+  const [isEditingCustomer, setIsEditingCustomer] = useState(false);
 
-  useEffect(() => {
-    if (currentStore?.id) ProductService.getAll(currentStore.id).then(setProducts);
-  }, [currentStore?.id]);
+  useEffect(() => { if (currentStore?.id) ProductService.getAll(currentStore.id).then(setProducts); }, [currentStore?.id]);
 
-  // 👇 SMART PREFILL LOGIC FOR DRAFTS & REDO
   useEffect(() => {
     if (prefillTransaction) {
       setTx({
-        customerId: prefillTransaction.customerId || null,
-        name: prefillTransaction.name || "",
-        phone: prefillTransaction.phone || "",
-        items: prefillTransaction.items || "",
-        amount: prefillTransaction.amount ? prefillTransaction.amount.toString() : "",
-        paid: prefillTransaction.paid ? prefillTransaction.paid.toString() : ""
+        customerId: prefillTransaction.customerId || null, name: prefillTransaction.name || "", phone: prefillTransaction.phone || "",
+        items: prefillTransaction.items || "", amount: prefillTransaction.amount ? prefillTransaction.amount.toString() : "", paid: prefillTransaction.paid ? prefillTransaction.paid.toString() : ""
       });
-      
-      if (prefillTransaction.invoiceItems && prefillTransaction.invoiceItems.length > 0) {
-        setRecordMode("detailed");
-        setInvoiceItems(prefillTransaction.invoiceItems);
-      } else {
-        setRecordMode("quick");
-      }
+      if (prefillTransaction.invoiceItems?.length > 0) { setRecordMode("detailed"); setInvoiceItems(prefillTransaction.invoiceItems); } 
+      else { setRecordMode("quick"); }
 
-      // Smart Mode Selection
-      if (prefillTransaction.customerId) {
-        setMode("existing"); // They selected an existing customer previously
-      } else if (prefillTransaction.name || prefillTransaction.phone) {
-        setMode("new"); // They typed a name/phone but haven't saved the customer yet
-      } else {
-        setMode("search"); // No customer info at all
-      }
+      if (prefillTransaction.customerId) setMode("existing");
+      else if (prefillTransaction.name || prefillTransaction.phone) setMode("new");
+      else setMode("search");
       
-      if (prefillTransaction.isDraft) {
-        setEditingDraftId(prefillTransaction.id);
-      }
+      if (prefillTransaction.isDraft) setEditingDraftId(prefillTransaction.id);
       setPrefillTransaction(null);
     }
   }, [prefillTransaction, setPrefillTransaction]);
@@ -71,90 +56,28 @@ export const RecordPage = () => {
     return customers.filter(c => !c.isArchived && (c.name.toLowerCase().includes(q) || c.phone.includes(q)));
   }, [searchQuery, customers]);
 
-  const handleSelectCustomer = (customer) => {
-    setTx({ customerId: customer.id, name: customer.name, phone: customer.phone, items: "", amount: "", paid: "" });
-    setMode("existing");
-    setSearchQuery("");
-  };
-
+  const handleSelectCustomer = (customer) => { setTx({ customerId: customer.id, name: customer.name, phone: customer.phone, items: "", amount: "", paid: "" }); setMode("existing"); setSearchQuery(""); };
   const handleCreateInline = () => {
     const isPhone = /^\d+$/.test(searchQuery.replace(/\s/g, ''));
     if (isPhone) setTx(prev => ({ ...prev, phone: searchQuery, customerId: null }));
     else setTx(prev => ({ ...prev, name: searchQuery, customerId: null }));
-    setMode("new");
-    setSearchQuery("");
+    setMode("new"); setSearchQuery("");
   };
 
   const resetToSearch = () => {
     setTx({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "" });
-    setInvoiceItems([]); 
-    setMode("search"); 
-    setSearchQuery(""); 
-    setProductSearch(""); 
-    setPhoneError("");
-    setEditingDraftId(null);
+    setInvoiceItems([]); setMode("search"); setSearchQuery(""); setPhoneError(""); setEditingDraftId(null);
   };
 
-  const totalInvoiceAmount = invoiceItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
-  
-  useEffect(() => {
-    if (recordMode === "detailed") setTx(prev => ({ ...prev, amount: totalInvoiceAmount.toString() }));
-  }, [totalInvoiceAmount, recordMode]);
-
-  const filteredProducts = useMemo(() => {
-    if (!productSearch.trim()) return products.filter(p => p.isFavourite || p.usageCount > 0).slice(0, 5);
-    const q = productSearch.toLowerCase();
-    return products.filter(p => p.name.toLowerCase().includes(q));
-  }, [productSearch, products]);
-
-  const addProductToInvoice = (product, isOneTime = false) => {
-    const existingIndex = invoiceItems.findIndex(i => i.productId === product.id && !i.isOneTime);
-    if (existingIndex >= 0 && !isOneTime) {
-      const updated = [...invoiceItems]; updated[existingIndex].quantity += 1; setInvoiceItems(updated);
-    } else {
-      setInvoiceItems([...invoiceItems, { productId: isOneTime ? null : product.id, name: product.name, quantity: 1, price: product.price || 0, defaultPrice: product.price || 0, unit: product.unit || "", isOneTime }]);
-    }
-    setProductSearch("");
-    if (!isOneTime) ProductService.trackUsage(product.id);
-  };
-
-  const updateItem = (index, field, value) => {
-    const updated = [...invoiceItems];
-    updated[index][field] = field === 'name' ? value : parseFloat(value) || 0;
-    if (field === 'price' && !updated[index].isOneTime) {
-      const oldPrice = updated[index].defaultPrice; const newPrice = parseFloat(value) || 0;
-      if (oldPrice !== newPrice && newPrice > 0) setPriceUpdateIndex(index);
-    }
-    setInvoiceItems(updated);
-  };
-
-  const handlePriceUpdate = (index, shouldUpdate) => {
-    if (shouldUpdate) {
-      const productId = invoiceItems[index].productId; const newPrice = invoiceItems[index].price;
-      ProductService.update(productId, { price: newPrice });
-      setProducts(prev => prev.map(p => p.id === productId ? { ...p, price: newPrice } : p));
-      const updated = [...invoiceItems]; updated[index].defaultPrice = newPrice; setInvoiceItems(updated);
-    }
-    setPriceUpdateIndex(null);
-  };
-
-  const removeItem = (index) => setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
-
-  const handleSaveInlineProduct = () => {
-    if (!newProduct.name.trim() || !newProduct.price) { showToast("Name and Price are required"); return; }
-    const productData = { name: newProduct.name.trim(), price: parseFloat(newProduct.price), unit: newProduct.unit.trim(), category: newProduct.category.trim(), isFavourite: false };
-    ProductService.create(currentStore.id, productData).then(newId => {
-      const createdProduct = { id: newId, ...productData };
-      setProducts([...products, createdProduct]); addProductToInvoice(createdProduct);
-      setShowInlineProduct(false); setNewProduct({ name: "", price: "", unit: "", category: "" });
-    });
+  const handleResumeDraft = (draft) => {
+    setPrefillTransaction({ ...draft, isDraft: true, customerId: draft.customerId, name: draft.name, phone: draft.phone, items: draft.items, amount: draft.amount, paid: draft.paid, invoiceItems: draft.invoiceItems });
   };
 
   const handlePickContact = async () => {
     if (!('contacts' in navigator)) { showToast("Contact picker not supported."); return; }
     try {
       const [contact] = await navigator.contacts.select(['tel'], { multiple: false });
-      if (contact && contact.tel && contact.tel[0]) {
+      if (contact?.tel?.[0]) {
         let phoneNum = contact.tel[0]; if (phoneNum.startsWith('tel:')) phoneNum = phoneNum.substring(4);
         setTx(prev => ({ ...prev, phone: phoneNum })); setPhoneError(""); showToast("Contact selected!");
       }
@@ -163,7 +86,7 @@ export const RecordPage = () => {
 
   const handleCopySMS = async () => {
     try {
-      if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(smsMessage); } 
+      if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(smsMessage); 
       else {
         const textArea = document.createElement("textarea"); textArea.value = smsMessage;
         textArea.style.position = "fixed"; textArea.style.left = "-999999px"; document.body.appendChild(textArea);
@@ -174,54 +97,31 @@ export const RecordPage = () => {
   };
 
   const handleSaveDraft = async () => {
-    if (!tx.name && !tx.phone && invoiceItems.length === 0) {
-      showToast("Add a customer or items to save a draft.");
-      return;
-    }
+    if (!tx.name && !tx.phone && invoiceItems.length === 0) { showToast("Add a customer or items to save a draft."); return; }
     try {
-      await saveDraft({
-        id: editingDraftId,
-        customerId: tx.customerId,
-        name: tx.name,
-        phone: tx.phone,
-        items: tx.items,
-        amount: tx.amount,
-        paid: tx.paid,
-        recordMode,
-        invoiceItems: recordMode === "detailed" ? invoiceItems : null
-      });
-      showToast("Draft saved successfully!");
-      resetToSearch();
-      setView("home");
-    } catch (error) {
-      showToast("Failed to save draft.");
-    }
+      await saveDraft({ id: editingDraftId, customerId: tx.customerId, name: tx.name, phone: tx.phone, items: tx.items, amount: tx.amount, paid: tx.paid, recordMode, invoiceItems: recordMode === "detailed" ? invoiceItems : null });
+      showToast("Draft saved successfully!"); resetToSearch(); setView("home");
+    } catch (error) { showToast("Failed to save draft."); }
   };
 
   const saveTransaction = async () => {
     const amount = parseFloat(tx.amount) || 0; const paid = parseFloat(tx.paid) || 0;
     if (amount === 0 && paid === 0) return;
-    if (!currentStore || !currentStore.id) { showToast("Database not ready."); return; }
-    if (!tx.customerId && !isValidPhone(tx.phone)) {
-      const errorMsg = "Please enter a valid phone number.";
-      setPhoneError(errorMsg); showToast(`⚠️ ${errorMsg}`); return;
-    }
+    if (!currentStore?.id) { showToast("Database not ready."); return; }
+    if (!tx.customerId && !isValidPhone(tx.phone)) { setPhoneError("Please enter a valid phone number."); showToast("⚠️ Invalid phone number"); return; }
+    
     setPhoneError("");
     try {
       const itemsString = recordMode === "detailed" ? invoiceItems.map(i => `${i.quantity}x ${i.name}`).join(", ") : tx.items;
       await CustomerService.addTransaction(currentStore.id, tx.customerId, tx.name, tx.phone, amount, paid, itemsString, recordMode === "detailed" ? invoiceItems : null);
-      
-      if (editingDraftId) {
-        await deleteDraft(editingDraftId);
-      }
-      
+      if (editingDraftId) await deleteDraft(editingDraftId);
       await refreshCustomers();
       if (amount - paid <= 0 && paid > 0) triggerConfetti();
       resetToSearch(); setView("home"); showToast("Transaction saved");
     } catch (error) {
       const realError = error.message || error.toString();
       if (realError.includes("already exists")) { setPhoneError(realError); showToast(realError); } 
-      else { showToast(`Error: ${realError.substring(0, 60)}`); }
+      else showToast(`Error: ${realError.substring(0, 60)}`);
     }
   };
 
@@ -234,14 +134,11 @@ export const RecordPage = () => {
   const smsMessage = useMemo(() => {
     if (amountVal === 0 && paidVal === 0) return "";
     return `Balance update (${formatDate(new Date())}):\nOld debt: ${formatCurrency(currentBal)}\n` +
-      (amountVal > 0 ? `Items bought: ${formatCurrency(amountVal)}\n` : '') +
-      (tx.items && amountVal > 0 ? `What was bought: ${tx.items}\n` : '') +
+      (amountVal > 0 ? `Items bought: ${formatCurrency(amountVal)}\n` : '') + (tx.items && amountVal > 0 ? `What was bought: ${tx.items}\n` : '') +
       (paidVal > 0 ? `Money paid: ${formatCurrency(paidVal)}\n` : '') +
       (newBal < 0 ? `Total debt now: ${formatCurrency(0)}\n(You have a credit of ${formatCurrency(Math.abs(newBal))})` : `Total debt now: ${formatCurrency(newBal)}`) +
       `\nThank you! - From ${currentStore?.name || "Store"}`;
   }, [currentBal, amountVal, paidVal, tx.items, newBal, currentStore]);
-
-  const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
@@ -255,6 +152,13 @@ export const RecordPage = () => {
       )}
 
       <div className="p-4 space-y-4 max-w-lg mx-auto">
+        
+        {/* 1. Drafts Card (Extracted) */}
+        {mode === "search" && !editingDraftId && (
+          <DraftsCard drafts={drafts} onResume={handleResumeDraft} />
+        )}
+
+        {/* 2. Customer Search */}
         {mode === "search" && (
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="relative">
@@ -278,7 +182,7 @@ export const RecordPage = () => {
           </div>
         )}
 
-        {/* 👇 EXISTING CUSTOMER (with Edit button to fix missing info) */}
+        {/* 3. Existing Customer Display */}
         {isExistingCustomer && (
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-3">
@@ -288,9 +192,7 @@ export const RecordPage = () => {
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{tx.name}</p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{tx.phone || "No phone number"}</p>
               </div>
-              <button onClick={() => setIsEditingCustomer(true)} className="text-blue-600 dark:text-blue-400 p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition active:scale-90 flex-shrink-0" title="Edit customer details">
-                <Edit3 size={18} />
-              </button>
+              <button onClick={() => setIsEditingCustomer(true)} className="text-blue-600 dark:text-blue-400 p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition active:scale-90 flex-shrink-0"><Edit3 size={18} /></button>
               <button onClick={resetToSearch} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
             </div>
             {currentBal > 0 && (
@@ -302,47 +204,27 @@ export const RecordPage = () => {
           </div>
         )}
 
-        {/* 👇 NEW / UNSAVED CUSTOMER (Pre-filled from draft, clearly editable) */}
+        {/* 4. New Customer Inputs */}
         {mode === "new" && (
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
             <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2">
-                <User size={16} className="text-gray-400" />
-                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">
-                  {editingDraftId ? "Customer Info (Edit to update)" : "New Customer"}
-                </p>
-              </div>
+              <div className="flex items-center gap-2"><User size={16} className="text-gray-400" /><p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">{editingDraftId ? "Customer Info" : "New Customer"}</p></div>
               <button onClick={resetToSearch} className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 hover:text-green-600"><ArrowLeft size={12} /> Back</button>
             </div>
-            
-            <input 
-              placeholder="Customer Name" 
-              value={tx.name} 
-              onChange={e => { setTx({...tx, name: e.target.value}); setPhoneError(""); }} 
-              className="w-full text-lg font-semibold border-b border-gray-200 dark:border-gray-700 pb-2 outline-none focus:border-green-600 dark:text-white bg-transparent" 
-            />
-            
+            <input placeholder="Customer Name" value={tx.name} onChange={e => { setTx({...tx, name: e.target.value}); setPhoneError(""); }} className="w-full text-lg font-semibold border-b border-gray-200 dark:border-gray-700 pb-2 outline-none focus:border-green-600 dark:text-white bg-transparent" />
             <div>
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <input 
-                    type="tel" 
-                    inputMode="tel" 
-                    placeholder="e.g., 024 123 4567" 
-                    value={tx.phone} 
-                    onChange={e => { setTx({...tx, phone: e.target.value}); setPhoneError(""); }} 
-                    className={`w-full text-lg border-b pb-2 outline-none focus:border-green-600 bg-transparent ${phoneError ? "text-red-600 border-red-500" : "text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700"}`} 
-                  />
+                  <input type="tel" inputMode="tel" placeholder="e.g., 024 123 4567" value={tx.phone} onChange={e => { setTx({...tx, phone: e.target.value}); setPhoneError(""); }} className={`w-full text-lg border-b pb-2 outline-none focus:border-green-600 bg-transparent ${phoneError ? "text-red-600 border-red-500" : "text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700"}`} />
                 </div>
-                <button type="button" onClick={handlePickContact} className="flex-shrink-0 p-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition active:scale-90 mb-1" title="Pick from contacts">
-                  <Contact size={22} />
-                </button>
+                <button type="button" onClick={handlePickContact} className="flex-shrink-0 p-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition active:scale-90 mb-1"><Contact size={22} /></button>
               </div>
               {phoneError && <p className="text-xs text-red-600 dark:text-red-400 mt-1 flex items-center gap-1"><AlertCircle size={12} /> {phoneError}</p>}
             </div>
           </div>
         )}
 
+        {/* 5. Recording Modes (Quick vs Detailed) */}
         {(mode === "existing" || mode === "new") && (
           <>
             <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
@@ -360,51 +242,14 @@ export const RecordPage = () => {
               </div>
             )}
 
+            {/* Detailed Invoice (Extracted Component) */}
             {recordMode === "detailed" && (
-              <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                  <input value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search or add product..." className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" />
-                </div>
-                {productSearch && (
-                  <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 max-h-48 overflow-y-auto shadow-lg absolute z-10 w-full left-0 right-0">
-                    {filteredProducts.length > 0 ? filteredProducts.map(p => (
-                      <button key={p.id} onClick={() => addProductToInvoice(p)} className="w-full flex justify-between items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-0 text-left">
-                        <div><p className="font-semibold text-gray-900 dark:text-white text-sm">{p.name}</p><p className="text-xs text-gray-500">{formatCurrency(p.price)} {p.unit && `/ ${p.unit}`}</p></div><PlusCircle size={18} className="text-green-600" />
-                      </button>
-                    )) : (
-                      <button onClick={() => { setNewProduct({...newProduct, name: productSearch}); setShowInlineProduct(true); }} className="w-full p-3 text-green-700 dark:text-green-400 font-semibold flex items-center gap-2"><PlusCircle size={18} /> Create "{productSearch}"</button>
-                    )}
-                  </div>
-                )}
-                <div className="space-y-2">
-                  {invoiceItems.length === 0 ? (<p className="text-center text-gray-400 dark:text-gray-500 py-4 text-sm">No items added yet.</p>) : invoiceItems.map((item, index) => (
-                    <div key={index} className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
-                      <div className="flex justify-between items-center mb-2">
-                        <p className="font-bold text-gray-900 dark:text-white text-sm truncate pr-2">{item.name} {item.isOneTime && <span className="text-xs text-blue-500 font-normal ml-1">(One-time)</span>}</p>
-                        <button onClick={() => removeItem(index)} className="text-red-400 p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition active:scale-90"><Trash2 size={16} /></button>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="relative flex-1"><span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-blue-500 dark:text-blue-400 pointer-events-none">QTY</span><input type="number" inputMode="decimal" value={item.quantity} onChange={e => updateItem(index, 'quantity', e.target.value)} className={`w-full pl-9 pr-2 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm font-bold text-center outline-none focus:ring-1 focus:ring-blue-500 ${noSpinnerClass}`} /></div>
-                        <span className="text-gray-400 dark:text-gray-500 font-bold text-lg">×</span>
-                        <div className="relative flex-1"><span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-purple-500 dark:text-purple-400 pointer-events-none">PRICE</span><input type="number" inputMode="decimal" value={item.price} onChange={e => updateItem(index, 'price', e.target.value)} className={`w-full pl-12 pr-2 py-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-sm font-bold text-center outline-none focus:ring-1 focus:ring-purple-500 ${noSpinnerClass}`} /></div>
-                        <span className="text-gray-400 dark:text-gray-500 font-bold text-lg">=</span>
-                        <div className="flex-1 text-right"><p className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency(item.quantity * item.price)}</p></div>
-                      </div>
-                      {priceUpdateIndex === index && (
-                        <div className="mt-2 pt-2 border-t border-dashed border-yellow-300 dark:border-yellow-800 flex items-center justify-between text-xs">
-                          <span className="text-yellow-700 dark:text-yellow-400 font-medium">Update default price?</span>
-                          <div className="flex gap-3"><button onClick={() => handlePriceUpdate(index, true)} className="font-bold text-green-700 dark:text-green-400">Yes</button><button onClick={() => handlePriceUpdate(index, false)} className="text-gray-500">No</button></div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-3">
-                  <div className="flex justify-between items-center"><span className="text-gray-500 dark:text-gray-400 font-semibold">Total Amount:</span><span className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(totalInvoiceAmount)}</span></div>
-                  <div><label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Money Paid</label><input type="number" inputMode="decimal" placeholder="0.00" value={tx.paid} onChange={e => setTx({...tx, paid: e.target.value})} className={`w-full text-2xl font-bold text-green-700 dark:text-green-400 mt-1 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`} /></div>
-                </div>
-              </div>
+              <DetailedInvoice 
+                tx={tx} setTx={setTx} 
+                invoiceItems={invoiceItems} setInvoiceItems={setInvoiceItems} 
+                products={products} setProducts={setProducts} 
+                currentStore={currentStore} showToast={showToast} 
+              />
             )}
 
             {isOverpayment && (<div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-300 p-4 rounded-xl flex items-start gap-3"><AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" /><div><p className="font-bold text-sm">Overpayment Detected</p><p className="text-sm mt-1">Credit of {formatCurrency(Math.abs(newBal))}.</p></div></div>)}
@@ -430,25 +275,7 @@ export const RecordPage = () => {
         )}
       </div>
 
-      {/* Modals */}
-      {showInlineProduct && (
-        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full shadow-2xl p-6">
-            <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-xl text-gray-900 dark:text-white">Create Product</h3><button onClick={() => setShowInlineProduct(false)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full"><X size={20} /></button></div>
-            <div className="space-y-3">
-              <input placeholder="Product Name" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" autoFocus />
-              <div className="grid grid-cols-2 gap-3">
-                <input type="number" inputMode="decimal" placeholder="Default Price" value={newProduct.price} onChange={e => setNewProduct({...newProduct, price: e.target.value})} className={`w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white ${noSpinnerClass}`} />
-                <input placeholder="Unit (e.g. kg)" value={newProduct.unit} onChange={e => setNewProduct({...newProduct, unit: e.target.value})} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" />
-              </div>
-              <input placeholder="Category (Optional)" value={newProduct.category} onChange={e => setNewProduct({...newProduct, category: e.target.value})} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" />
-              <button onClick={handleSaveInlineProduct} className="w-full bg-green-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"><Check size={20} /> Save & Add</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 👇 NEW: Edit Customer Modal (for adding missing phone numbers to existing customers) */}
+      {/* Edit Customer Modal */}
       {isEditingCustomer && tx.customerId && (
         <EditCustomerModal 
           customer={customers.find(c => c.id === tx.customerId)} 

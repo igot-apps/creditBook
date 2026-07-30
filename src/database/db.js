@@ -6,7 +6,7 @@ export const db = new Dexie('CreditBookDB');
 db.version(1).stores({
   stores: '++id, createdAt',
   customers: '++id, storeId, phone, name',
-  transactions: '++id, storeId, customerId, date',
+  transactions: '++id, [storeId+customerId], date', 
   products: '++id, storeId, name'
 });
 
