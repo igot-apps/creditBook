@@ -3,15 +3,7 @@ import useStore from "../store/useStore";
 import { useState } from "react";
 
 export const Layout = ({ children }) => {
-  const { 
-    currentStore, 
-    setView, 
-    view,
-    theme, 
-    setTheme, 
-    setSelectedCustomer
-  } = useStore();
-
+  const { currentStore, setView, view, theme, setTheme, setSelectedCustomer } = useStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navigateTo = (targetView) => {
@@ -20,7 +12,7 @@ export const Layout = ({ children }) => {
     setIsMobileMenuOpen(false);
   };
 
-  // 👇 FIXED: Removed all trailing spaces from view strings
+  // ✅ FIXED: Removed all trailing spaces from view strings
   const menuItems = [
     { icon: Home, label: "Home", view: "home" },
     { icon: Users, label: "Customers", view: "customers" },
@@ -30,9 +22,10 @@ export const Layout = ({ children }) => {
     { icon: Settings, label: "Settings", view: "settings" },
   ];
 
-  // 👇 FIXED: Removed the space in "() =>"
+  // ✅ FIXED: Removed the space in "() =>"
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
+      {/* Sidebar Header */}
       <div className="bg-gradient-to-br from-green-700 to-green-900 text-white p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold">
@@ -55,6 +48,7 @@ export const Layout = ({ children }) => {
         </div>
       </div>
 
+      {/* Sidebar Menu */}
       <div className="flex-1 p-4 space-y-1 overflow-y-auto">
         <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase px-3 mb-2">Navigation</p>
         {menuItems.map((item) => {
@@ -100,9 +94,12 @@ export const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex">
+      {/* Desktop Sidebar */}
       <aside className="hidden lg:flex lg:flex-col lg:w-72 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 fixed h-screen">
         <SidebarContent />
       </aside>
+
+      {/* Mobile Menu Button */}
       <button
         onClick={() => setIsMobileMenuOpen(true)}
         className="lg:hidden fixed top-4 left-4 z-40 p-2 bg-white dark:bg-gray-800 rounded-full shadow-lg border border-gray-200 dark:border-gray-700"
@@ -110,21 +107,52 @@ export const Layout = ({ children }) => {
       >
         <Menu size={24} className="text-gray-700 dark:text-gray-200" />
       </button>
+
+      {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && (
         <>
-          <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setIsMobileMenuOpen(false)} />
+          <div 
+            className="lg:hidden fixed inset-0 bg-black/50 z-40" 
+            onClick={() => setIsMobileMenuOpen(false)} 
+          />
           <aside className="lg:hidden fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-white dark:bg-gray-900 z-50 shadow-2xl">
-            <button onClick={() => setIsMobileMenuOpen(false)} className="absolute top-4 right-4 p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
+            <button 
+              onClick={() => setIsMobileMenuOpen(false)} 
+              className="absolute top-4 right-4 p-2 bg-gray-100 dark:bg-gray-800 rounded-full"
+            >
               <X size={20} className="text-gray-700 dark:text-gray-200" />
             </button>
             <SidebarContent />
           </aside>
         </>
       )}
-      {/* 👇 Added overflow-x-hidden to prevent mobile horizontal scrolling */}
-      <main className="flex-1 lg:ml-72 w-full max-w-full overflow-x-hidden">
+
+      {/* Main Content */}
+      <main className="flex-1 lg:ml-72 w-full max-w-full overflow-x-hidden pb-20">
         {children}
       </main>
+
+      {/* 👇 BOTTOM NAVIGATION (Visible on ALL screens, including Desktop) */}
+      <nav className="fixed bottom-0 left-0 right-0 lg:left-72 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 z-30 flex justify-around items-center py-2 shadow-lg lg:shadow-none">
+        {menuItems.slice(0, 5).map((item) => {
+          const Icon = item.icon;
+          const isActive = view === item.view;
+          return (
+            <button
+              key={item.view}
+              onClick={() => navigateTo(item.view)}
+              className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all ${
+                isActive 
+                  ? "text-green-700 dark:text-green-400" 
+                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              }`}
+            >
+              <Icon size={22} />
+              <span className="text-[10px] font-medium">{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 };

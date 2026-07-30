@@ -1,12 +1,12 @@
 import { useState, useMemo } from "react";
-import { Search, Users, TrendingUp } from "lucide-react";
+import { Search, Users, TrendingUp, PlusCircle } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { CustomerCard } from "../components/CustomerCard";
 import { Confetti } from "../components/Confetti";
 
 export const HomePage = () => {
-  const { currentStore, customers, setView } = useStore();
+  const { currentStore, customers, setView, setPrefillTransaction } = useStore();
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredCustomers = useMemo(() => {
@@ -21,6 +21,24 @@ export const HomePage = () => {
     const today = new Date().toDateString();
     return customers.reduce((sum, c) => sum + (c.history || []).filter(h => new Date(h.date).toDateString() === today && !h.isVoid).reduce((s, h) => s + (h.amount || 0), 0), 0);
   }, [customers, currentStore]);
+
+  // 👇 NEW: Handle creating customer from search
+  const handleCreateFromSearch = () => {
+    const q = searchQuery.trim();
+    const isPhone = /^\d+$/.test(q.replace(/\s/g, ''));
+    
+    setPrefillTransaction({
+      customerId: null,
+      name: isPhone ? "" : q,
+      phone: isPhone ? q : "",
+      items: "",
+      amount: "",
+      paid: ""
+    });
+    
+    setView("record");
+    setSearchQuery("");
+  };
 
   if (!currentStore) {
     return (
@@ -66,25 +84,48 @@ export const HomePage = () => {
           </div>
         </div>
 
-        {/* Recent Customers */}
+        {/* Recent Customers with Search */}
         <div>
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">Recent Customers</h2>
             <button onClick={() => setView("customers")} className="text-green-700 dark:text-green-400 text-sm font-semibold">View All</button>
           </div>
+          
+          {/* Search Bar with Create Option */}
           <div className="relative mb-4">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             <input 
-              value={searchQuery} onChange={e => setSearchQuery(e.target.value)} 
+              value={searchQuery} 
+              onChange={e => setSearchQuery(e.target.value)} 
               placeholder="Search name or phone..." 
               className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-green-500 shadow-sm" 
             />
+            
+            {/* 👇 Create Customer Dropdown (shows when search has no results) */}
+            {searchQuery.trim() && filteredCustomers.length === 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-green-200 dark:border-green-800 rounded-xl shadow-lg z-20 overflow-hidden">
+                <button 
+                  onClick={handleCreateFromSearch}
+                  className="w-full flex items-center gap-3 p-3 text-left hover:bg-green-50 dark:hover:bg-green-900/20 transition active:bg-green-100 dark:active:bg-green-900/30"
+                >
+                  <div className="w-9 h-9 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full flex items-center justify-center flex-shrink-0">
+                    <PlusCircle size={20} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-gray-900 dark:text-white">Create new customer</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Use "{searchQuery.trim()}"</p>
+                  </div>
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* Customer List */}
           <div className="space-y-3">
             {(searchQuery ? filteredCustomers : customers).slice(0, 5).map(c => (
               <CustomerCard key={c.id} customer={c} />
             ))}
-            {customers.length === 0 && (
+            {customers.length === 0 && !searchQuery && (
               <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700">
                 <Users className="mx-auto text-gray-300 mb-2" size={48} />
                 <p className="text-gray-500 dark:text-gray-400 font-medium">No customers yet</p>
