@@ -12,7 +12,6 @@ export const Layout = ({ children }) => {
     setIsMobileMenuOpen(false);
   };
 
-  // ✅ FIXED: Removed all trailing spaces from view strings
   const menuItems = [
     { icon: Home, label: "Home", view: "home" },
     { icon: Users, label: "Customers", view: "customers" },
@@ -22,10 +21,8 @@ export const Layout = ({ children }) => {
     { icon: Settings, label: "Settings", view: "settings" },
   ];
 
-  // ✅ FIXED: Removed the space in "() =>"
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
-      {/* Sidebar Header */}
       <div className="bg-gradient-to-br from-green-700 to-green-900 text-white p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold">
@@ -48,7 +45,6 @@ export const Layout = ({ children }) => {
         </div>
       </div>
 
-      {/* Sidebar Menu */}
       <div className="flex-1 p-4 space-y-1 overflow-y-auto">
         <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase px-3 mb-2">Navigation</p>
         {menuItems.map((item) => {
@@ -99,10 +95,10 @@ export const Layout = ({ children }) => {
         <SidebarContent />
       </aside>
 
-      {/* Mobile Menu Button */}
+      {/* Mobile Menu Button (Top Right) */}
       <button
         onClick={() => setIsMobileMenuOpen(true)}
-        className="lg:hidden fixed top-4 left-4 z-40 p-2 bg-white dark:bg-gray-800 rounded-full shadow-lg border border-gray-200 dark:border-gray-700"
+        className="lg:hidden fixed top-4 right-4 z-40 p-2 bg-white dark:bg-gray-800 rounded-full shadow-lg border border-gray-200 dark:border-gray-700"
         aria-label="Open menu"
       >
         <Menu size={24} className="text-gray-700 dark:text-gray-200" />
@@ -127,32 +123,12 @@ export const Layout = ({ children }) => {
         </>
       )}
 
-      {/* Main Content */}
-      <main className="flex-1 lg:ml-72 w-full max-w-full overflow-x-hidden pb-20">
+      {/* Main Content - Removed pb-20 since no bottom nav */}
+      <main className="flex-1 lg:ml-72 w-full max-w-full overflow-x-hidden">
         {children}
       </main>
 
-      {/* 👇 BOTTOM NAVIGATION (Visible on ALL screens, including Desktop) */}
-      <nav className="fixed bottom-0 left-0 right-0 lg:left-72 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 z-30 flex justify-around items-center py-2 shadow-lg lg:shadow-none">
-        {menuItems.slice(0, 5).map((item) => {
-          const Icon = item.icon;
-          const isActive = view === item.view;
-          return (
-            <button
-              key={item.view}
-              onClick={() => navigateTo(item.view)}
-              className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all ${
-                isActive 
-                  ? "text-green-700 dark:text-green-400" 
-                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-              }`}
-            >
-              <Icon size={22} />
-              <span className="text-[10px] font-medium">{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      {/* 👇 BOTTOM NAVIGATION REMOVED */}
     </div>
   );
 };
