@@ -27,13 +27,12 @@ export const CustomerService = {
   },
 
   // 2. Add a new transaction (Purchase or Payment)
-  addTransaction: async (storeId, customerId, customerName, customerPhone, amount, paid, items, invoiceItems = null) => {
+  addTransaction: async (storeId, customerId, customerName, customerPhone, amount, paid, items, invoiceItems = null, internalNote = "") => {
     let targetCustomer = null;
     
     if (customerId) {
       targetCustomer = await CustomerRepository.getById(storeId, customerId);
     } else {
-      // Create new customer on the fly if they don't exist
       const existingCustomer = await CustomerRepository.getByPhone(storeId, customerPhone);
       if (existingCustomer) {
         throw new Error(`A customer with the phone number "${customerPhone}" already exists.`);
@@ -54,13 +53,11 @@ export const CustomerService = {
     }, 0);
     
     const newBalance = prevBalance + amount - paid;
-
-    // 👇 NEW: Generate human-readable invoice number (e.g., "INV-2024-001")
     const invoiceNumber = await generateInvoiceNumber(storeId);
 
     const newTx = {
       customerId: targetCustomer.id,
-      storeId: storeId, // Ensure storeId is saved for querying
+      storeId: storeId,
       date: new Date().toISOString(),
       amount,
       paid,
@@ -70,7 +67,8 @@ export const CustomerService = {
       prevBalance,
       newBalance,
       isVoid: false,
-      invoiceNumber: invoiceNumber // 👈 NEW: Save the invoice number
+      invoiceNumber: invoiceNumber,
+      internalNote: internalNote // 👈 NEW: Saves the private note to the database
     };
     
     await TransactionRepository.add(storeId, newTx);

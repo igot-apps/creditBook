@@ -90,12 +90,10 @@ export const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex">
-      {/* Desktop Sidebar */}
       <aside className="hidden lg:flex lg:flex-col lg:w-72 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 fixed h-screen">
         <SidebarContent />
       </aside>
 
-      {/* Mobile Menu Button (Top Right) */}
       <button
         onClick={() => setIsMobileMenuOpen(true)}
         className="lg:hidden fixed top-4 right-4 z-40 p-2 bg-white dark:bg-gray-800 rounded-full shadow-lg border border-gray-200 dark:border-gray-700"
@@ -104,18 +102,11 @@ export const Layout = ({ children }) => {
         <Menu size={24} className="text-gray-700 dark:text-gray-200" />
       </button>
 
-      {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && (
         <>
-          <div 
-            className="lg:hidden fixed inset-0 bg-black/50 z-40" 
-            onClick={() => setIsMobileMenuOpen(false)} 
-          />
+          <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setIsMobileMenuOpen(false)} />
           <aside className="lg:hidden fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-white dark:bg-gray-900 z-50 shadow-2xl">
-            <button 
-              onClick={() => setIsMobileMenuOpen(false)} 
-              className="absolute top-4 right-4 p-2 bg-gray-100 dark:bg-gray-800 rounded-full"
-            >
+            <button onClick={() => setIsMobileMenuOpen(false)} className="absolute top-4 right-4 p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
               <X size={20} className="text-gray-700 dark:text-gray-200" />
             </button>
             <SidebarContent />
@@ -123,12 +114,9 @@ export const Layout = ({ children }) => {
         </>
       )}
 
-      {/* Main Content - Removed pb-20 since no bottom nav */}
       <main className="flex-1 lg:ml-72 w-full max-w-full overflow-x-hidden">
         {children}
       </main>
-
-      {/* 👇 BOTTOM NAVIGATION REMOVED */}
     </div>
   );
 };

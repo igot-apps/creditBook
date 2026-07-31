@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Phone, PlusCircle, MessageCircle, MessageSquare, Edit3, Trash2, ShoppingBag, CreditCard, Ban, Clock, FileText, RefreshCw } from "lucide-react";
+import { Phone, PlusCircle, MessageCircle, MessageSquare, Edit3, Trash2, ShoppingBag, CreditCard, Ban, Clock, FileText, RefreshCw, Lock } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openSMS, openWhatsApp, openDialer } from "../utils/communication";
@@ -9,16 +9,7 @@ import { InvoiceModal } from "../components/InvoiceModal";
 import { EditCustomerModal } from "../components/EditCustomerModal";
 
 export const ProfilePage = () => {
-  const { 
-    currentStore, 
-    selectedCustomer, 
-    setSelectedCustomer, 
-    setView, 
-    refreshCustomers, 
-    showToast, 
-    triggerConfetti, 
-    setPrefillTransaction 
-  } = useStore();
+  const { currentStore, selectedCustomer, setSelectedCustomer, setView, refreshCustomers, showToast, triggerConfetti, setPrefillTransaction } = useStore();
   
   const [viewingInvoice, setViewingInvoice] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -48,11 +39,9 @@ export const ProfilePage = () => {
 
   const handleRedoTransaction = async (tx) => {
     if (!window.confirm(`This will VOID this invoice and open a corrected copy for you to fix. Continue?`)) return;
-    
     try {
       await CustomerService.voidTransaction(currentStore.id, selectedCustomer.id, tx.id);
       await refreshCustomers();
-      
       setPrefillTransaction({
         customerId: selectedCustomer.id,
         name: selectedCustomer.name,
@@ -62,7 +51,6 @@ export const ProfilePage = () => {
         paid: tx.paid.toString(),
         invoiceItems: tx.invoiceItems || null
       });
-      
       showToast("Old invoice voided. Please correct and save the new one.");
       setView("record");
     } catch (error) {
@@ -207,7 +195,6 @@ export const ProfilePage = () => {
                   <div className={`p-3 rounded-xl border transition-all ${tx.isVoid ? 'border-red-200 dark:border-red-900/30 bg-red-50/30 dark:bg-red-900/5 opacity-80' : getTimelineColor(tx)}`}>
                     <div className="flex justify-between items-start mb-1">
                       <div className="flex-1 min-w-0">
-                        {/* 👇 NEW: Display Human-Readable Invoice Number */}
                         {tx.invoiceNumber && (
                           <div className="flex items-center gap-1.5 mb-1">
                             <FileText size={12} className="text-gray-400 flex-shrink-0" />
@@ -216,7 +203,6 @@ export const ProfilePage = () => {
                             </span>
                           </div>
                         )}
-                        
                         <p className={`font-bold text-sm flex items-center flex-wrap gap-2 ${tx.isVoid ? 'text-gray-500 line-through decoration-red-500 decoration-2' : 'text-gray-900 dark:text-white'}`}>
                           {tx.items || "General Transaction"} 
                           {tx.isVoid && <span className="text-[10px] text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 rounded font-bold no-underline tracking-wider">VOIDED</span>}
@@ -232,34 +218,32 @@ export const ProfilePage = () => {
                       </div>
                       <div className="flex gap-1">
                         {!tx.isVoid && (
-                          <button 
-                            onClick={() => handleRedoTransaction(tx)} 
-                            className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-blue-600 transition shadow-sm"
-                            title="Fix / Redo this invoice"
-                          >
+                          <button onClick={() => handleRedoTransaction(tx)} className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-blue-600 transition shadow-sm" title="Fix / Redo this invoice">
                             <RefreshCw size={14} />
                           </button>
                         )}
-                        
-                        <button 
-                          onClick={() => setViewingInvoice(tx)} 
-                          className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-green-600 transition shadow-sm"
-                          title="View Receipt"
-                        >
+                        <button onClick={() => setViewingInvoice(tx)} className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-green-600 transition shadow-sm" title="View Receipt">
                           <FileText size={14} />
                         </button>
-                        
                         {!tx.isVoid && (
-                          <button 
-                            onClick={() => handleVoidTransaction(tx)} 
-                            className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-red-600 transition shadow-sm"
-                            title="Void Transaction"
-                          >
+                          <button onClick={() => handleVoidTransaction(tx)} className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-red-600 transition shadow-sm" title="Void Transaction">
                             <Ban size={14} />
                           </button>
                         )}
                       </div>
                     </div>
+
+                    {/* 👇 NEW: Display Internal Note in Timeline (Only visible to you) */}
+                    {tx.internalNote && (
+                      <div className="mt-3 pt-3 border-t border-dashed border-gray-200 dark:border-gray-700">
+                        <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase flex items-center gap-1 mb-1">
+                          <Lock size={10} /> Internal Note
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-gray-300 italic bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg">
+                          {tx.internalNote}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
@@ -275,18 +259,16 @@ export const ProfilePage = () => {
         )}
       </div>
 
-      {/* Modals */}
       {viewingInvoice && (
         <InvoiceModal 
           onClose={() => setViewingInvoice(null)} 
           transaction={viewingInvoice} 
-          customerName={selectedCustomer.name} // 👈 Pass customer name
-          customerPhone={selectedCustomer.phone} // 👈 Pass customer phone
+          customerName={selectedCustomer.name}
+          customerPhone={selectedCustomer.phone}
         />
       )}
       {isEditing && <EditCustomerModal customer={selectedCustomer} onClose={() => setIsEditing(false)} />}
       
-      {/* Clear Debt Modal */}
       {showClearDebtModal && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
@@ -301,7 +283,6 @@ export const ProfilePage = () => {
         </div>
       )}
 
-      {/* Strict Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
