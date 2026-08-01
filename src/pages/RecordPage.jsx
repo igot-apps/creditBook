@@ -20,7 +20,10 @@ export const RecordPage = () => {
 
   const [mode, setMode] = useState("search");
   const [searchQuery, setSearchQuery] = useState("");
-  const [tx, setTx] = useState({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "", customerNote: "", internalNote: "" });
+  
+  // 👇 2. Added discount to tx state for persistence
+  const [tx, setTx] = useState({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "", customerNote: "", internalNote: "", discount: "" });
+  
   const [phoneError, setPhoneError] = useState("");
   const [recordMode, setRecordMode] = useState("quick");
   const [sendMethod, setSendMethod] = useState("none");
@@ -37,7 +40,7 @@ export const RecordPage = () => {
       setTx({
         customerId: prefillTransaction.customerId || null, name: prefillTransaction.name || "", phone: prefillTransaction.phone || "",
         items: prefillTransaction.items || "", amount: prefillTransaction.amount ? prefillTransaction.amount.toString() : "", paid: prefillTransaction.paid ? prefillTransaction.paid.toString() : "",
-        customerNote: prefillTransaction.customerNote || "", internalNote: prefillTransaction.internalNote || ""
+        customerNote: prefillTransaction.customerNote || "", internalNote: prefillTransaction.internalNote || "", discount: prefillTransaction.discount || ""
       });
       if (prefillTransaction.invoiceItems?.length > 0) { setRecordMode("detailed"); setInvoiceItems(prefillTransaction.invoiceItems); } else { setRecordMode("quick"); }
       if (prefillTransaction.customerId) setMode("existing");
@@ -54,20 +57,32 @@ export const RecordPage = () => {
     return customers.filter(c => !c.isArchived && (c.name.toLowerCase().includes(q) || c.phone.includes(q)));
   }, [searchQuery, customers]);
 
-  const handleSelectCustomer = (customer) => { setTx({ customerId: customer.id, name: customer.name, phone: customer.phone, items: "", amount: "", paid: "", customerNote: "", internalNote: "" }); setMode("existing"); setSearchQuery(""); };
+  const handleSelectCustomer = (customer) => { 
+    setTx({ customerId: customer.id, name: customer.name, phone: customer.phone, items: "", amount: "", paid: "", customerNote: "", internalNote: "", discount: "" }); 
+    setMode("existing"); setSearchQuery(""); 
+  };
+  
   const handleCreateInline = () => {
     const isPhone = /^\d+$/.test(searchQuery.replace(/\s/g, ''));
     if (isPhone) setTx(prev => ({ ...prev, phone: searchQuery, customerId: null }));
     else setTx(prev => ({ ...prev, name: searchQuery, customerId: null }));
     setMode("new"); setSearchQuery("");
   };
+  
   const resetToSearch = () => {
-    setTx({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "", customerNote: "", internalNote: "" });
+    setTx({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "", customerNote: "", internalNote: "", discount: "" });
     setInvoiceItems([]); setMode("search"); setSearchQuery(""); setPhoneError(""); setEditingDraftId(null);
   };
+  
   const handleResumeDraft = (draft) => {
-    setPrefillTransaction({ ...draft, isDraft: true, customerId: draft.customerId, name: draft.name, phone: draft.phone, items: draft.items, amount: draft.amount, paid: draft.paid, customerNote: draft.customerNote || "", internalNote: draft.internalNote || "", invoiceItems: draft.invoiceItems });
+    setPrefillTransaction({ 
+      ...draft, isDraft: true, customerId: draft.customerId, name: draft.name, phone: draft.phone, 
+      items: draft.items, amount: draft.amount, paid: draft.paid, 
+      customerNote: draft.customerNote || "", internalNote: draft.internalNote || "", 
+      discount: draft.discount || "", invoiceItems: draft.invoiceItems 
+    });
   };
+  
   const handlePickContact = async () => {
     if (!('contacts' in navigator)) { showToast("Contact picker not supported."); return; }
     try {
@@ -95,7 +110,12 @@ export const RecordPage = () => {
   const handleSaveDraft = async () => {
     if (!tx.name && !tx.phone && invoiceItems.length === 0) { showToast("Add a customer or items to save a draft."); return; }
     try {
-      await saveDraft({ id: editingDraftId, customerId: tx.customerId, name: tx.name, phone: tx.phone, items: tx.items, amount: tx.amount, paid: tx.paid, customerNote: tx.customerNote, internalNote: tx.internalNote, recordMode, invoiceItems: recordMode === "detailed" ? invoiceItems : null });
+      await saveDraft({ 
+        id: editingDraftId, customerId: tx.customerId, name: tx.name, phone: tx.phone, 
+        items: tx.items, amount: tx.amount, paid: tx.paid, 
+        customerNote: tx.customerNote, internalNote: tx.internalNote, discount: tx.discount,
+        recordMode, invoiceItems: recordMode === "detailed" ? invoiceItems : null 
+      });
       showToast("Draft saved successfully!"); resetToSearch(); setView("home");
     } catch (error) { showToast("Failed to save draft."); }
   };
@@ -143,7 +163,7 @@ export const RecordPage = () => {
   const totalDue = currentBal + amountVal; const newBal = totalDue - paidVal;
   const isOverpayment = paidVal > totalDue && totalDue > 0;
 
-  // 👇 2. Updated SMS Message with dynamic currency
+  //  3. Updated SMS Message with dynamic currency
   const smsMessage = useMemo(() => {
     const pad = (str, len) => str.padEnd(len);
     let msg = "Account Summary\n\n";
@@ -167,7 +187,7 @@ export const RecordPage = () => {
     return msg;
   }, [currentBal, amountVal, paidVal, newBal, currentStore, tx.customerNote, currency]);
 
-  // 👇 3. Updated WhatsApp Message with dynamic currency
+  // 👇 4. Updated WhatsApp Message with dynamic currency
   const whatsappMessage = useMemo(() => {
     const itemsList = recordMode === "detailed" && invoiceItems.length > 0
       ? invoiceItems.map(i => `- ${i.quantity}x ${i.name} @ ${formatCurrency(i.price, currency)} = ${formatCurrency(i.quantity * i.price, currency)}`).join('\n')
@@ -211,7 +231,6 @@ export const RecordPage = () => {
                 <button key={c.id} onClick={() => handleSelectCustomer(c)} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition text-left">
                   <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full flex items-center justify-center font-bold flex-shrink-0">{c.name.charAt(0)}</div>
                   <div className="flex-1 min-w-0"><p className="font-semibold text-gray-900 dark:text-white truncate">{c.name}</p><p className="text-xs text-gray-500 dark:text-gray-400 truncate">{c.phone}</p></div>
-                  {/* 👇 4. Updated formatCurrency */}
                   {c.balance > 0 && <span className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-full flex-shrink-0">{formatCurrency(c.balance, currency)}</span>}
                 </button>
               ))}
@@ -239,7 +258,6 @@ export const RecordPage = () => {
             {currentBal > 0 && (
               <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center">
                 <p className="text-sm text-gray-500 dark:text-gray-400">Current Debt</p>
-                {/*  5. Updated formatCurrency */}
                 <p className="text-lg font-bold text-red-600 dark:text-red-400">{formatCurrency(currentBal, currency)}</p>
               </div>
             )}
@@ -274,7 +292,7 @@ export const RecordPage = () => {
               <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <div>
                   <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Customer Note (Optional)</label>
-                  <textarea placeholder="e.g., Will send remaining USD5 tonight." value={tx.customerNote} onChange={e => setTx({...tx, customerNote: e.target.value})} className="w-full text-sm mt-1 outline-none dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2" rows="2" />
+                  <textarea placeholder="e.g., Will send remaining balance tonight." value={tx.customerNote} onChange={e => setTx({...tx, customerNote: e.target.value})} className="w-full text-sm mt-1 outline-none dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2" rows="2" />
                   <p className="text-[10px] text-gray-400 mt-1">Automatically included in SMS/WhatsApp receipts.</p>
                 </div>
                 <div>

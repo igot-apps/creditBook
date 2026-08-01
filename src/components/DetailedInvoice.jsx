@@ -13,10 +13,12 @@ export const DetailedInvoice = ({
   const [showInlineProduct, setShowInlineProduct] = useState(false);
   const [newProduct, setNewProduct] = useState({ name: "", price: "", unit: "", category: "" });
   const [priceUpdateIndex, setPriceUpdateIndex] = useState(null);
-  const [discount, setDiscount] = useState("");
+  
+  // 👇 FIX: Initialize discount from tx.discount so it persists across re-renders
+  const [discount, setDiscount] = useState(tx.discount || "");
   const [showSummary, setShowSummary] = useState(true);
 
-  // 👇 NEW: Get dynamic currency from store, default to GH₵
+  // Get dynamic currency
   const currency = currentStore?.currency || "GH₵";
 
   const totalInvoiceAmount = invoiceItems.reduce((sum, item) => {
@@ -127,7 +129,6 @@ export const DetailedInvoice = ({
               <button key={p.id} onClick={() => addProductToInvoice(p)} className="w-full flex justify-between items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-0 text-left">
                 <div>
                   <p className="font-semibold text-gray-900 dark:text-white text-sm">{p.name}</p>
-                  {/* 👇 UPDATED: Pass currency */}
                   <p className="text-xs text-gray-500">{formatCurrency(p.price, currency)} {p.unit && `/ ${p.unit}`}</p>
                 </div>
                 <PlusCircle size={18} className="text-green-600" />
@@ -158,7 +159,6 @@ export const DetailedInvoice = ({
             </div>
             
             <div className="flex items-center gap-2">
-              {/* QTY Field */}
               <div className="relative flex-[1.5]">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-blue-500 dark:text-blue-400 pointer-events-none">QTY</span>
                 <input 
@@ -170,7 +170,6 @@ export const DetailedInvoice = ({
               </div>
               <span className="text-gray-400 dark:text-gray-500 font-bold">×</span>
               
-              {/* PRICE Field */}
               <div className="relative flex-[2]">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-purple-500 dark:text-purple-400 pointer-events-none">PRICE</span>
                 <input 
@@ -182,9 +181,7 @@ export const DetailedInvoice = ({
               </div>
               <span className="text-gray-400 dark:text-gray-500 font-bold">=</span>
               
-              {/* Total */}
               <div className="flex-1 text-right min-w-[60px]">
-                {/* 👇 UPDATED: Pass currency */}
                 <p className="text-sm font-bold text-gray-900 dark:text-white">
                   {formatCurrency((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0), currency)}
                 </p>
@@ -209,7 +206,6 @@ export const DetailedInvoice = ({
         <button onClick={() => setShowSummary(!showSummary)} className="w-full flex items-center justify-between p-2.5 bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-900 transition">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Summary</span>
-            {/* 👇 UPDATED: Pass currency */}
             <span className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(finalTotal, currency)}</span>
           </div>
           {showSummary ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronUp size={16} className="text-gray-400" />}
@@ -218,20 +214,24 @@ export const DetailedInvoice = ({
         {showSummary && (
           <div className="p-3 space-y-2 border-t border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-2 text-xs">
-              {/* 👇 UPDATED: Pass currency */}
               <span className="text-gray-500 dark:text-gray-400 flex-1">Subtotal: {formatCurrency(totalInvoiceAmount, currency)}</span>
               <div className="flex items-center gap-1 bg-orange-50 dark:bg-orange-900/10 px-2 py-1 rounded border border-orange-100 dark:border-orange-900/30">
                 <Tag className="text-orange-500" size={12} />
+                {/* 👇 FIX: Update both local state AND tx.discount so it persists */}
                 <input 
                   type="number" inputMode="decimal" placeholder="Discount" 
-                  value={discount} onChange={e => setDiscount(e.target.value)}
+                  value={discount} 
+                  onChange={e => {
+                    const val = e.target.value;
+                    setDiscount(val);
+                    setTx(prev => ({ ...prev, discount: val }));
+                  }}
                   className={`w-20 bg-transparent text-right font-bold text-orange-700 dark:text-orange-400 outline-none text-xs ${noSpinnerClass}`} 
                 />
               </div>
             </div>
             <div className="flex justify-between items-center pt-1 border-t border-dashed border-gray-200 dark:border-gray-600">
               <span className="text-sm font-bold text-gray-900 dark:text-white">Total Due:</span>
-              {/* 👇 UPDATED: Pass currency */}
               <span className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(finalTotal, currency)}</span>
             </div>
             <div>
@@ -242,15 +242,7 @@ export const DetailedInvoice = ({
                 className={`w-full text-lg font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-1 ${noSpinnerClass}`} 
               />
             </div>
-            <div className="relative">
-              <FileText className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-              <input 
-                placeholder="Add note..." 
-                value={tx.note || ""} 
-                onChange={e => setTx({...tx, note: e.target.value})}
-                className="w-full pl-7 pr-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded outline-none focus:ring-1 focus:ring-blue-500 dark:text-white placeholder-gray-400"
-              />
-            </div>
+            {/* 👇 REMOVED: The "Add note..." input has been completely deleted */}
           </div>
         )}
       </div>
