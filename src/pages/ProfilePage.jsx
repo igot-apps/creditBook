@@ -11,6 +11,9 @@ import { EditCustomerModal } from "../components/EditCustomerModal";
 export const ProfilePage = () => {
   const { currentStore, selectedCustomer, setSelectedCustomer, setView, refreshCustomers, showToast, triggerConfetti, setPrefillTransaction } = useStore();
   
+  // 👇 1. Get the currency from settings, default to GH₵ if not set
+  const currency = currentStore?.currency || "GH₵";
+
   const [viewingInvoice, setViewingInvoice] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -24,8 +27,9 @@ export const ProfilePage = () => {
   const totalPurchases = history.reduce((sum, t) => sum + (t.amount > 0 && !t.isVoid ? t.amount : 0), 0);
   const totalPaid = history.reduce((sum, t) => sum + (t.paid > 0 && !t.isVoid ? t.paid : 0), 0);
 
+  // 👇 2. Pass currency to formatCurrency in messages
   const generateReminderMessage = (c) =>
-    `Hello ${c.name}, this is a reminder from ${currentStore.name}. You have an outstanding debt of ${formatCurrency(c.balance)}. Please visit us or send payment via MoMo. Thank you!`;
+    `Hello ${c.name}, this is a reminder from ${currentStore.name}. You have an outstanding debt of ${formatCurrency(c.balance, currency)}. Please visit us or send payment via MoMo. Thank you!`;
 
   const handleRecordPayment = () => {
     setPrefillTransaction({ customerId: selectedCustomer.id, name: selectedCustomer.name, phone: selectedCustomer.phone, items: "Payment", amount: "0", paid: "" });
@@ -86,7 +90,8 @@ export const ProfilePage = () => {
   };
 
   const handleVoidTransaction = async (tx) => {
-    if (!window.confirm(`VOID "${tx.items}" for ${formatCurrency(tx.amount)}? This will reverse the transaction.`)) return;
+    // 👇 3. Pass currency to formatCurrency
+    if (!window.confirm(`VOID "${tx.items}" for ${formatCurrency(tx.amount, currency)}? This will reverse the transaction.`)) return;
     try {
       await CustomerService.voidTransaction(currentStore.id, selectedCustomer.id, tx.id);
       await refreshCustomers();
@@ -122,8 +127,9 @@ export const ProfilePage = () => {
           <p className="text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 mt-1"><Phone size={14} /> {selectedCustomer.phone}</p>
           {selectedCustomer.altPhone && <p className="text-gray-400 text-xs mt-1">Alt: {selectedCustomer.altPhone}</p>}
           
+          {/* 👇 4. Pass currency to formatCurrency */}
           <div className={`mt-4 text-4xl font-bold ${selectedCustomer.balance > 0 ? "text-red-600 dark:text-red-400" : selectedCustomer.balance < 0 ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400"}`}>
-            {selectedCustomer.balance < 0 ? `Credit: ${formatCurrency(Math.abs(selectedCustomer.balance))}` : formatCurrency(selectedCustomer.balance)}
+            {selectedCustomer.balance < 0 ? `Credit: ${formatCurrency(Math.abs(selectedCustomer.balance), currency)}` : formatCurrency(selectedCustomer.balance, currency)}
           </div>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Current Balance</p>
         </div>
@@ -132,11 +138,11 @@ export const ProfilePage = () => {
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
             <p className="text-xs text-gray-500 uppercase font-bold">Total Purchases</p>
-            <p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(totalPurchases)}</p>
+            <p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(totalPurchases, currency)}</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
             <p className="text-xs text-gray-500 uppercase font-bold">Total Paid</p>
-            <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(totalPaid)}</p>
+            <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(totalPaid, currency)}</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
             <p className="text-xs text-gray-500 uppercase font-bold">Transactions</p>
@@ -213,8 +219,9 @@ export const ProfilePage = () => {
                     
                     <div className="flex justify-between items-center text-sm mt-2">
                       <div className="space-y-0.5">
-                        {tx.amount > 0 && <p className={`text-gray-600 dark:text-gray-300 ${tx.isVoid ? 'line-through' : ''}`}>Purchase: <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(tx.amount)}</span></p>}
-                        {tx.paid > 0 && <p className={`text-green-600 dark:text-green-400 ${tx.isVoid ? 'line-through' : ''}`}>Paid: <span className="font-bold">{formatCurrency(tx.paid)}</span></p>}
+                        {/* 👇 5. Pass currency to formatCurrency */}
+                        {tx.amount > 0 && <p className={`text-gray-600 dark:text-gray-300 ${tx.isVoid ? 'line-through' : ''}`}>Purchase: <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(tx.amount, currency)}</span></p>}
+                        {tx.paid > 0 && <p className={`text-green-600 dark:text-green-400 ${tx.isVoid ? 'line-through' : ''}`}>Paid: <span className="font-bold">{formatCurrency(tx.paid, currency)}</span></p>}
                       </div>
                       <div className="flex gap-1">
                         {!tx.isVoid && (
@@ -233,7 +240,7 @@ export const ProfilePage = () => {
                       </div>
                     </div>
 
-                    {/* 👇 NEW: Display Internal Note in Timeline (Only visible to you) */}
+                    {/* 👇 Display Internal Note in Timeline (Only visible to you) */}
                     {tx.internalNote && (
                       <div className="mt-3 pt-3 border-t border-dashed border-gray-200 dark:border-gray-700">
                         <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase flex items-center gap-1 mb-1">
@@ -273,7 +280,8 @@ export const ProfilePage = () => {
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
             <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Clear Debt?</h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">Type <span className="text-red-600 font-mono bg-red-50 px-1 rounded">yes</span> to clear {formatCurrency(selectedCustomer.balance)}.</p>
+            {/* 👇 6. Pass currency to formatCurrency */}
+            <p className="text-gray-600 dark:text-gray-400 mb-4">Type <span className="text-red-600 font-mono bg-red-50 px-1 rounded">yes</span> to clear {formatCurrency(selectedCustomer.balance, currency)}.</p>
             <input type="text" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white mb-4 text-center font-mono" placeholder="yes" autoFocus />
             <div className="flex gap-3">
               <button onClick={() => setShowClearDebtModal(false)} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Cancel</button>

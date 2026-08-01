@@ -1,12 +1,15 @@
 import { useMemo } from "react";
-import { TrendingUp, Banknote, CreditCard, Users, AlertCircle, Plus, ArrowRight } from "lucide-react";
+import { TrendingUp, Users, AlertCircle, Plus, ArrowRight } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 
 export const HomePage = () => {
   const { currentStore, customers, setView, setSelectedCustomer } = useStore();
 
-  // 1. Calculate "Today's Work" and Overall Stats
+  // 👇 1. Get the currency from settings, default to GH₵ if not set
+  const currency = currentStore?.currency || "GH₵";
+
+  // 2. Calculate "Today's Work" and Overall Stats
   const stats = useMemo(() => {
     const today = new Date().toDateString();
     let todaySales = 0;
@@ -33,7 +36,7 @@ export const HomePage = () => {
     return { todaySales, collectedToday, creditGivenToday, totalOutstanding, activeCustomers };
   }, [customers]);
 
-  // 2. Get Top 5 Debtors for quick follow-ups
+  // 3. Get Top 5 Debtors for quick follow-ups
   const topDebtors = useMemo(() => {
     return customers
       .filter(c => !c.isArchived && c.balance > 0)
@@ -48,49 +51,54 @@ export const HomePage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      {/* Header */}
-      <div className="bg-green-700 dark:bg-gray-900 text-white p-6 pb-8 rounded-b-[2rem] shadow-lg">
-        <div className="flex justify-between items-start">
-          <div>
-            <p className="text-green-100 text-sm">Welcome back,</p>
-            <h1 className="text-2xl font-bold">{currentStore?.name || "Business Owner"}</h1>
-          </div>
+      
+      {/* 👇 COMPACT HEADER: Stacked Layout with smaller "+" as the last item */}
+      <div 
+        className="bg-green-700 dark:bg-gray-900 text-white pb-4 rounded-b-[2rem] shadow-lg flex flex-col"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 10px)' }}
+      >
+        {/* Top Section: Text Info */}
+        <div className="px-4 flex-1">
+          <p className="text-green-100 text-[10px] uppercase tracking-wider font-semibold">Welcome back,</p>
+          <h1 className="text-xl font-bold mt-0.5">{currentStore?.name || "Business Owner"}</h1>
+          <p className="text-green-100 text-[10px] mt-1">
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </p>
+        </div>
+        
+        {/* Last Item in Stack: Smaller "+" Button (Bottom Right) */}
+        <div className="px-4 pt-4 flex justify-end">
           <button 
             onClick={() => setView("record")}
-            className="bg-white text-green-700 p-3 rounded-full shadow-lg active:scale-95 transition"
+            className="bg-white text-green-700 p-2 rounded-full shadow-lg active:scale-95 transition"
           >
-            <Plus size={24} />
+            <Plus size={20} />
           </button>
         </div>
-        <p className="text-green-100 text-xs mt-4">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
       </div>
 
-      <div className="p-4 max-w-lg mx-auto space-y-6 -mt-4">
-        
+      <div className="p-4 max-w-lg mx-auto space-y-6 -mt-4">       
         {/* 👇 HERO SECTION: TODAY'S WORK */}
         <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp size={18} className="text-green-600 dark:text-green-400" />
             <h2 className="font-bold text-gray-900 dark:text-white">Today's Work</h2>
           </div>
-          
           <div className="grid grid-cols-3 gap-3">
             {/* Today's Sales */}
             <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-xl border border-green-100 dark:border-green-800/30 text-center">
               <p className="text-[10px] font-bold text-green-600 dark:text-green-400 uppercase mb-1">Sales</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight break-words">{formatCurrency(stats.todaySales)}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight break-words">{formatCurrency(stats.todaySales, currency)}</p>
             </div>
-            
             {/* Collected Today */}
             <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-xl border border-blue-100 dark:border-blue-800/30 text-center">
               <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase mb-1">Collected</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight break-words">{formatCurrency(stats.collectedToday)}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight break-words">{formatCurrency(stats.collectedToday, currency)}</p>
             </div>
-            
             {/* Credit Given Today */}
             <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-xl border border-orange-100 dark:border-orange-800/30 text-center">
               <p className="text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase mb-1">Credit Given</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight break-words">{formatCurrency(stats.creditGivenToday)}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight break-words">{formatCurrency(stats.creditGivenToday, currency)}</p>
             </div>
           </div>
         </div>
@@ -102,7 +110,7 @@ export const HomePage = () => {
               <AlertCircle size={16} className="text-red-500" />
               <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Outstanding</p>
             </div>
-            <p className="text-xl font-bold text-red-600 dark:text-red-400">{formatCurrency(stats.totalOutstanding)}</p>
+            <p className="text-xl font-bold text-red-600 dark:text-red-400">{formatCurrency(stats.totalOutstanding, currency)}</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-2 mb-2">
@@ -139,7 +147,7 @@ export const HomePage = () => {
                     <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{customer.phone}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="font-bold text-red-600 dark:text-red-400">{formatCurrency(customer.balance)}</p>
+                    <p className="font-bold text-red-600 dark:text-red-400">{formatCurrency(customer.balance, currency)}</p>
                     <p className="text-[10px] text-gray-400">owed</p>
                   </div>
                 </button>
@@ -151,11 +159,10 @@ export const HomePage = () => {
         {/* Empty State if no debtors */}
         {topDebtors.length === 0 && (
           <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800/30 p-6 rounded-2xl text-center">
-            <p className="text-green-800 dark:text-green-300 font-bold"> All caught up!</p>
+            <p className="text-green-800 dark:text-green-300 font-bold">🎉 All caught up!</p>
             <p className="text-sm text-green-600 dark:text-green-400 mt-1">No outstanding debts right now.</p>
           </div>
         )}
-
       </div>
     </div>
   );

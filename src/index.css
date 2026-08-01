@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 👇 PREVENT iOS RUBBER BAND BOUNCE & ZOOM */
+/* 👇 FIX: No padding on body/html. App fills the screen edge-to-edge. */
 html, body {
   position: fixed;
   width: 100%;
@@ -11,9 +11,10 @@ html, body {
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
   margin: 0;
-  padding: 0;
+  padding: 0; /* MUST BE 0 */
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
+  background-color: #f9fafb; /* Matches your app background */
 }
 
 #root {
@@ -27,40 +28,21 @@ html, body {
   box-sizing: border-box;
 }
 
-/* Ensure every single element respects padding inside its width */
 *, *::before, *::after {
   box-sizing: inherit;
 }
 
-/* 👇 PREVENT iOS AUTO-ZOOM ON INPUTS */
 input, select, textarea {
-  font-size: 16px !important; /* Must be 16px or larger to prevent iOS zoom */
+  font-size: 16px !important;
 }
 
-/* Hide scrollbar for horizontal scrolling areas */
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* 👇 PRINT STYLES FOR INVOICE */
 @media print {
-  body * {
-    visibility: hidden;
-  }
-  .print\:block, .print\:block * {
-    visibility: visible;
-  }
-  .print\:hidden {
-    display: none !important;
-  }
-  .print\:rounded-none {
-    border-radius: 0 !important;
-  }
-  .print\:shadow-none {
-    box-shadow: none !important;
-  }
+  body * { visibility: hidden; }
+  .print\:block, .print\:block * { visibility: visible; }
+  .print\:hidden { display: none !important; }
+  .print\:rounded-none { border-radius: 0 !important; }
+  .print\:shadow-none { box-shadow: none !important; }
 }

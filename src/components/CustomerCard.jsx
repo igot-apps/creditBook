@@ -1,66 +1,55 @@
-import { ChevronRight, FileText } from "lucide-react";
 import useStore from "../store/useStore";
-import { formatCurrency, formatDate } from "../utils/helpers";
+import { formatCurrency } from "../utils/helpers";
+import { Phone } from "lucide-react";
 
 export const CustomerCard = ({ customer }) => {
-  const { setView, setSelectedCustomer } = useStore();
+  const { setSelectedCustomer, setView, currentStore } = useStore();
+  
+  // 👇 Get dynamic currency from store, default to GH₵
+  const currency = currentStore?.currency || "GH₵";
 
-  const handleViewProfile = () => {
+  const handleOpenProfile = () => {
     setSelectedCustomer(customer);
     setView("profile");
   };
 
-  // Get the latest transaction for the card summary
-  const latestTx = customer.history && customer.history.length > 0 
-    ? customer.history[customer.history.length - 1] 
-    : null;
+  // Dynamic colors based on balance status
+  const balanceColor = customer.balance > 0 
+    ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800/30" 
+    : customer.balance < 0 
+      ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800/30" 
+      : "text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800/30";
 
-  const lastActivity = latestTx 
-    ? formatDate(latestTx.date).split(',')[0] 
-    : 'No activity';
+  const balanceLabel = customer.balance > 0 ? "Owes" : customer.balance < 0 ? "Credit" : "Balance";
 
   return (
     <div 
-      onClick={handleViewProfile}
-      className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center gap-4 active:scale-[0.98] transition-transform cursor-pointer"
+      onClick={handleOpenProfile}
+      className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center gap-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition active:scale-[0.98]"
     >
       {/* Avatar */}
       <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0">
-        {customer.name.charAt(0)}
+        {customer.name.charAt(0).toUpperCase()}
       </div>
-      
-      {/* Name, Phone & Latest Invoice */}
+
+      {/* Customer Info */}
       <div className="flex-1 min-w-0">
-        <h3 className="font-bold text-gray-900 dark:text-white truncate">{customer.name}</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{customer.phone}</p>
-        
-        {/* 👇 NEW: Show latest invoice number if it exists */}
-        {latestTx?.invoiceNumber && (
-          <div className="flex items-center gap-1 mt-1">
-            <FileText size={12} className="text-gray-400" />
-            <span className="text-[10px] font-mono font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
-              {latestTx.invoiceNumber}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Balance & Date */}
-      <div className="text-right flex-shrink-0 mr-2">
-        <p className={`font-bold text-lg ${
-          customer.balance > 0 ? "text-red-600 dark:text-red-400" : 
-          customer.balance < 0 ? "text-blue-600 dark:text-blue-400" : 
-          "text-green-600 dark:text-green-400"
-        }`}>
-          {customer.balance < 0 
-            ? `Credit: ${formatCurrency(Math.abs(customer.balance))}` 
-            : formatCurrency(customer.balance)}
+        <p className="font-bold text-gray-900 dark:text-white truncate text-base">{customer.name}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 truncate flex items-center gap-1 mt-0.5">
+          <Phone size={10} /> {customer.phone || "No phone number"}
         </p>
-        <p className="text-xs text-gray-400 dark:text-gray-500">{lastActivity}</p>
       </div>
 
-      {/* Arrow Icon */}
-      <ChevronRight className="text-gray-300 dark:text-gray-600 flex-shrink-0" size={20} />
+      {/* Balance Badge */}
+      <div className={`px-3 py-1.5 rounded-xl flex flex-col items-end flex-shrink-0 border ${balanceColor}`}>
+        <p className="text-[10px] font-bold uppercase opacity-80">
+          {balanceLabel}
+        </p>
+        {/* 👇 UPDATED: Pass currency to formatCurrency */}
+        <p className="font-bold text-sm">
+          {formatCurrency(Math.abs(customer.balance), currency)}
+        </p>
+      </div>
     </div>
   );
 };

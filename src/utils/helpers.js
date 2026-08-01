@@ -1,12 +1,17 @@
 import { parsePhoneNumber } from 'libphonenumber-js';
 
-// 1. Format Currency (GHS)
-export const formatCurrency = (amount) => {
-  return new Intl.NumberFormat('en-GH', {
-    style: 'currency',
-    currency: 'GHS',
-    minimumFractionDigits: 2
-  }).format(amount || 0);
+// 1. Format Currency (Dynamic)
+export const formatCurrency = (amount, currency = "GH₵") => {
+  const num = parseFloat(amount) || 0;
+  
+  // Format the number with standard comma separation and 2 decimal places
+  const formattedNum = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(num);
+  
+  // Prepend the custom currency symbol
+  return `${currency}${formattedNum}`;
 };
 
 // 2. Format Date

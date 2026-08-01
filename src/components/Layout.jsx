@@ -94,9 +94,10 @@ export const Layout = ({ children }) => {
         <SidebarContent />
       </aside>
 
+      {/* Mobile Menu Button (Top Right) */}
       <button
         onClick={() => setIsMobileMenuOpen(true)}
-        className="lg:hidden fixed top-4 right-4 z-40 p-2 bg-white dark:bg-gray-800 rounded-full shadow-lg border border-gray-200 dark:border-gray-700"
+        className="lg:hidden fixed top-4 right-4 z-50 p-2 bg-white dark:bg-gray-800 rounded-full shadow-lg border border-gray-200 dark:border-gray-700"
         aria-label="Open menu"
       >
         <Menu size={24} className="text-gray-700 dark:text-gray-200" />

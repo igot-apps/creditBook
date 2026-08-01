@@ -32,9 +32,8 @@ export const CustomersPage = () => {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <PageHeader title="Customers" subtitle={`${customers.length} total`} />
-
+      
       <div className="p-4 max-w-lg mx-auto space-y-4">
-        
         {/* Search & Add */}
         <div className="relative flex-1">
           <div className="relative">
@@ -58,7 +57,7 @@ export const CustomersPage = () => {
               <Plus size={18} />
             </button>
           </div>
-
+          
           {/* 👇 NEW: Dropdown suggestion right below the search input */}
           {searchQuery.trim() && filteredCustomers.length === 0 && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-green-200 dark:border-green-800 rounded-xl shadow-lg z-20 overflow-hidden">
@@ -88,7 +87,7 @@ export const CustomersPage = () => {
               <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Tap the + button to add your first customer</p>
             </div>
           ) : filteredCustomers.length === 0 ? (
-            // Subtle message when searching yields no results (the dropdown is the main action)
+            // Subtle message when searching yields no results
             <div className="text-center py-8">
               <p className="text-gray-400 dark:text-gray-500 text-sm">No existing customers match your search.</p>
             </div>

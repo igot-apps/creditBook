@@ -15,15 +15,15 @@ const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:ap
 export const RecordPage = () => {
   const { currentStore, customers, refreshCustomers, showToast, triggerConfetti, setView, prefillTransaction, setPrefillTransaction, saveDraft, deleteDraft, drafts } = useStore();
   
+  // 👇 1. Get dynamic currency from store, default to GH₵
+  const currency = currentStore?.currency || "GH₵";
+
   const [mode, setMode] = useState("search");
   const [searchQuery, setSearchQuery] = useState("");
-  
-  // 👇 UPDATED: Added internalNote, removed includeNoteInSms
   const [tx, setTx] = useState({ customerId: null, name: "", phone: "", items: "", amount: "", paid: "", customerNote: "", internalNote: "" });
-  
   const [phoneError, setPhoneError] = useState("");
   const [recordMode, setRecordMode] = useState("quick");
-  const [sendMethod, setSendMethod] = useState("none"); 
+  const [sendMethod, setSendMethod] = useState("none");
 
   const [products, setProducts] = useState([]);
   const [invoiceItems, setInvoiceItems] = useState([]);
@@ -111,27 +111,22 @@ export const RecordPage = () => {
     const itemsString = (recordMode === "detailed" ? invoiceItems.map(i => `${i.quantity}x ${i.name}`).join(", ") : tx.items) + noteString;
     
     try {
-      // 1. Save to database first
       const result = await CustomerService.addTransaction(currentStore.id, tx.customerId, tx.name, tx.phone, amount, paid, itemsString, recordMode === "detailed" ? invoiceItems : null, tx.internalNote);
-      
       if (editingDraftId) await deleteDraft(editingDraftId);
       await refreshCustomers();
       if (amount - paid <= 0 && paid > 0) triggerConfetti();
 
-      // 2. Extract the newly generated Invoice Number
       const latestTx = result.history[result.history.length - 1]; 
       const invNum = latestTx?.invoiceNumber || "";
 
-      // 3. Inject the Invoice Number into the messages
       const refLine = invNum ? `Ref: ${invNum}\n\n` : "";
       const finalSms = smsMessage.replace("Ref: (Auto-generated)\n\n", refLine);
       const finalWhatsapp = whatsappMessage.replace("*Ref:* (Auto-generated)\n\n", invNum ? `*Ref:* ${invNum}\n\n` : "");
 
-      // 4. Open the app instantly
       if (sendMethod === "sms" && tx.phone) {
         openSMS(tx.phone, finalSms);
       } else if (sendMethod === "whatsapp" && tx.phone) {
-        openWhatsApp(tx.phone, finalWhatsapp); // 👈 Instant native app opening
+        openWhatsApp(tx.phone, finalWhatsapp);
       }
 
       resetToSearch(); setView("home"); 
@@ -148,17 +143,17 @@ export const RecordPage = () => {
   const totalDue = currentBal + amountVal; const newBal = totalDue - paidVal;
   const isOverpayment = paidVal > totalDue && totalDue > 0;
 
-  // 👇 UPDATED: Customer Note is ALWAYS included if it exists (no checkbox needed)
+  // 👇 2. Updated SMS Message with dynamic currency
   const smsMessage = useMemo(() => {
     const pad = (str, len) => str.padEnd(len);
     let msg = "Account Summary\n\n";
 
-    if (currentBal > 0) msg += `${pad("Old Balance", 16)}${formatCurrency(currentBal)}\n`;
-    if (amountVal > 0) msg += `${pad("+ Items bought", 16)}${formatCurrency(amountVal)}\n`;
-    if (paidVal > 0) msg += `${pad("- Paid", 16)}${formatCurrency(paidVal)}\n`;
+    if (currentBal > 0) msg += `${pad("Old Balance", 16)}${formatCurrency(currentBal, currency)}\n`;
+    if (amountVal > 0) msg += `${pad("+ Items bought", 16)}${formatCurrency(amountVal, currency)}\n`;
+    if (paidVal > 0) msg += `${pad("- Paid", 16)}${formatCurrency(paidVal, currency)}\n`;
 
     msg += "──────────────────────\n";
-    msg += `${pad("Total Owing", 16)}${formatCurrency(newBal < 0 ? 0 : newBal)}\n\n`;
+    msg += `${pad("Total Owing", 16)}${formatCurrency(newBal < 0 ? 0 : newBal, currency)}\n\n`;
 
     if (newBal <= 0 && (currentBal > 0 || amountVal > 0)) {
       msg += "Account fully paid.\n\n";
@@ -170,17 +165,18 @@ export const RecordPage = () => {
 
     msg += `Ref: (Auto-generated)\n\nThanks!\n- ${currentStore?.name || "Store"}`;
     return msg;
-  }, [currentBal, amountVal, paidVal, newBal, currentStore, tx.customerNote]);
+  }, [currentBal, amountVal, paidVal, newBal, currentStore, tx.customerNote, currency]);
 
+  // 👇 3. Updated WhatsApp Message with dynamic currency
   const whatsappMessage = useMemo(() => {
     const itemsList = recordMode === "detailed" && invoiceItems.length > 0
-      ? invoiceItems.map(i => `- ${i.quantity}x ${i.name} @ ${formatCurrency(i.price)} = ${formatCurrency(i.quantity * i.price)}`).join('\n')
+      ? invoiceItems.map(i => `- ${i.quantity}x ${i.name} @ ${formatCurrency(i.price, currency)} = ${formatCurrency(i.quantity * i.price, currency)}`).join('\n')
       : tx.items || "General Purchase";
       
-    let msg = ` *INVOICE* - ${currentStore?.name || "Store"}\nDate: ${formatDate(new Date())}\nCustomer: ${tx.name || "Walk-in Customer"}\n\n *Items:*\n${itemsList}\n\n💰 *Payment Summary:*\nSubtotal: ${formatCurrency(amountVal)}\n` +
-      (paidVal > 0 ? `Paid: ${formatCurrency(paidVal)}\n` : '') +
-      `\n *Balance Update:*\nOld Debt: ${formatCurrency(currentBal)}\nNew Balance: ${formatCurrency(newBal < 0 ? 0 : newBal)}` +
-      (newBal < 0 ? `\n*(You have a credit of ${formatCurrency(Math.abs(newBal))})*` : '') + `\n\n`;
+    let msg = ` *INVOICE* - ${currentStore?.name || "Store"}\nDate: ${formatDate(new Date())}\nCustomer: ${tx.name || "Walk-in Customer"}\n\n *Items:*\n${itemsList}\n\n💰 *Payment Summary:*\nSubtotal: ${formatCurrency(amountVal, currency)}\n` +
+      (paidVal > 0 ? `Paid: ${formatCurrency(paidVal, currency)}\n` : '') +
+      `\n *Balance Update:*\nOld Debt: ${formatCurrency(currentBal, currency)}\nNew Balance: ${formatCurrency(newBal < 0 ? 0 : newBal, currency)}` +
+      (newBal < 0 ? `\n*(You have a credit of ${formatCurrency(Math.abs(newBal), currency)})*` : '') + `\n\n`;
       
     if (tx.customerNote) {
         msg += `📝 *Note:* ${tx.customerNote}\n\n`;
@@ -188,7 +184,7 @@ export const RecordPage = () => {
     
     msg += `*Ref:* (Auto-generated)\n\nThank you for your patronage! `;
     return msg;
-  }, [currentBal, amountVal, paidVal, tx.name, tx.items, tx.customerNote, newBal, currentStore, recordMode, invoiceItems]);
+  }, [currentBal, amountVal, paidVal, tx.name, tx.items, tx.customerNote, newBal, currentStore, recordMode, invoiceItems, currency]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
@@ -215,7 +211,8 @@ export const RecordPage = () => {
                 <button key={c.id} onClick={() => handleSelectCustomer(c)} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition text-left">
                   <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full flex items-center justify-center font-bold flex-shrink-0">{c.name.charAt(0)}</div>
                   <div className="flex-1 min-w-0"><p className="font-semibold text-gray-900 dark:text-white truncate">{c.name}</p><p className="text-xs text-gray-500 dark:text-gray-400 truncate">{c.phone}</p></div>
-                  {c.balance > 0 && <span className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-full flex-shrink-0">{formatCurrency(c.balance)}</span>}
+                  {/* 👇 4. Updated formatCurrency */}
+                  {c.balance > 0 && <span className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-full flex-shrink-0">{formatCurrency(c.balance, currency)}</span>}
                 </button>
               ))}
               {searchQuery.trim() && searchResults.length === 0 && (
@@ -242,7 +239,8 @@ export const RecordPage = () => {
             {currentBal > 0 && (
               <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center">
                 <p className="text-sm text-gray-500 dark:text-gray-400">Current Debt</p>
-                <p className="text-lg font-bold text-red-600 dark:text-red-400">{formatCurrency(currentBal)}</p>
+                {/*  5. Updated formatCurrency */}
+                <p className="text-lg font-bold text-red-600 dark:text-red-400">{formatCurrency(currentBal, currency)}</p>
               </div>
             )}
           </div>
@@ -274,15 +272,11 @@ export const RecordPage = () => {
 
             {recordMode === "quick" && (
               <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
-                
-                {/* Customer Note (Automatically included in SMS/WhatsApp) */}
                 <div>
                   <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Customer Note (Optional)</label>
-                  <textarea placeholder="e.g., Will send remaining GH₵5 tonight." value={tx.customerNote} onChange={e => setTx({...tx, customerNote: e.target.value})} className="w-full text-sm mt-1 outline-none dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2" rows="2" />
+                  <textarea placeholder="e.g., Will send remaining USD5 tonight." value={tx.customerNote} onChange={e => setTx({...tx, customerNote: e.target.value})} className="w-full text-sm mt-1 outline-none dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2" rows="2" />
                   <p className="text-[10px] text-gray-400 mt-1">Automatically included in SMS/WhatsApp receipts.</p>
                 </div>
-
-                {/* Internal Note (Strictly Private) */}
                 <div>
                   <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase flex items-center gap-1">
                     <Lock size={12} /> Internal Note (Private)
@@ -290,8 +284,6 @@ export const RecordPage = () => {
                   <textarea placeholder="e.g., Customer usually pays after salary." value={tx.internalNote} onChange={e => setTx({...tx, internalNote: e.target.value})} className="w-full text-sm mt-1 outline-none dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2" rows="2" />
                   <p className="text-[10px] text-gray-400 mt-1">Visible only to you. Never sent to the customer.</p>
                 </div>
-
-                {/* Amounts */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-gray-500 dark:text-gray-400 text-sm font-semibold uppercase">Total Amount</label>
@@ -310,7 +302,7 @@ export const RecordPage = () => {
 
             {isOverpayment && (
               <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-300 p-4 rounded-xl flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" /><div><p className="font-bold text-sm">Overpayment Detected</p><p className="text-sm mt-1">Credit of {formatCurrency(Math.abs(newBal))}.</p></div>
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" /><div><p className="font-bold text-sm">Overpayment Detected</p><p className="text-sm mt-1">Credit of {formatCurrency(Math.abs(newBal), currency)}.</p></div>
               </div>
             )}
 
