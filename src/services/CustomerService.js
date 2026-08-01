@@ -1,7 +1,7 @@
 import { CustomerRepository } from '../repositories/CustomerRepository';
 import { TransactionRepository } from '../repositories/TransactionRepository';
 import { db } from '../database/db';
-import { generateInvoiceNumber } from '../utils/invoiceGenerator'; // 👈 NEW: Import the generator
+import { generateInvoiceNumber } from '../utils/invoiceGenerator';
 
 export const CustomerService = {
   // 1. Get all customers and calculate their live balance (Ignoring voided transactions)
@@ -68,7 +68,7 @@ export const CustomerService = {
       newBalance,
       isVoid: false,
       invoiceNumber: invoiceNumber,
-      internalNote: internalNote // 👈 NEW: Saves the private note to the database
+      internalNote: internalNote
     };
     
     await TransactionRepository.add(storeId, newTx);
@@ -90,7 +90,7 @@ export const CustomerService = {
 
     if (currentBalance <= 0) return null;
 
-    const invoiceNumber = await generateInvoiceNumber(storeId); // 👈 NEW
+    const invoiceNumber = await generateInvoiceNumber(storeId);
 
     await TransactionRepository.add(storeId, {
       customerId,
@@ -102,7 +102,7 @@ export const CustomerService = {
       prevBalance: currentBalance,
       newBalance: 0,
       isVoid: false,
-      invoiceNumber: invoiceNumber // 👈 NEW
+      invoiceNumber: invoiceNumber
     });
     
     const updatedHistory = await TransactionRepository.getByCustomerId(storeId, customerId);
@@ -125,9 +125,14 @@ export const CustomerService = {
   },
 
   // 6. VOID TRANSACTION (Flags as voided, keeps audit trail, recalculates balance)
-  voidTransaction: async (storeId, customerId, transactionId) => {
-    // 1. Mark the original transaction as voided in the database
-    await db.transactions.update(transactionId, { isVoid: true });
+  // 👇 UPDATED: Added 'reason' parameter to save the cancellation reason
+  voidTransaction: async (storeId, customerId, transactionId, reason = "") => {
+    // 1. Mark the original transaction as voided in the database and save the reason
+    await db.transactions.update(transactionId, { 
+      isVoid: true,
+      voidReason: reason,
+      voidedAt: new Date().toISOString()
+    });
 
     // 2. Recalculate the customer's balance ignoring voided items
     const history = await TransactionRepository.getByCustomerId(storeId, customerId);

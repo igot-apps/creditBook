@@ -14,7 +14,7 @@ export const DetailedInvoice = ({
   const [newProduct, setNewProduct] = useState({ name: "", price: "", unit: "", category: "" });
   const [priceUpdateIndex, setPriceUpdateIndex] = useState(null);
   
-  // 👇 FIX: Initialize discount from tx.discount so it persists across re-renders
+  //  FIX: Initialize discount from tx.discount so it persists across re-renders
   const [discount, setDiscount] = useState(tx.discount || "");
   const [showSummary, setShowSummary] = useState(true);
 
@@ -40,12 +40,12 @@ export const DetailedInvoice = ({
     return products.filter(p => p.name.toLowerCase().includes(q));
   }, [productSearch, products]);
 
+  // 👇 UPDATED: Notify user if item already exists instead of auto-incrementing
   const addProductToInvoice = (product, isOneTime = false) => {
     const existingIndex = invoiceItems.findIndex(i => i.productId === product.id && !i.isOneTime);
+    
     if (existingIndex >= 0 && !isOneTime) {
-      const updated = [...invoiceItems]; 
-      updated[existingIndex].quantity += 1; 
-      setInvoiceItems(updated);
+      showToast(`"${product.name}" is already in the invoice.`);
     } else {
       setInvoiceItems([...invoiceItems, { 
         productId: isOneTime ? null : product.id, 
@@ -217,7 +217,6 @@ export const DetailedInvoice = ({
               <span className="text-gray-500 dark:text-gray-400 flex-1">Subtotal: {formatCurrency(totalInvoiceAmount, currency)}</span>
               <div className="flex items-center gap-1 bg-orange-50 dark:bg-orange-900/10 px-2 py-1 rounded border border-orange-100 dark:border-orange-900/30">
                 <Tag className="text-orange-500" size={12} />
-                {/* 👇 FIX: Update both local state AND tx.discount so it persists */}
                 <input 
                   type="number" inputMode="decimal" placeholder="Discount" 
                   value={discount} 
@@ -242,7 +241,6 @@ export const DetailedInvoice = ({
                 className={`w-full text-lg font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-1 ${noSpinnerClass}`} 
               />
             </div>
-            {/* 👇 REMOVED: The "Add note..." input has been completely deleted */}
           </div>
         )}
       </div>
