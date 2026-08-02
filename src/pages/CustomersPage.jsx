@@ -17,7 +17,7 @@ export const CustomersPage = () => {
     return customers.filter(c => c.name.toLowerCase().includes(q) || c.phone.includes(q));
   }, [customers, searchQuery]);
 
-  // 👇 NEW: Detect if search query is a phone number or a name to pre-fill the modal
+  // 👇 Detect if search query is a phone number or a name to pre-fill the modal
   const handleCreateFromSearch = () => {
     const q = searchQuery.trim();
     const isPhone = /^\d+$/.test(q.replace(/\s/g, ''));
@@ -43,8 +43,9 @@ export const CustomersPage = () => {
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search name or phone..."
               className="w-full pl-10 pr-12 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
-              autoFocus
+              // 👇 REMOVED: autoFocus was here, causing the keyboard to pop up immediately
             />
+            
             {/* Add Customer Button (Inside the search bar on the right) */}
             <button 
               onClick={() => {
@@ -58,7 +59,7 @@ export const CustomersPage = () => {
             </button>
           </div>
           
-          {/* 👇 NEW: Dropdown suggestion right below the search input */}
+          {/* Dropdown suggestion right below the search input */}
           {searchQuery.trim() && filteredCustomers.length === 0 && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-green-200 dark:border-green-800 rounded-xl shadow-lg z-20 overflow-hidden">
               <button 

@@ -1,11 +1,20 @@
 import { useState } from "react";
 import { FileText, ChevronDown } from "lucide-react";
 import { formatCurrency } from "../utils/helpers";
+import useStore from "../store/useStore";
 
 export const DraftsCard = ({ drafts, onResume }) => {
   const [showDrafts, setShowDrafts] = useState(false);
+  const { currentStore } = useStore();
+  
+  // 👇 1. Get dynamic currency
+  const currency = currentStore?.currency || "GH₵";
 
-  if (!drafts || drafts.length === 0) return null;
+  // 👇 2. FILTER: Only show manual drafts (isAuto is false or undefined)
+  const visibleDrafts = drafts ? drafts.filter(d => !d.isAuto) : [];
+
+  // If there are no visible manual drafts, don't render the card at all
+  if (visibleDrafts.length === 0) return null;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -25,7 +34,7 @@ export const DraftsCard = ({ drafts, onResume }) => {
         </div>
         <div className="flex items-center gap-2">
           <span className="bg-yellow-100 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-300 text-xs font-bold px-2.5 py-1 rounded-full">
-            {drafts.length}
+            {visibleDrafts.length}
           </span>
           <ChevronDown size={20} className={`text-gray-400 transition-transform duration-200 ${showDrafts ? 'rotate-180' : ''}`} />
         </div>
@@ -34,7 +43,7 @@ export const DraftsCard = ({ drafts, onResume }) => {
       {/* Expanded List */}
       {showDrafts && (
         <div className="border-t border-gray-100 dark:border-gray-700 p-2 space-y-2 bg-gray-50 dark:bg-gray-900/50 max-h-60 overflow-y-auto">
-          {drafts.map(draft => (
+          {visibleDrafts.map(draft => (
             <button 
               key={draft.id} 
               onClick={() => onResume(draft)} 
@@ -49,7 +58,8 @@ export const DraftsCard = ({ drafts, onResume }) => {
                 </p>
               </div>
               <div className="text-right flex-shrink-0 ml-2">
-                <p className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency(parseFloat(draft.amount) || 0)}</p>
+                {/* 👇 3. Pass currency to formatCurrency */}
+                <p className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency(parseFloat(draft.amount) || 0, currency)}</p>
                 <p className="text-[10px] text-green-600 dark:text-green-400 font-semibold">Resume</p>
               </div>
             </button>

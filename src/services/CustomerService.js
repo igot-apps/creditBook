@@ -125,7 +125,6 @@ export const CustomerService = {
   },
 
   // 6. VOID TRANSACTION (Flags as voided, keeps audit trail, recalculates balance)
-  // 👇 UPDATED: Added 'reason' parameter to save the cancellation reason
   voidTransaction: async (storeId, customerId, transactionId, reason = "") => {
     // 1. Mark the original transaction as voided in the database and save the reason
     await db.transactions.update(transactionId, { 

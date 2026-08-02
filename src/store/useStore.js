@@ -11,7 +11,8 @@ const useStore = create((set, get) => ({
   customers: [],
   selectedCustomer: null,
   prefillTransaction: null,
-  drafts: [], // 👈 NEW: Array to hold draft invoices
+  drafts: [],
+  autoDraft: null,
   isMenuOpen: false,
 
   setView: (view) => set({ view }),
@@ -35,38 +36,75 @@ const useStore = create((set, get) => ({
   setPrefillTransaction: (tx) => set({ prefillTransaction: tx }),
   setIsMenuOpen: (isOpen) => set({ isMenuOpen: isOpen }),
 
-  // 👇 NEW: Draft Actions
   fetchDrafts: async () => {
     const { currentStore } = get();
     if (!currentStore) return;
-    const loaded = await db.drafts.where('storeId').equals(currentStore.id).reverse().sortBy('createdAt');
-    set({ drafts: loaded });
+    
+    // 1. Fetch manual drafts
+    const loaded = await db.drafts.where('storeId').equals(currentStore.id).filter(d => !d.isAuto).reverse().sortBy('createdAt');
+    
+    //  FIX: Use .filter() instead of .where({}) to avoid Dexie index errors
+    const auto = await db.drafts.where('storeId').equals(currentStore.id).filter(d => d.isAuto === true).first();
+    
+    console.log("🟢 fetchDrafts: Found autoDraft?", auto ? "YES" : "NO");
+    set({ drafts: loaded, autoDraft: auto || null });
   },
   
-  saveDraft: async (draftData) => {
+  saveDraft: async (draftData, isAuto = false) => {
+    console.log("🔵 saveDraft called. isAuto:", isAuto);
     const { currentStore } = get();
-    if (!currentStore) return;
+    if (!currentStore) {
+      console.log("🔴 saveDraft ABORTED: currentStore is missing!");
+      return;
+    }
     
     const dataToSave = {
       ...draftData,
       storeId: currentStore.id,
-      createdAt: new Date().toISOString()
+      isAuto: isAuto,
+      updatedAt: new Date().toISOString()
     };
     
-    // 👇 FIX: IndexedDB throws a DataError if you pass `id: null` 
-    // when the key path is auto-incrementing (`++id`). We must delete it.
-    if (!dataToSave.id) {
-      delete dataToSave.id;
-    }
+    if (!dataToSave.id) delete dataToSave.id;
 
-    // If it has a valid ID, update it. Otherwise, add it as a new draft.
-    if (dataToSave.id) {
-      await db.drafts.update(dataToSave.id, dataToSave);
+    if (isAuto) {
+      console.log("🟡 Saving as AUTO DRAFT...");
+      
+      // 👇 FIX: Use .filter() to find the existing auto-draft
+      const existingAuto = await db.drafts.where('storeId').equals(currentStore.id).filter(d => d.isAuto === true).first();
+      
+      if (existingAuto) {
+        await db.drafts.update(existingAuto.id, dataToSave);
+        console.log("✅ Updated existing auto-draft");
+      } else {
+        dataToSave.createdAt = new Date().toISOString();
+        await db.drafts.add(dataToSave);
+        console.log("✅ Created new auto-draft");
+      }
+      
+      // 👇 FIX: Use .filter() to read it back
+      const updatedAuto = await db.drafts.where('storeId').equals(currentStore.id).filter(d => d.isAuto === true).first();
+      
+      console.log("🟢 Store autoDraft state updated to:", updatedAuto ? "OBJECT (Name: " + updatedAuto.name + ")" : "NULL");
+      set({ autoDraft: updatedAuto || null });
     } else {
-      await db.drafts.add(dataToSave);
+      console.log("🟡 Saving as MANUAL DRAFT...");
+      if (dataToSave.id) {
+        await db.drafts.update(dataToSave.id, dataToSave);
+      } else {
+        dataToSave.createdAt = new Date().toISOString();
+        await db.drafts.add(dataToSave);
+      }
+      await get().fetchDrafts();
     }
-    
-    await get().fetchDrafts();
+  },
+
+  clearAutoDraft: async () => {
+    console.log("🔴 clearAutoDraft called!");
+    const { currentStore } = get();
+    if (!currentStore) return;
+    await db.drafts.where('storeId').equals(currentStore.id).filter(d => d.isAuto === true).delete();
+    set({ autoDraft: null });
   },
 
   deleteDraft: async (id) => {
@@ -94,7 +132,7 @@ const useStore = create((set, get) => ({
       set({ currentStore: store });
       const customers = await CustomerService.getAllWithHistory(store.id);
       set({ customers });
-      await get().fetchDrafts(); // 👈 Load drafts on startup
+      await get().fetchDrafts();
       set({ view: 'home' });
     } catch (error) {
       console.error("DB init failed:", error);
