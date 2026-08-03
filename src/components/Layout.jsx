@@ -1,15 +1,14 @@
-import { Home, Users, Package, Bell, BarChart3, Settings, Moon, Sun, User, Mail, Info, Menu, X } from "lucide-react";
+import { Home, Users, Package, Bell, BarChart3, Settings, Moon, Sun, User, Mail, Info, X } from "lucide-react";
 import useStore from "../store/useStore";
-import { useState } from "react";
 
 export const Layout = ({ children }) => {
-  const { currentStore, setView, view, theme, setTheme, setSelectedCustomer } = useStore();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // 👇 FIX: Use isMenuOpen and setIsMenuOpen from the global store instead of local state
+  const { currentStore, setView, view, theme, setTheme, setSelectedCustomer, isMenuOpen, setIsMenuOpen } = useStore();
 
   const navigateTo = (targetView) => {
     setSelectedCustomer(null);
     setView(targetView);
-    setIsMobileMenuOpen(false);
+    setIsMenuOpen(false);
   };
 
   const menuItems = [
@@ -90,25 +89,23 @@ export const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex">
+      {/* Desktop Sidebar */}
       <aside className="hidden lg:flex lg:flex-col lg:w-72 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 fixed h-screen">
         <SidebarContent />
       </aside>
 
-      {/* 👇 Mobile Menu Button (Top Right - Aligned with Header Safe Area) */}
-      <button
-        onClick={() => setIsMobileMenuOpen(true)}
-        className="lg:hidden fixed right-4 z-50 p-2 bg-white dark:bg-gray-800 rounded-full shadow-lg border border-gray-200 dark:border-gray-700"
-        style={{ top: 'calc(env(safe-area-inset-top) + 16px)' }}
-        aria-label="Open menu"
-      >
-        <Menu size={24} className="text-gray-700 dark:text-gray-200" />
-      </button>
-
-      {isMobileMenuOpen && (
+      {/* 👇 FIX: Mobile Menu Overlay using global store state */}
+      {isMenuOpen && (
         <>
-          <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setIsMobileMenuOpen(false)} />
+          <div 
+            className="lg:hidden fixed inset-0 bg-black/50 z-40" 
+            onClick={() => setIsMenuOpen(false)} 
+          />
           <aside className="lg:hidden fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-white dark:bg-gray-900 z-50 shadow-2xl">
-            <button onClick={() => setIsMobileMenuOpen(false)} className="absolute top-4 right-4 p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
+            <button 
+              onClick={() => setIsMenuOpen(false)} 
+              className="absolute top-4 right-4 p-2 bg-gray-100 dark:bg-gray-800 rounded-full"
+            >
               <X size={20} className="text-gray-700 dark:text-gray-200" />
             </button>
             <SidebarContent />
@@ -116,8 +113,17 @@ export const Layout = ({ children }) => {
         </>
       )}
 
-      <main className="flex-1 lg:ml-72 w-full max-w-full overflow-x-hidden">
-        {children}
+      {/* Main Content Area */}
+      <main className="flex-1 lg:ml-72 w-full max-w-full">
+        <div 
+          className="min-h-screen overflow-y-auto"
+          style={{ 
+            overscrollBehaviorY: 'contain',
+            WebkitOverflowScrolling: 'touch'
+          }}
+        >
+          {children}
+        </div>
       </main>
     </div>
   );
