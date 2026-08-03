@@ -1,8 +1,8 @@
 import { useMemo } from "react";
-import { TrendingUp, Users, AlertCircle, Plus, ArrowRight, CheckCircle2 } from "lucide-react";
+import { TrendingUp, Users, AlertCircle, ArrowRight, CheckCircle2 } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
-import { TopBar } from "../components/TopBar";
+import { TopBar } from "../components/TopBar"; // 👈 Import TopBar
 
 export const HomePage = () => {
   const { currentStore, customers, setView, setSelectedCustomer } = useStore();
@@ -33,13 +33,14 @@ export const HomePage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      {/* 👇 Fixed Top Bar - Always visible */}
+      {/* 👇 FIXED TOP BAR */}
       <TopBar title="Home" />
       
-      {/* 👇 Content with top padding to clear the fixed bar */}
-      <div className="pt-14">
-        {/* Header Banner */}
-        <div className="bg-green-700 dark:bg-gray-900 text-white pb-6 rounded-b-[2rem] shadow-lg px-4 pt-4">
+      {/*  MAIN CONTENT (Padded to clear the fixed bar) */}
+      <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 3.5rem)' }}>
+        
+        {/* Green Welcome Banner */}
+        <div className="bg-green-700 dark:bg-gray-900 text-white pb-6 px-4 pt-4 rounded-b-[2rem] shadow-lg">
           <p className="text-green-100 text-xs uppercase tracking-wider font-semibold">Welcome back,</p>
           <h1 className="text-2xl font-bold mt-1">{currentStore?.name || "Business Owner"}</h1>
           <p className="text-green-100 text-xs mt-2">
@@ -48,7 +49,7 @@ export const HomePage = () => {
         </div>
 
         <div className="p-4 max-w-lg mx-auto space-y-6 -mt-4">       
-          {/* Today's Sales */}
+          {/* TODAY'S SALES */}
           <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-2 mb-4">
               <TrendingUp size={18} className="text-green-600 dark:text-green-400" />
@@ -70,7 +71,7 @@ export const HomePage = () => {
             </div>
           </div>
 
-          {/* Business Health */}
+          {/* BUSINESS HEALTH */}
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
               <div className="flex items-center gap-2 mb-2">
@@ -88,7 +89,7 @@ export const HomePage = () => {
             </div>
           </div>
 
-          {/* Top Customers Owing */}
+          {/* TOP CUSTOMERS OWING */}
           {topDebtors.length > 0 ? (
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
               <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
@@ -101,14 +102,8 @@ export const HomePage = () => {
               </div>
               <div className="divide-y divide-gray-100 dark:divide-gray-700">
                 {topDebtors.map(customer => (
-                  <button 
-                    key={customer.id} 
-                    onClick={() => { setSelectedCustomer(customer); setView("profile"); }}
-                    className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition text-left"
-                  >
-                    <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full flex items-center justify-center font-bold flex-shrink-0">
-                      {customer.name.charAt(0)}
-                    </div>
+                  <button key={customer.id} onClick={() => { setSelectedCustomer(customer); setView("profile"); }} className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition text-left">
+                    <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full flex items-center justify-center font-bold flex-shrink-0">{customer.name.charAt(0)}</div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-gray-900 dark:text-white truncate">{customer.name}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{customer.phone}</p>
