@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Phone, PlusCircle, MessageCircle, MessageSquare, Edit3, Trash2, ShoppingBag, CreditCard, Ban, Clock, FileText, RefreshCw, Lock } from "lucide-react";
+import { Phone, PlusCircle, MessageCircle, MessageSquare, Edit3, Trash2, ShoppingBag, CreditCard, Ban, Clock, FileText, RefreshCw, Lock, AlertTriangle } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openSMS, openWhatsApp, openDialer } from "../utils/communication";
@@ -11,7 +11,7 @@ import { EditCustomerModal } from "../components/EditCustomerModal";
 export const ProfilePage = () => {
   const { currentStore, selectedCustomer, setSelectedCustomer, setView, refreshCustomers, showToast, triggerConfetti, setPrefillTransaction } = useStore();
   
-  const currency = currentStore?.currency || "GH₵";
+  const currency = currentStore?.currency || "GH";
 
   const [viewingInvoice, setViewingInvoice] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -20,10 +20,10 @@ export const ProfilePage = () => {
   const [showClearDebtModal, setShowClearDebtModal] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   
-  // 👇 NEW: State for the Void Reason Modal
-  const [showVoidModal, setShowVoidModal] = useState(false);
-  const [voidReason, setVoidReason] = useState("");
-  const [txToVoid, setTxToVoid] = useState(null);
+  // State for the Cancel Sale Modal
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [txToCancel, setTxToCancel] = useState(null);
 
   if (!selectedCustomer) return null;
 
@@ -45,17 +45,17 @@ export const ProfilePage = () => {
   };
 
   const handleRedoTransaction = async (tx) => {
-    if (!window.confirm(`This will VOID this invoice and open a corrected copy for you to fix. Continue?`)) return;
+    if (!window.confirm(`This will CANCEL this sale and open a corrected copy for you to fix. Continue?`)) return;
     try {
-      await CustomerService.voidTransaction(currentStore.id, selectedCustomer.id, tx.id, "Redoing transaction");
+      await CustomerService.voidTransaction(currentStore.id, selectedCustomer.id, tx.id, "Redoing sale");
       await refreshCustomers();
       setPrefillTransaction({
         customerId: selectedCustomer.id, name: selectedCustomer.name, phone: selectedCustomer.phone,
         items: tx.items || "", amount: tx.amount.toString(), paid: tx.paid.toString(), invoiceItems: tx.invoiceItems || null
       });
-      showToast("Old invoice voided. Please correct and save the new one.");
+      showToast("Old sale cancelled. Please correct and save the new one.");
       setView("record");
-    } catch (error) { console.error(error); showToast("Failed to redo transaction"); }
+    } catch (error) { console.error(error); showToast("Failed to redo sale"); }
   };
 
   const executeClearDebt = async () => {
@@ -65,8 +65,8 @@ export const ProfilePage = () => {
       await CustomerService.clearDebt(currentStore.id, selectedCustomer.id);
       const refreshed = await refreshCustomers();
       setSelectedCustomer(refreshed.find(c => c.id === selectedCustomer.id));
-      triggerConfetti(); showToast("Debt cleared!");
-    } catch (error) { showToast("Failed to clear debt"); }
+      triggerConfetti(); showToast("Balance cleared!");
+    } catch (error) { showToast("Failed to clear balance"); }
   };
 
   const executeDelete = async () => {
@@ -79,30 +79,30 @@ export const ProfilePage = () => {
     } catch (error) { showToast("Failed to delete customer"); }
   };
 
-  //  UPDATED: Opens the modal instead of voiding immediately
-  const handleVoidTransaction = (tx) => {
-    setTxToVoid(tx);
-    setVoidReason("");
-    setShowVoidModal(true);
+  // Opens the Cancel Sale modal
+  const handleCancelTransaction = (tx) => {
+    setTxToCancel(tx);
+    setCancelReason("");
+    setShowCancelModal(true);
   };
 
-  // 👇 NEW: Actually executes the void after the reason is provided
-  const executeVoidTransaction = async () => {
-    if (!voidReason.trim()) {
+  // Executes the cancellation
+  const executeCancelTransaction = async () => {
+    if (!cancelReason.trim()) {
       showToast("Please provide a reason for cancellation.");
       return;
     }
-    setShowVoidModal(false);
+    setShowCancelModal(false);
     try {
-      await CustomerService.voidTransaction(currentStore.id, selectedCustomer.id, txToVoid.id, voidReason);
+      await CustomerService.voidTransaction(currentStore.id, selectedCustomer.id, txToCancel.id, cancelReason);
       await refreshCustomers();
-      showToast("Transaction voided successfully!");
+      showToast("Sale cancelled successfully!");
     } catch (error) { 
       console.error(error);
-      showToast("Failed to void transaction."); 
+      showToast("Failed to cancel sale."); 
     }
-    setTxToVoid(null);
-    setVoidReason("");
+    setTxToCancel(null);
+    setCancelReason("");
   };
 
   const getTimelineIcon = (tx) => {
@@ -134,7 +134,9 @@ export const ProfilePage = () => {
           <div className={`mt-4 text-4xl font-bold ${selectedCustomer.balance > 0 ? "text-red-600 dark:text-red-400" : selectedCustomer.balance < 0 ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400"}`}>
             {selectedCustomer.balance < 0 ? `Credit: ${formatCurrency(Math.abs(selectedCustomer.balance), currency)}` : formatCurrency(selectedCustomer.balance, currency)}
           </div>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Current Balance</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+            {selectedCustomer.balance > 0 ? "Amount Owed" : selectedCustomer.balance < 0 ? "Customer Credit" : "All Paid Up"}
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -147,7 +149,7 @@ export const ProfilePage = () => {
             <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(totalPaid, currency)}</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
-            <p className="text-xs text-gray-500 uppercase font-bold">Transactions</p>
+            <p className="text-xs text-gray-500 uppercase font-bold">Total Sales</p>
             <p className="text-lg font-bold text-gray-900 dark:text-white">{history.filter(t => !t.isVoid).length}</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
@@ -158,7 +160,7 @@ export const ProfilePage = () => {
 
         <div className="grid grid-cols-4 gap-2">
           <button onClick={handleAddPurchase} className="bg-green-700 text-white p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition shadow-md">
-            <PlusCircle size={20} /> <span className="text-[10px] font-bold">Purchase</span>
+            <PlusCircle size={20} /> <span className="text-[10px] font-bold">New Sale</span>
           </button>
           <button onClick={handleRecordPayment} className="bg-blue-600 text-white p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition shadow-md">
             <CreditCard size={20} /> <span className="text-[10px] font-bold">Payment</span>
@@ -182,11 +184,11 @@ export const ProfilePage = () => {
 
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
           <div className="p-4 border-b border-gray-100 dark:border-gray-700 font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-            <Clock size={18} /> Customer Timeline
+            <Clock size={18} /> Sales History
           </div>
           <div className="p-4 space-y-0">
             {history.length === 0 ? (
-              <p className="text-center text-gray-400 py-6">No activity yet</p>
+              <p className="text-center text-gray-400 py-6">No sales history yet</p>
             ) : (
               [...history].reverse().map((tx, index) => (
                 <div key={tx.id} className="relative pl-8 pb-6 last:pb-0">
@@ -202,24 +204,24 @@ export const ProfilePage = () => {
                         {tx.invoiceNumber && (
                           <div className="flex items-center gap-1.5 mb-1">
                             <FileText size={12} className="text-gray-400 flex-shrink-0" />
-                            <span className="text-[10px] font-mono font-bold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{tx.invoiceNumber}</span>
+                            <span className="text-[10px] font-mono font-bold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">Receipt #{tx.invoiceNumber}</span>
                           </div>
                         )}
                         <p className={`font-bold text-sm flex items-center flex-wrap gap-2 ${tx.isVoid ? 'text-gray-500 line-through decoration-red-500 decoration-2' : 'text-gray-900 dark:text-white'}`}>
-                          {tx.items || "General Transaction"} 
-                          {tx.isVoid && <span className="text-[10px] text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 rounded font-bold no-underline tracking-wider">VOIDED</span>}
+                          {tx.items || "General Sale"} 
+                          {tx.isVoid && <span className="text-[10px] text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 rounded font-bold no-underline tracking-wider">CANCELLED</span>}
                         </p>
                       </div>
                       <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap ml-2 mt-0.5">{formatDate(tx.date)}</span>
                     </div>
                     <div className="flex justify-between items-center text-sm mt-2">
                       <div className="space-y-0.5">
-                        {tx.amount > 0 && <p className={`text-gray-600 dark:text-gray-300 ${tx.isVoid ? 'line-through' : ''}`}>Purchase: <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(tx.amount, currency)}</span></p>}
+                        {tx.amount > 0 && <p className={`text-gray-600 dark:text-gray-300 ${tx.isVoid ? 'line-through' : ''}`}>Sale: <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(tx.amount, currency)}</span></p>}
                         {tx.paid > 0 && <p className={`text-green-600 dark:text-green-400 ${tx.isVoid ? 'line-through' : ''}`}>Paid: <span className="font-bold">{formatCurrency(tx.paid, currency)}</span></p>}
                       </div>
                       <div className="flex gap-1">
                         {!tx.isVoid && (
-                          <button onClick={() => handleRedoTransaction(tx)} className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-blue-600 transition shadow-sm" title="Fix / Redo this invoice">
+                          <button onClick={() => handleRedoTransaction(tx)} className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-blue-600 transition shadow-sm" title="Fix / Redo this sale">
                             <RefreshCw size={14} />
                           </button>
                         )}
@@ -227,14 +229,14 @@ export const ProfilePage = () => {
                           <FileText size={14} />
                         </button>
                         {!tx.isVoid && (
-                          <button onClick={() => handleVoidTransaction(tx)} className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-red-600 transition shadow-sm" title="Void Transaction">
+                          <button onClick={() => handleCancelTransaction(tx)} className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-red-600 transition shadow-sm" title="Cancel Sale">
                             <Ban size={14} />
                           </button>
                         )}
                       </div>
                     </div>
 
-                    {/* 👇 Display Void Reason if it exists */}
+                    {/* Display Cancellation Reason if it exists */}
                     {tx.isVoid && tx.voidReason && (
                       <div className="mt-3 pt-3 border-t border-dashed border-red-200 dark:border-red-800">
                         <p className="text-[10px] font-bold text-red-500 uppercase flex items-center gap-1 mb-1">
@@ -249,7 +251,7 @@ export const ProfilePage = () => {
                     {tx.internalNote && !tx.isVoid && (
                       <div className="mt-3 pt-3 border-t border-dashed border-gray-200 dark:border-gray-700">
                         <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase flex items-center gap-1 mb-1">
-                          <Lock size={10} /> Internal Note
+                          <Lock size={10} /> Private Note
                         </p>
                         <p className="text-xs text-gray-600 dark:text-gray-300 italic bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg">
                           {tx.internalNote}
@@ -277,7 +279,7 @@ export const ProfilePage = () => {
       {showClearDebtModal && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
-            <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Clear Debt?</h3>
+            <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Clear Balance?</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">Type <span className="text-red-600 font-mono bg-red-50 px-1 rounded">yes</span> to clear {formatCurrency(selectedCustomer.balance, currency)}.</p>
             <input type="text" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white mb-4 text-center font-mono" placeholder="yes" autoFocus />
             <div className="flex gap-3">
@@ -292,7 +294,7 @@ export const ProfilePage = () => {
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
             <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Delete Customer?</h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">This will permanently delete <span className="font-bold text-red-600">{selectedCustomer.name}</span> and all their transaction history. This cannot be undone.</p>
+            <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">This will permanently delete <span className="font-bold text-red-600">{selectedCustomer.name}</span> and all their sales history. This cannot be undone.</p>
             <p className="text-gray-600 dark:text-gray-400 mb-2 text-sm">Type <span className="text-red-600 font-mono bg-red-50 dark:bg-red-900/30 px-1 rounded">yes</span> to confirm.</p>
             <input type="text" value={deleteConfirmText} onChange={(e) => setDeleteConfirmText(e.target.value)} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-red-500 dark:text-white mb-4 text-center font-mono" placeholder="yes" autoFocus />
             <div className="flex gap-3">
@@ -303,31 +305,36 @@ export const ProfilePage = () => {
         </div>
       )}
 
-      {/* 👇 NEW: Void Reason Modal */}
-      {showVoidModal && (
+      {/* Cancel Sale Reason Modal */}
+      {showCancelModal && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
-            <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Void Transaction</h3>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full">
+                <AlertTriangle size={20} className="text-red-600 dark:text-red-400" />
+              </div>
+              <h3 className="font-bold text-xl text-gray-900 dark:text-white">Cancel Sale</h3>
+            </div>
             <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">
-              You are about to void <span className="font-bold text-red-600">{txToVoid?.items}</span> for {formatCurrency(txToVoid?.amount, currency)}.
+              You are about to cancel this sale for <span className="font-bold text-red-600">{formatCurrency(txToCancel?.amount, currency)}</span>.
             </p>
             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 block">Reason for Cancellation *</label>
             <textarea
-              value={voidReason}
-              onChange={(e) => setVoidReason(e.target.value)}
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
               placeholder="e.g., Customer returned item, wrong price entered..."
               className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-red-500 dark:text-white mb-4 text-sm"
               rows="3"
               autoFocus
             />
             <div className="flex gap-3">
-              <button onClick={() => setShowVoidModal(false)} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Cancel</button>
+              <button onClick={() => setShowCancelModal(false)} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Cancel</button>
               <button
-                onClick={executeVoidTransaction}
-                disabled={!voidReason.trim()}
+                onClick={executeCancelTransaction}
+                disabled={!cancelReason.trim()}
                 className="flex-1 bg-red-600 text-white font-bold py-3 rounded-xl disabled:opacity-50"
               >
-                Void Transaction
+                Cancel Sale
               </button>
             </div>
           </div>
