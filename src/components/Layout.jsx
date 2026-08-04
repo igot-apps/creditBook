@@ -1,19 +1,33 @@
-import { Home, Users, Package, Bell, BarChart3, Settings, Moon, Sun, User, Mail, Info, X } from "lucide-react";
+import { Home, Users, Package, Bell, BarChart3, Settings, Moon, Sun, User, Mail, Info, X, Truck } from "lucide-react";
 import useStore from "../store/useStore";
 
 export const Layout = ({ children }) => {
-  // 👇 FIX: Use isMenuOpen and setIsMenuOpen from the global store instead of local state
-  const { currentStore, setView, view, theme, setTheme, setSelectedCustomer, isMenuOpen, setIsMenuOpen } = useStore();
+  const {
+    currentStore,
+    setView,
+    view,
+    theme,
+    setTheme,
+    setSelectedCustomer,
+    isMenuOpen,
+    setIsMenuOpen,
+    refreshPage
+  } = useStore();
 
   const navigateTo = (targetView) => {
     setSelectedCustomer(null);
-    setView(targetView);
+    if (view === targetView) {
+      refreshPage(); 
+    } else {
+      setView(targetView); 
+    }
     setIsMenuOpen(false);
   };
 
   const menuItems = [
     { icon: Home, label: "Home", view: "home" },
     { icon: Users, label: "Customers", view: "customers" },
+    { icon: Truck, label: "Suppliers", view: "suppliers" }, 
     { icon: Package, label: "Products", view: "products" },
     { icon: Bell, label: "Follow-ups", view: "followups" },
     { icon: BarChart3, label: "Reports", view: "reports" },
@@ -89,12 +103,10 @@ export const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex">
-      {/* Desktop Sidebar */}
       <aside className="hidden lg:flex lg:flex-col lg:w-72 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 fixed h-screen">
         <SidebarContent />
       </aside>
 
-      {/* 👇 FIX: Mobile Menu Overlay using global store state */}
       {isMenuOpen && (
         <>
           <div 
@@ -113,7 +125,6 @@ export const Layout = ({ children }) => {
         </>
       )}
 
-      {/* Main Content Area */}
       <main className="flex-1 lg:ml-72 w-full max-w-full">
         <div 
           className="min-h-screen overflow-y-auto"

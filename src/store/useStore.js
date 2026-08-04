@@ -10,29 +10,37 @@ const useStore = create((set, get) => ({
   currentStore: null,
   customers: [],
   selectedCustomer: null,
+  selectedSupplier: null, // 👈 ADDED: State for selected supplier
   prefillTransaction: null,
   drafts: [],
   autoDraft: null,
   isMenuOpen: false,
+  pageKey: Date.now(), 
 
   setView: (view) => set({ view }),
+  refreshPage: () => set({ pageKey: Date.now() }),
+
   setTheme: (theme) => {
     localStorage.setItem('cb_theme', theme);
     if (theme === 'dark') document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
     set({ theme });
   },
+  
   showToast: (msg) => {
     set({ toast: msg });
     setTimeout(() => set({ toast: null }), 2500);
   },
+  
   triggerConfetti: () => {
     set({ showConfetti: true });
     setTimeout(() => set({ showConfetti: false }), 3000);
   },
+  
   setCurrentStore: (store) => set({ currentStore: store }),
   setCustomers: (customers) => set({ customers }),
   setSelectedCustomer: (customer) => set({ selectedCustomer: customer }),
+  setSelectedSupplier: (supplier) => set({ selectedSupplier: supplier }), // 👈 ADDED: Function to set supplier
   setPrefillTransaction: (tx) => set({ prefillTransaction: tx }),
   setIsMenuOpen: (isOpen) => set({ isMenuOpen: isOpen }),
 
@@ -40,23 +48,15 @@ const useStore = create((set, get) => ({
     const { currentStore } = get();
     if (!currentStore) return;
     
-    // 1. Fetch manual drafts
     const loaded = await db.drafts.where('storeId').equals(currentStore.id).filter(d => !d.isAuto).reverse().sortBy('createdAt');
-    
-    //  FIX: Use .filter() instead of .where({}) to avoid Dexie index errors
     const auto = await db.drafts.where('storeId').equals(currentStore.id).filter(d => d.isAuto === true).first();
     
-    console.log("🟢 fetchDrafts: Found autoDraft?", auto ? "YES" : "NO");
     set({ drafts: loaded, autoDraft: auto || null });
   },
   
   saveDraft: async (draftData, isAuto = false) => {
-    console.log("🔵 saveDraft called. isAuto:", isAuto);
     const { currentStore } = get();
-    if (!currentStore) {
-      console.log("🔴 saveDraft ABORTED: currentStore is missing!");
-      return;
-    }
+    if (!currentStore) return;
     
     const dataToSave = {
       ...draftData,
@@ -68,27 +68,18 @@ const useStore = create((set, get) => ({
     if (!dataToSave.id) delete dataToSave.id;
 
     if (isAuto) {
-      console.log("🟡 Saving as AUTO DRAFT...");
-      
-      // 👇 FIX: Use .filter() to find the existing auto-draft
       const existingAuto = await db.drafts.where('storeId').equals(currentStore.id).filter(d => d.isAuto === true).first();
       
       if (existingAuto) {
         await db.drafts.update(existingAuto.id, dataToSave);
-        console.log("✅ Updated existing auto-draft");
       } else {
         dataToSave.createdAt = new Date().toISOString();
         await db.drafts.add(dataToSave);
-        console.log("✅ Created new auto-draft");
       }
       
-      // 👇 FIX: Use .filter() to read it back
       const updatedAuto = await db.drafts.where('storeId').equals(currentStore.id).filter(d => d.isAuto === true).first();
-      
-      console.log("🟢 Store autoDraft state updated to:", updatedAuto ? "OBJECT (Name: " + updatedAuto.name + ")" : "NULL");
       set({ autoDraft: updatedAuto || null });
     } else {
-      console.log("🟡 Saving as MANUAL DRAFT...");
       if (dataToSave.id) {
         await db.drafts.update(dataToSave.id, dataToSave);
       } else {
@@ -100,7 +91,6 @@ const useStore = create((set, get) => ({
   },
 
   clearAutoDraft: async () => {
-    console.log("🔴 clearAutoDraft called!");
     const { currentStore } = get();
     if (!currentStore) return;
     await db.drafts.where('storeId').equals(currentStore.id).filter(d => d.isAuto === true).delete();

@@ -13,8 +13,17 @@ db.version(2).stores({
   drafts: '++id, storeId, createdAt'
 });
 
-// 👇 NEW: Version 3 to add invoice number support
 db.version(3).stores({
   transactions: '++id, [storeId+customerId], date, invoiceNumber',
-  invoiceCounters: '++id, [storeId+year]' // Track invoice numbers per store per year
+  invoiceCounters: '++id, [storeId+year]' 
+});
+
+db.version(4).stores({
+  products: '++id, storeId, name, isActive, isFavourite'
+});
+
+// 👇 NEW: Version 5 for Suppliers
+db.version(5).stores({
+  suppliers: '++id, storeId, name, phone',
+  supplierTransactions: '++id, storeId, supplierId, date' 
 });

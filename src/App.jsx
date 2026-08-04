@@ -3,6 +3,7 @@ import useStore from "./store/useStore";
 import { BottomNav } from "./components/BottomNav";
 import { Toast } from "./components/Toast";
 import { Layout } from "./components/Layout";
+
 import { HomePage } from "./pages/HomePage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { ProductsPage } from "./pages/ProductsPage";
@@ -11,16 +12,17 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { FollowUpsPage } from "./pages/FollowUpsPage";
+import { SuppliersPage } from "./pages/SuppliersPage";
+import { SupplierProfilePage } from "./pages/SupplierProfilePage";
+import { RecordPurchasePage } from "./pages/RecordPurchasePage";
 
 const AppRouter = () => {
-  const { view, initializeApp, theme } = useStore();
+  const { view, initializeApp, theme, pageKey } = useStore();
 
-  // Initialize app on mount
   useEffect(() => {
     initializeApp();
   }, []);
 
-  // Handle theme
   useEffect(() => {
     if (theme === "dark") document.documentElement.classList.add("dark");
     else document.documentElement.classList.remove("dark");
@@ -28,15 +30,18 @@ const AppRouter = () => {
 
   const renderPage = () => {
     switch (view) {
-      case "home": return <HomePage />;
-      case "customers": return <CustomersPage />;
-      case "products": return <ProductsPage />;
-      case "record": return <RecordPage />;
-      case "profile": return <ProfilePage />;
-      case "reports": return <ReportsPage />;
-      case "settings": return <SettingsPage />;
-      case "followups": return <FollowUpsPage />;
-      default: return <HomePage />;
+      case "home": return <HomePage key={pageKey} />;
+      case "customers": return <CustomersPage key={pageKey} />;
+      case "products": return <ProductsPage key={pageKey} />;
+      case "record": return <RecordPage key={pageKey} />;
+      case "profile": return <ProfilePage key={pageKey} />;
+      case "reports": return <ReportsPage key={pageKey} />;
+      case "settings": return <SettingsPage key={pageKey} />;
+      case "followups": return <FollowUpsPage key={pageKey} />;
+      case "suppliers": return <SuppliersPage key={pageKey} />;
+      case "supplierProfile": return <SupplierProfilePage key={pageKey} />;
+      case "recordPurchase": return <RecordPurchasePage key={pageKey} />;
+      default: return <HomePage key={pageKey} />;
     }
   };
 

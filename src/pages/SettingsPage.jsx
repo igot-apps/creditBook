@@ -2,10 +2,10 @@ import { useState, useEffect } from "react";
 import { Save, Store, User, Mail, Phone, MapPin, CreditCard } from "lucide-react";
 import useStore from "../store/useStore";
 import { StoreRepository } from "../repositories/StoreRepository";
+import { TopBar } from "../components/TopBar"; // 👈 Import TopBar
 
 export const SettingsPage = () => {
   const { currentStore, showToast } = useStore();
-  
   const [formData, setFormData] = useState({
     name: "",
     ownerName: "",
@@ -36,7 +36,6 @@ export const SettingsPage = () => {
       showToast("⚠️ Business name is required!");
       return;
     }
-
     setIsSaving(true);
     try {
       // A. Update the database
@@ -48,10 +47,8 @@ export const SettingsPage = () => {
         address: formData.address.trim(),
         currency: formData.currency
       });
-
-      // B. Update the global Zustand store so the whole app (like Layout sidebar) updates instantly
+      // B. Update the global Zustand store so the whole app updates instantly
       useStore.getState().setCurrentStore(updatedStore);
-
       showToast("✅ Business profile updated successfully!");
     } catch (error) {
       console.error("Failed to save store:", error);
@@ -75,14 +72,13 @@ export const SettingsPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      <div className="bg-green-700 dark:bg-gray-900 text-white p-6 pb-8 rounded-b-[2rem] shadow-lg">
-        <h1 className="text-2xl font-bold">Business Settings</h1>
-        <p className="text-green-100 text-sm mt-1">Manage your store profile and preferences</p>
-      </div>
-
-      <div className="p-4 max-w-lg mx-auto space-y-6 -mt-4">
+      {/*  FIXED TOP BAR */}
+      <TopBar title="Settings" />
+      
+      {/* 👇 MAIN CONTENT - Increased top padding for breathing room */}
+      <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 5.5rem)' }} className="p-4 max-w-lg mx-auto space-y-6">
+        
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
-          
           {/* Business Name */}
           <div>
             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 block">Business Name *</label>
@@ -190,7 +186,6 @@ export const SettingsPage = () => {
               </>
             )}
           </button>
-
         </div>
       </div>
     </div>
