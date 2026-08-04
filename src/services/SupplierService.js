@@ -104,5 +104,14 @@ export const SupplierService = {
       voidReason: reason,
       voidedAt: new Date().toISOString()
     });
+  },
+
+    // 6. REDO (RESTORE) TRANSACTION
+  redoTransaction: async (storeId, supplierId, txId) => {
+    await db.supplierTransactions.update(txId, { 
+      isVoid: false, 
+      voidReason: null,
+      voidedAt: null
+    });
   }
 };
