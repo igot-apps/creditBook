@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Truck, Package, Check, ArrowLeft, X, Trash2 } from "lucide-react";
+import { Search, Plus, Truck, Package, Check, X } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { SupplierService } from "../services/SupplierService";
@@ -7,56 +7,60 @@ import { ProductService } from "../services/ProductService";
 import { TopBar } from "../components/TopBar";
 
 export const RecordPurchasePage = () => {
-  const { currentStore, suppliers, setView, prefillTransaction, setPrefillTransaction, showToast } = useStore();
+  const { currentStore, setView, prefillTransaction, setPrefillTransaction, showToast } = useStore();
   const currency = currentStore?.currency || "GH₵";
 
   // State
-  const [mode, setMode] = useState("search"); // search, existing, new
+  const [mode, setMode] = useState("search");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSupplier, setSelectedSupplier] = useState(null);
+  
+  // Local state for suppliers and products (prevents store bloat)
+  const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [productSearch, setProductSearch] = useState("");
   const [note, setNote] = useState("");
 
-  // Load Data
+  // 1. Load Data Safely
   useEffect(() => {
     if (currentStore?.id) {
-      ProductService.getAll(currentStore.id).then(setProducts);
+      SupplierService.getAll(currentStore.id)
+        .then(res => setSuppliers(Array.isArray(res) ? res : []))
+        .catch(() => setSuppliers([]));
+        
+      ProductService.getAll(currentStore.id)
+        .then(res => setProducts(Array.isArray(res) ? res : []))
+        .catch(() => setProducts([]));
     }
   }, [currentStore?.id]);
 
-  // Handle Prefill (from Supplier Profile "Make Payment" or "Record Purchase")
+  // 2. Handle Prefill (e.g., coming from Supplier Profile "Make Payment" or "Record Purchase")
   useEffect(() => {
-    if (prefillTransaction) {
-      if (prefillTransaction.supplierId) {
-        // Find supplier from list (or mock it if not loaded yet)
-        const supplier = suppliers.find(s => s.id === prefillTransaction.supplierId) || {
-          id: prefillTransaction.supplierId,
-          name: prefillTransaction.name,
-          phone: prefillTransaction.phone
-        };
-        setSelectedSupplier(supplier);
-        setMode("existing");
-      }
-      if (prefillTransaction.items === "Payment") {
-        // If it's a payment, we might just want a simple amount input, 
-        // but for now we'll treat it as a purchase with 0 items and a 'paid' amount.
-        // (Simplification for V1)
-      }
+    if (prefillTransaction && prefillTransaction.supplierId) {
+      // Safely find the supplier, or fallback to the prefill data
+      const supplier = (Array.isArray(suppliers) ? suppliers : []).find(s => s.id === prefillTransaction.supplierId) || {
+        id: prefillTransaction.supplierId,
+        name: prefillTransaction.name || "Unknown Supplier",
+        phone: prefillTransaction.phone || ""
+      };
+      setSelectedSupplier(supplier);
+      setMode("existing");
       setPrefillTransaction(null);
     }
   }, [prefillTransaction, suppliers, setPrefillTransaction]);
 
-  // Filter Suppliers
+  // 3. Filter Suppliers Safely
   const filteredSuppliers = useMemo(() => {
+    if (!Array.isArray(suppliers)) return [];
     if (!searchQuery.trim()) return suppliers;
     const q = searchQuery.toLowerCase();
-    return suppliers.filter(s => s.name.toLowerCase().includes(q) || s.phone.includes(q));
+    return suppliers.filter(s => s.name.toLowerCase().includes(q) || (s.phone && s.phone.includes(q)));
   }, [suppliers, searchQuery]);
 
-  // Filter Products
+  // 4. Filter Products Safely
   const filteredProducts = useMemo(() => {
+    if (!Array.isArray(products)) return [];
     if (!productSearch.trim()) return products.filter(p => p.isFavourite).slice(0, 5);
     const q = productSearch.toLowerCase();
     return products.filter(p => p.name.toLowerCase().includes(q));
@@ -70,16 +74,19 @@ export const RecordPurchasePage = () => {
   };
 
   const handleCreateSupplier = () => {
-    // Simple inline creation for V1
     const name = searchQuery.trim();
     if (name) {
-      SupplierService.addSupplier(currentStore.id, name, "").then(id => {
-        const newSupplier = { id, name, phone: "" };
-        setSelectedSupplier(newSupplier);
-        setMode("existing");
-        setSearchQuery("");
-        showToast("✅ Supplier created!");
-      });
+      SupplierService.addSupplier(currentStore.id, name, "")
+        .then(id => {
+          const newSupplier = { id, name, phone: "" };
+          setSelectedSupplier(newSupplier);
+          setMode("existing");
+          setSearchQuery("");
+          showToast("✅ Supplier created!");
+          // Refresh local list
+          SupplierService.getAll(currentStore.id).then(setSuppliers);
+        })
+        .catch(() => showToast("❌ Failed to create supplier."));
     }
   };
 
@@ -87,23 +94,29 @@ export const RecordPurchasePage = () => {
     const existing = invoiceItems.find(i => i.productId === product.id);
     if (existing) {
       setInvoiceItems(invoiceItems.map(i => 
-        i.productId === product.id ? { ...i, quantity: i.quantity + 1 } : i
+        i.productId === product.id ? { ...i, quantity: (i.quantity || 1) + 1 } : i
       ));
     } else {
       setInvoiceItems([...invoiceItems, {
         productId: product.id,
         name: product.name,
         quantity: 1,
-        price: product.defaultPurchasePrice || 0, //  USES BUYING PRICE
-        unit: product.unit
+        price: product.defaultPurchasePrice || 0, // Uses Buying Price!
+        unit: product.unit || "Piece"
       }]);
     }
     setProductSearch("");
   };
 
+  // 👇 FIX: Allow empty string so the user can backspace completely
   const updateItem = (index, field, value) => {
     const updated = [...invoiceItems];
-    updated[index][field] = parseFloat(value) || 0;
+    if (value === "") {
+      updated[index][field] = "";
+    } else {
+      const num = parseFloat(value);
+      updated[index][field] = isNaN(num) ? 0 : num;
+    }
     setInvoiceItems(updated);
   };
 
@@ -111,17 +124,22 @@ export const RecordPurchasePage = () => {
     setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
   };
 
-  const totalAmount = invoiceItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+  // 👇 FIX: Handle empty strings safely in the total calculation
+  const totalAmount = invoiceItems.reduce((sum, item) => {
+    const qty = item.quantity === "" ? 0 : (parseFloat(item.quantity) || 0);
+    const price = item.price === "" ? 0 : (parseFloat(item.price) || 0);
+    return sum + (qty * price);
+  }, 0);
 
   const handleSavePurchase = async () => {
     if (!selectedSupplier) return;
-    if (totalAmount === 0 && !note) {
+    if (totalAmount === 0 && !note.trim()) {
       showToast("⚠️ Please add items or a note.");
       return;
     }
 
     try {
-      const itemsString = invoiceItems.map(i => `${i.quantity} ${i.unit} ${i.name}`).join(", ");
+      const itemsString = invoiceItems.map(i => `${i.quantity || 1} ${i.unit || "Piece"} ${i.name}`).join(", ");
       
       await SupplierService.addTransaction(
         currentStore.id,
@@ -133,7 +151,7 @@ export const RecordPurchasePage = () => {
       );
       
       showToast("✅ Purchase recorded!");
-      setView("suppliers"); // Go back to supplier list
+      setView("suppliers");
     } catch (error) {
       console.error(error);
       showToast("❌ Failed to record purchase.");
@@ -142,10 +160,8 @@ export const RecordPurchasePage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      {/* 👇 FIXED TOP BAR - Explicit Title & Indigo Theme */}
       <TopBar title="Record Purchase" showBack={true} onBack={() => setView("suppliers")} />
       
-      {/* 👇 MAIN CONTENT */}
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
         
         {/* 1. SUPPLIER SELECTION */}
@@ -165,14 +181,14 @@ export const RecordPurchasePage = () => {
               />
             </div>
             <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
-              {filteredSuppliers.map(s => (
+              {Array.isArray(filteredSuppliers) && filteredSuppliers.map(s => (
                 <button key={s.id} onClick={() => handleSelectSupplier(s)} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition text-left">
                   <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full flex items-center justify-center font-bold flex-shrink-0">
                     {s.name.charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900 dark:text-white truncate">{s.name}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{s.phone}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{s.phone || "No phone"}</p>
                   </div>
                 </button>
               ))}
@@ -205,10 +221,9 @@ export const RecordPurchasePage = () => {
           </div>
         )}
 
-        {/* 3. ITEMIZED PURCHASE (Only if supplier selected) */}
+        {/* 3. ITEMIZED PURCHASE */}
         {mode === "existing" && (
           <>
-            {/* Product Search */}
             <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
               <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <Package size={18} className="text-indigo-600" /> Add Items
@@ -223,8 +238,7 @@ export const RecordPurchasePage = () => {
                 />
               </div>
               
-              {/* Product Suggestions */}
-              {productSearch && (
+              {productSearch && Array.isArray(filteredProducts) && filteredProducts.length > 0 && (
                 <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700 max-h-40 overflow-y-auto">
                   {filteredProducts.map(p => (
                     <button key={p.id} onClick={() => addProductToInvoice(p)} className="w-full flex justify-between items-center p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 last:border-0 text-left">
@@ -239,12 +253,11 @@ export const RecordPurchasePage = () => {
               )}
             </div>
 
-            {/* Invoice Items List */}
             <div className="space-y-2">
               {invoiceItems.length === 0 ? (
                 <p className="text-center text-gray-400 dark:text-gray-500 text-sm py-4">Search and tap a product to add it.</p>
               ) : (
-                invoiceItems.map((item, index) => (
+                Array.isArray(invoiceItems) && invoiceItems.map((item, index) => (
                   <div key={index} className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-gray-900 dark:text-white text-sm truncate">{item.name}</p>
@@ -253,14 +266,16 @@ export const RecordPurchasePage = () => {
                     <div className="flex items-center gap-2">
                       <input 
                         type="number" 
-                        value={item.quantity} 
+                        inputMode="decimal"
+                        value={item.quantity === "" ? "" : item.quantity} 
                         onChange={e => updateItem(index, 'quantity', e.target.value)}
                         className="w-12 px-2 py-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded text-center text-sm font-bold"
                       />
                       <span className="text-gray-400">×</span>
                       <input 
                         type="number" 
-                        value={item.price} 
+                        inputMode="decimal"
+                        value={item.price === "" ? "" : item.price} 
                         onChange={e => updateItem(index, 'price', e.target.value)}
                         className="w-16 px-2 py-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded text-right text-sm font-bold"
                       />
@@ -271,7 +286,6 @@ export const RecordPurchasePage = () => {
               )}
             </div>
 
-            {/* Total & Save */}
             {invoiceItems.length > 0 && (
               <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <div className="flex justify-between items-center text-lg font-bold">
@@ -300,4 +314,4 @@ export const RecordPurchasePage = () => {
       </div>
     </div>
   );
-};
+};  
