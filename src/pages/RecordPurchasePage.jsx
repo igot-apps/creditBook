@@ -6,21 +6,23 @@ import { SupplierService } from "../services/SupplierService";
 import { ProductService } from "../services/ProductService";
 import { TopBar } from "../components/TopBar";
 
+const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+
 export const RecordPurchasePage = () => {
   const { currentStore, setView, prefillTransaction, setPrefillTransaction, showToast } = useStore();
-  const currency = currentStore?.currency || "GH₵";
+  const currency = currentStore?.currency || "GH";
 
   // State
   const [mode, setMode] = useState("search");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   
-  // Local state for suppliers and products (prevents store bloat)
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [productSearch, setProductSearch] = useState("");
   const [note, setNote] = useState("");
+  const [amountPaid, setAmountPaid] = useState(""); // 👈 NEW: Track payment made
 
   // 1. Load Data Safely
   useEffect(() => {
@@ -35,10 +37,9 @@ export const RecordPurchasePage = () => {
     }
   }, [currentStore?.id]);
 
-  // 2. Handle Prefill (e.g., coming from Supplier Profile "Make Payment" or "Record Purchase")
+  // 2. Handle Prefill (e.g., coming from Supplier Profile "Make Payment")
   useEffect(() => {
     if (prefillTransaction && prefillTransaction.supplierId) {
-      // Safely find the supplier, or fallback to the prefill data
       const supplier = (Array.isArray(suppliers) ? suppliers : []).find(s => s.id === prefillTransaction.supplierId) || {
         id: prefillTransaction.supplierId,
         name: prefillTransaction.name || "Unknown Supplier",
@@ -46,6 +47,12 @@ export const RecordPurchasePage = () => {
       };
       setSelectedSupplier(supplier);
       setMode("existing");
+      
+      // 👈 Handle "Make Payment" prefill
+      if (prefillTransaction.paid !== undefined) {
+        setAmountPaid(prefillTransaction.paid.toString());
+      }
+      
       setPrefillTransaction(null);
     }
   }, [prefillTransaction, suppliers, setPrefillTransaction]);
@@ -83,7 +90,6 @@ export const RecordPurchasePage = () => {
           setMode("existing");
           setSearchQuery("");
           showToast("✅ Supplier created!");
-          // Refresh local list
           SupplierService.getAll(currentStore.id).then(setSuppliers);
         })
         .catch(() => showToast("❌ Failed to create supplier."));
@@ -92,30 +98,48 @@ export const RecordPurchasePage = () => {
 
   const addProductToInvoice = (product) => {
     const existing = invoiceItems.find(i => i.productId === product.id);
+    const startingPrice = product.defaultPurchasePrice || 0;
+    
     if (existing) {
       setInvoiceItems(invoiceItems.map(i => 
-        i.productId === product.id ? { ...i, quantity: (i.quantity || 1) + 1 } : i
+        i.productId === product.id ? { ...i, quantity: (i.quantity || 1) + 1, total: ((i.quantity || 1) + 1) * i.price } : i
       ));
     } else {
       setInvoiceItems([...invoiceItems, {
         productId: product.id,
         name: product.name,
         quantity: 1,
-        price: product.defaultPurchasePrice || 0, // Uses Buying Price!
+        price: startingPrice,
+        total: startingPrice,
         unit: product.unit || "Piece"
       }]);
     }
     setProductSearch("");
   };
 
-  // 👇 FIX: Allow empty string so the user can backspace completely
   const updateItem = (index, field, value) => {
     const updated = [...invoiceItems];
-    if (value === "") {
-      updated[index][field] = "";
-    } else {
-      const num = parseFloat(value);
-      updated[index][field] = isNaN(num) ? 0 : num;
+    const numValue = value === "" ? "" : parseFloat(value);
+    const isValidNum = numValue !== "" && !isNaN(numValue);
+
+    if (field === 'quantity') {
+      updated[index].quantity = numValue;
+      const price = parseFloat(updated[index].price) || 0;
+      updated[index].total = isValidNum ? (numValue * price) : "";
+    } 
+    else if (field === 'price') {
+      updated[index].price = numValue;
+      const qty = parseFloat(updated[index].quantity) || 0;
+      updated[index].total = isValidNum ? (qty * numValue) : "";
+    } 
+    else if (field === 'total') {
+      updated[index].total = numValue;
+      const price = parseFloat(updated[index].price) || 0;
+      if (price > 0 && isValidNum) {
+        updated[index].quantity = numValue / price;
+      } else {
+        updated[index].quantity = "";
+      }
     }
     setInvoiceItems(updated);
   };
@@ -124,8 +148,8 @@ export const RecordPurchasePage = () => {
     setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
   };
 
-  // 👇 FIX: Handle empty strings safely in the total calculation
   const totalAmount = invoiceItems.reduce((sum, item) => {
+    if (item.total !== undefined && item.total !== "") return sum + (parseFloat(item.total) || 0);
     const qty = item.quantity === "" ? 0 : (parseFloat(item.quantity) || 0);
     const price = item.price === "" ? 0 : (parseFloat(item.price) || 0);
     return sum + (qty * price);
@@ -133,28 +157,35 @@ export const RecordPurchasePage = () => {
 
   const handleSavePurchase = async () => {
     if (!selectedSupplier) return;
-    if (totalAmount === 0 && !note.trim()) {
-      showToast("⚠️ Please add items or a note.");
+    
+    const finalPaid = parseFloat(amountPaid) || 0;
+    const finalTotal = totalAmount;
+
+    // Allow saving if there are items OR a payment amount OR a note
+    if (finalTotal === 0 && finalPaid === 0 && !note.trim()) {
+      showToast("⚠️ Please add items, a payment amount, or a note.");
       return;
     }
 
     try {
-      const itemsString = invoiceItems.map(i => `${i.quantity || 1} ${i.unit || "Piece"} ${i.name}`).join(", ");
+      const itemsString = invoiceItems.length > 0 
+        ? invoiceItems.map(i => `${i.quantity || 1} ${i.unit || "Piece"} ${i.name}`).join(", ") 
+        : (note || "Payment made");
       
       await SupplierService.addTransaction(
         currentStore.id,
         selectedSupplier.id,
-        totalAmount,
-        0, // Paid 0 for now (Payment flow can be added later)
-        itemsString || note,
+        finalTotal,
+        finalPaid, //  Pass the actual paid amount
+        itemsString,
         note
       );
       
-      showToast("✅ Purchase recorded!");
+      showToast("✅ Transaction recorded!");
       setView("suppliers");
     } catch (error) {
       console.error(error);
-      showToast("❌ Failed to record purchase.");
+      showToast("❌ Failed to record transaction.");
     }
   };
 
@@ -216,7 +247,7 @@ export const RecordPurchasePage = () => {
                 <p className="text-xs text-indigo-600 dark:text-indigo-400 uppercase font-bold">Buying from</p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedSupplier.name}</p>
               </div>
-              <button onClick={() => { setMode("search"); setSelectedSupplier(null); }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
+              <button onClick={() => { setMode("search"); setSelectedSupplier(null); setAmountPaid(""); setInvoiceItems([]); }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
             </div>
           </div>
         )}
@@ -255,44 +286,57 @@ export const RecordPurchasePage = () => {
 
             <div className="space-y-2">
               {invoiceItems.length === 0 ? (
-                <p className="text-center text-gray-400 dark:text-gray-500 text-sm py-4">Search and tap a product to add it.</p>
+                <p className="text-center text-gray-400 dark:text-gray-500 text-sm py-4">Search and tap a product to add it, or enter a payment amount below.</p>
               ) : (
                 Array.isArray(invoiceItems) && invoiceItems.map((item, index) => (
-                  <div key={index} className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 flex items-center gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-gray-900 dark:text-white text-sm truncate">{item.name}</p>
-                      <p className="text-xs text-gray-500">{item.unit}</p>
+                  <div key={index} className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                    <div className="flex justify-between items-center mb-2">
+                      <p className="font-bold text-gray-900 dark:text-white text-sm truncate pr-2 flex-1">{item.name}</p>
+                      <button onClick={() => removeItem(index)} className="p-1.5 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-lg transition active:scale-90"><X size={14} /></button>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <input 
-                        type="number" 
-                        inputMode="decimal"
-                        value={item.quantity === "" ? "" : item.quantity} 
-                        onChange={e => updateItem(index, 'quantity', e.target.value)}
-                        className="w-12 px-2 py-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded text-center text-sm font-bold"
-                      />
-                      <span className="text-gray-400">×</span>
-                      <input 
-                        type="number" 
-                        inputMode="decimal"
-                        value={item.price === "" ? "" : item.price} 
-                        onChange={e => updateItem(index, 'price', e.target.value)}
-                        className="w-16 px-2 py-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded text-right text-sm font-bold"
-                      />
+                    <div className="flex items-center gap-1.5">
+                      <div className="relative flex-1">
+                        <label className="absolute left-2 top-0.5 text-[9px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Qty</label>
+                        <input type="number" inputMode="decimal" value={item.quantity === "" ? "" : Number(item.quantity)} onChange={e => updateItem(index, 'quantity', e.target.value)} className={`w-full px-2 pt-3.5 pb-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm font-bold text-center outline-none focus:ring-1 focus:ring-blue-500 ${noSpinnerClass}`} />
+                      </div>
+                      {item.unit && <span className="px-2 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[10px] font-bold rounded-lg uppercase tracking-wide flex-shrink-0">{item.unit}</span>}
+                      <span className="text-gray-400 dark:text-gray-500 text-xs font-bold">×</span>
+                      <div className="relative flex-[1.5]">
+                        <label className="absolute left-2 top-0.5 text-[9px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider">Price</label>
+                        <input type="number" inputMode="decimal" value={item.price === "" ? "" : Number(item.price)} onChange={e => updateItem(index, 'price', e.target.value)} className={`w-full px-2 pt-3.5 pb-1.5 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-sm font-bold text-right outline-none focus:ring-1 focus:ring-purple-500 ${noSpinnerClass}`} />
+                      </div>
+                      <span className="text-gray-400 dark:text-gray-500 text-xs font-bold">=</span>
+                      <div className="relative flex-1">
+                        <label className="absolute left-2 top-0.5 text-[9px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wider">Total</label>
+                        <input type="number" inputMode="decimal" value={item.total === "" ? "" : Number(item.total)} onChange={e => updateItem(index, 'total', e.target.value)} className={`w-full px-2 pt-3.5 pb-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-sm font-bold text-right outline-none focus:ring-1 focus:ring-green-500 ${noSpinnerClass}`} />
+                      </div>
                     </div>
-                    <button onClick={() => removeItem(index)} className="text-red-400 p-1"><X size={16} /></button>
                   </div>
                 ))
               )}
             </div>
 
-            {invoiceItems.length > 0 && (
+            {/* 👇 UPDATED: Summary Section with Money Paid Input */}
+            {(invoiceItems.length > 0 || amountPaid !== "") && (
               <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <div className="flex justify-between items-center text-lg font-bold">
                   <span className="text-gray-700 dark:text-gray-300">Total Purchase:</span>
                   <span className="text-indigo-600 dark:text-indigo-400">{formatCurrency(totalAmount, currency)}</span>
                 </div>
                 
+                {/* 👇 NEW: Money Paid Upfront Input */}
+                <div>
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Money Paid Upfront</label>
+                  <input 
+                    type="number" 
+                    inputMode="decimal"
+                    value={amountPaid}
+                    onChange={e => setAmountPaid(e.target.value)}
+                    placeholder="0.00"
+                    className={`w-full text-xl font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`}
+                  />
+                </div>
+
                 <textarea 
                   value={note}
                   onChange={e => setNote(e.target.value)}
@@ -305,7 +349,7 @@ export const RecordPurchasePage = () => {
                   onClick={handleSavePurchase}
                   className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
                 >
-                  <Check size={24} /> Record Purchase
+                  <Check size={24} /> {totalAmount > 0 ? "Record Purchase" : "Record Payment"}
                 </button>
               </div>
             )}
@@ -314,4 +358,4 @@ export const RecordPurchasePage = () => {
       </div>
     </div>
   );
-};  
+};
