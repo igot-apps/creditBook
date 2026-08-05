@@ -34,7 +34,7 @@ export const SupplierService = {
     return newSupplier.id;
   },
 
-  // 👇 UPDATED: Now accepts items as an array and stores as JSON
+  // 3. RECORD PURCHASE OR PAYMENT
   addTransaction: async (storeId, supplierId, amount, paid, items, note) => {
     const supplier = await db.suppliers.get(supplierId);
     if (!supplier) throw new Error("Supplier not found");
@@ -44,7 +44,6 @@ export const SupplierService = {
     const prevPayments = allTxs.reduce((sum, t) => sum + (parseFloat(t.paid) || 0), 0);
     const prevBalance = prevPurchases - prevPayments;
 
-    // 👇 Store items as JSON string if it's an array
     let itemsData = items;
     if (Array.isArray(items)) {
       itemsData = JSON.stringify(items);
@@ -66,8 +65,12 @@ export const SupplierService = {
 
     await db.supplierTransactions.add(newTx);
     
+    // 👇 UPDATED: Return both the transaction ID and updated supplier
     const updatedSuppliers = await SupplierService.getAll(storeId);
-    return updatedSuppliers.find(s => s.id === supplierId);
+    return { 
+      transactionId: newTx.id, 
+      supplier: updatedSuppliers.find(s => s.id === supplierId) 
+    };
   },
 
   clearDebt: async (storeId, supplierId) => {
