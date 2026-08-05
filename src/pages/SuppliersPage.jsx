@@ -20,6 +20,7 @@ export const SuppliersPage = () => {
     setSuppliers(loaded);
   };
 
+  // FIXED: Changed useState to useEffect
   useEffect(() => {
     loadSuppliers();
   }, []);
@@ -37,12 +38,12 @@ export const SuppliersPage = () => {
     }
     try {
       await SupplierService.addSupplier(currentStore.id, newSupplier.name, newSupplier.phone);
-      showToast("Supplier added!");
+      showToast("✅ Supplier added!");
       setNewSupplier({ name: "", phone: "" });
       setIsAdding(false);
       await loadSuppliers();
     } catch (error) {
-      showToast("Failed to add supplier.");
+      showToast("❌ Failed to add supplier.");
     }
   };
 
@@ -56,7 +57,6 @@ export const SuppliersPage = () => {
       <TopBar title="Suppliers" subtitle="People I owe" />
       
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
-        
         <div className="relative">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />

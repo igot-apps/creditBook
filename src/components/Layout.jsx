@@ -17,9 +17,9 @@ export const Layout = ({ children }) => {
   const navigateTo = (targetView) => {
     setSelectedCustomer(null);
     if (view === targetView) {
-      refreshPage(); 
+      refreshPage();
     } else {
-      setView(targetView); 
+      setView(targetView);
     }
     setIsMenuOpen(false);
   };
@@ -27,7 +27,7 @@ export const Layout = ({ children }) => {
   const menuItems = [
     { icon: Home, label: "Home", view: "home" },
     { icon: Users, label: "Customers", view: "customers" },
-    { icon: Truck, label: "Suppliers", view: "suppliers" }, 
+    { icon: Truck, label: "Suppliers", view: "suppliers" },
     { icon: Package, label: "Products", view: "products" },
     { icon: Bell, label: "Follow-ups", view: "followups" },
     { icon: BarChart3, label: "Reports", view: "reports" },

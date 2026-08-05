@@ -10,21 +10,18 @@ const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:ap
 
 export const RecordPurchasePage = () => {
   const { currentStore, setView, prefillTransaction, setPrefillTransaction, showToast } = useStore();
-  const currency = currentStore?.currency || "GH";
+  const currency = currentStore?.currency || "GH₵";
 
-  // State
   const [mode, setMode] = useState("search");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSupplier, setSelectedSupplier] = useState(null);
-  
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [productSearch, setProductSearch] = useState("");
   const [note, setNote] = useState("");
-  const [amountPaid, setAmountPaid] = useState(""); // 👈 NEW: Track payment made
+  const [amountPaid, setAmountPaid] = useState("");
 
-  // 1. Load Data Safely
   useEffect(() => {
     if (currentStore?.id) {
       SupplierService.getAll(currentStore.id)
@@ -37,7 +34,6 @@ export const RecordPurchasePage = () => {
     }
   }, [currentStore?.id]);
 
-  // 2. Handle Prefill (e.g., coming from Supplier Profile "Make Payment")
   useEffect(() => {
     if (prefillTransaction && prefillTransaction.supplierId) {
       const supplier = (Array.isArray(suppliers) ? suppliers : []).find(s => s.id === prefillTransaction.supplierId) || {
@@ -48,8 +44,7 @@ export const RecordPurchasePage = () => {
       setSelectedSupplier(supplier);
       setMode("existing");
       
-      // 👈 Handle "Make Payment" prefill
-      if (prefillTransaction.paid !== undefined) {
+      if (prefillTransaction.paid !== undefined && prefillTransaction.paid !== "") {
         setAmountPaid(prefillTransaction.paid.toString());
       }
       
@@ -57,7 +52,6 @@ export const RecordPurchasePage = () => {
     }
   }, [prefillTransaction, suppliers, setPrefillTransaction]);
 
-  // 3. Filter Suppliers Safely
   const filteredSuppliers = useMemo(() => {
     if (!Array.isArray(suppliers)) return [];
     if (!searchQuery.trim()) return suppliers;
@@ -65,7 +59,6 @@ export const RecordPurchasePage = () => {
     return suppliers.filter(s => s.name.toLowerCase().includes(q) || (s.phone && s.phone.includes(q)));
   }, [suppliers, searchQuery]);
 
-  // 4. Filter Products Safely
   const filteredProducts = useMemo(() => {
     if (!Array.isArray(products)) return [];
     if (!productSearch.trim()) return products.filter(p => p.isFavourite).slice(0, 5);
@@ -73,7 +66,6 @@ export const RecordPurchasePage = () => {
     return products.filter(p => p.name.toLowerCase().includes(q));
   }, [productSearch, products]);
 
-  // Actions
   const handleSelectSupplier = (supplier) => {
     setSelectedSupplier(supplier);
     setMode("existing");
@@ -102,7 +94,11 @@ export const RecordPurchasePage = () => {
     
     if (existing) {
       setInvoiceItems(invoiceItems.map(i => 
-        i.productId === product.id ? { ...i, quantity: (i.quantity || 1) + 1, total: ((i.quantity || 1) + 1) * i.price } : i
+        i.productId === product.id ? { 
+          ...i, 
+          quantity: (i.quantity || 1) + 1, 
+          total: ((i.quantity || 1) + 1) * i.price 
+        } : i
       ));
     } else {
       setInvoiceItems([...invoiceItems, {
@@ -126,13 +122,11 @@ export const RecordPurchasePage = () => {
       updated[index].quantity = numValue;
       const price = parseFloat(updated[index].price) || 0;
       updated[index].total = isValidNum ? (numValue * price) : "";
-    } 
-    else if (field === 'price') {
+    } else if (field === 'price') {
       updated[index].price = numValue;
       const qty = parseFloat(updated[index].quantity) || 0;
       updated[index].total = isValidNum ? (qty * numValue) : "";
-    } 
-    else if (field === 'total') {
+    } else if (field === 'total') {
       updated[index].total = numValue;
       const price = parseFloat(updated[index].price) || 0;
       if (price > 0 && isValidNum) {
@@ -161,23 +155,28 @@ export const RecordPurchasePage = () => {
     const finalPaid = parseFloat(amountPaid) || 0;
     const finalTotal = totalAmount;
 
-    // Allow saving if there are items OR a payment amount OR a note
     if (finalTotal === 0 && finalPaid === 0 && !note.trim()) {
       showToast("⚠️ Please add items, a payment amount, or a note.");
       return;
     }
 
     try {
-      const itemsString = invoiceItems.length > 0 
-        ? invoiceItems.map(i => `${i.quantity || 1} ${i.unit || "Piece"} ${i.name}`).join(", ") 
-        : (note || "Payment made");
+      const itemsArray = invoiceItems.map(i => ({
+        name: i.name,
+        quantity: i.quantity || 1,
+        unit: i.unit || "Piece",
+        price: i.price || 0,
+        total: i.total !== "" && i.total !== undefined 
+          ? (parseFloat(i.total) || 0) 
+          : ((i.quantity || 1) * (i.price || 0))
+      }));
       
       await SupplierService.addTransaction(
         currentStore.id,
         selectedSupplier.id,
         finalTotal,
-        finalPaid, //  Pass the actual paid amount
-        itemsString,
+        finalPaid,
+        itemsArray,
         note
       );
       
@@ -191,11 +190,10 @@ export const RecordPurchasePage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      <TopBar title="Record Purchase" showBack={true} onBack={() => setView("suppliers")} />
+      <TopBar title="Record Supplier Purchase" showBack={true} onBack={() => setView("suppliers")} />
       
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
         
-        {/* 1. SUPPLIER SELECTION */}
         {mode === "search" && (
           <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <p className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
@@ -236,7 +234,6 @@ export const RecordPurchasePage = () => {
           </div>
         )}
 
-        {/* 2. SELECTED SUPPLIER CARD */}
         {mode === "existing" && selectedSupplier && (
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-indigo-100 dark:border-indigo-900/30">
             <div className="flex items-center gap-3">
@@ -252,7 +249,6 @@ export const RecordPurchasePage = () => {
           </div>
         )}
 
-        {/* 3. ITEMIZED PURCHASE */}
         {mode === "existing" && (
           <>
             <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
@@ -292,7 +288,9 @@ export const RecordPurchasePage = () => {
                   <div key={index} className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
                     <div className="flex justify-between items-center mb-2">
                       <p className="font-bold text-gray-900 dark:text-white text-sm truncate pr-2 flex-1">{item.name}</p>
-                      <button onClick={() => removeItem(index)} className="p-1.5 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-lg transition active:scale-90"><X size={14} /></button>
+                      <button onClick={() => removeItem(index)} className="p-1.5 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-lg transition active:scale-90">
+                        <X size={14} />
+                      </button>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <div className="relative flex-1">
@@ -316,43 +314,41 @@ export const RecordPurchasePage = () => {
               )}
             </div>
 
-            {/* 👇 UPDATED: Summary Section with Money Paid Input */}
-            {(invoiceItems.length > 0 || amountPaid !== "") && (
-              <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+              {invoiceItems.length > 0 && (
                 <div className="flex justify-between items-center text-lg font-bold">
                   <span className="text-gray-700 dark:text-gray-300">Total Purchase:</span>
                   <span className="text-indigo-600 dark:text-indigo-400">{formatCurrency(totalAmount, currency)}</span>
                 </div>
-                
-                {/* 👇 NEW: Money Paid Upfront Input */}
-                <div>
-                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Money Paid Upfront</label>
-                  <input 
-                    type="number" 
-                    inputMode="decimal"
-                    value={amountPaid}
-                    onChange={e => setAmountPaid(e.target.value)}
-                    placeholder="0.00"
-                    className={`w-full text-xl font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`}
-                  />
-                </div>
-
-                <textarea 
-                  value={note}
-                  onChange={e => setNote(e.target.value)}
-                  placeholder="Add a note (optional)..."
-                  className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm resize-none"
-                  rows="2"
+              )}
+              
+              <div>
+                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Money Paid Upfront</label>
+                <input 
+                  type="number" 
+                  inputMode="decimal"
+                  value={amountPaid}
+                  onChange={e => setAmountPaid(e.target.value)}
+                  placeholder="0.00"
+                  className={`w-full text-xl font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`}
                 />
-
-                <button 
-                  onClick={handleSavePurchase}
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
-                >
-                  <Check size={24} /> {totalAmount > 0 ? "Record Purchase" : "Record Payment"}
-                </button>
               </div>
-            )}
+
+              <textarea 
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                placeholder="Add a note (optional)..."
+                className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm resize-none"
+                rows="2"
+              />
+
+              <button 
+                onClick={handleSavePurchase}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
+              >
+                <Check size={24} /> {invoiceItems.length > 0 ? "Record Purchase" : "Record Payment"}
+              </button>
+            </div>
           </>
         )}
       </div>
