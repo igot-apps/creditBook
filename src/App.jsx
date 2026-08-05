@@ -4,6 +4,7 @@ import { BottomNav } from "./components/BottomNav";
 import { Toast } from "./components/Toast";
 import { Layout } from "./components/Layout";
 
+// Existing Pages
 import { HomePage } from "./pages/HomePage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { ProductsPage } from "./pages/ProductsPage";
@@ -12,6 +13,8 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { FollowUpsPage } from "./pages/FollowUpsPage";
+
+// 👇 NEW: Supplier Pages
 import { SuppliersPage } from "./pages/SuppliersPage";
 import { SupplierProfilePage } from "./pages/SupplierProfilePage";
 import { RecordPurchasePage } from "./pages/RecordPurchasePage";
@@ -30,6 +33,7 @@ const AppRouter = () => {
 
   const renderPage = () => {
     switch (view) {
+      // 👇 FIXED: Removed ALL trailing spaces
       case "home": return <HomePage key={pageKey} />;
       case "customers": return <CustomersPage key={pageKey} />;
       case "products": return <ProductsPage key={pageKey} />;
@@ -38,9 +42,12 @@ const AppRouter = () => {
       case "reports": return <ReportsPage key={pageKey} />;
       case "settings": return <SettingsPage key={pageKey} />;
       case "followups": return <FollowUpsPage key={pageKey} />;
+      
+      // 👇 NEW: Supplier Routes
       case "suppliers": return <SuppliersPage key={pageKey} />;
       case "supplierProfile": return <SupplierProfilePage key={pageKey} />;
-      case "recordPurchase": return <RecordPurchasePage key={pageKey} />;
+      case "recordSupplierPurchase": return <RecordPurchasePage key={pageKey} />;
+      
       default: return <HomePage key={pageKey} />;
     }
   };
