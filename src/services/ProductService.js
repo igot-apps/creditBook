@@ -1,19 +1,60 @@
 import { db } from '../database/db';
 
+// Emoji mapping for common categories (visual recognition)
+export const CATEGORY_EMOJIS = {
+  'rice': '🍚',
+  'milk': '🥛',
+  'drinks': '🥤',
+  'beverages': '🥤',
+  'oil': '🫒',
+  'sugar': '🍬',
+  'soap': '🧼',
+  'biscuits': '🍪',
+  'bread': '🍞',
+  'frozen': '🧊',
+  'medicine': '💊',
+  'snacks': '🍿',
+  'water': '💧',
+  'meat': '🥩',
+  'fish': '🐟',
+  'chicken': '🍗',
+  'eggs': '🥚',
+  'fruit': '🍎',
+  'fruits': '🍎',
+  'vegetable': '🥬',
+  'vegetables': '🥬',
+  'spices': '🌶️',
+  'grains': '🌾',
+  'flour': '🌾',
+  'pasta': '🍝',
+  'tea': '🍵',
+  'coffee': '☕',
+  'cereal': '🥣',
+  'sauce': '🥫',
+  'cleaning': '🧹',
+  'baby': '🍼',
+  'default': '📦'
+};
+
 export const ProductService = {
+
+  // Get emoji for a category
+  getCategoryEmoji: (category) => {
+    if (!category) return CATEGORY_EMOJIS.default;
+    const key = category.toLowerCase().trim();
+    return CATEGORY_EMOJIS[key] || CATEGORY_EMOJIS.default;
+  },
 
   // 1. GET ALL PRODUCTS
   getAll: async (storeId) => {
     return await db.products.where('storeId').equals(storeId).toArray();
   },
 
-  // 2. SMART SEARCH (The Core UX Engine)
-  // Ranks products by: 1. Favourites -> 2. Most Used -> 3. Alphabetical
+  // 2. SMART SEARCH (For search mode)
   search: async (storeId, query) => {
     const allProducts = await db.products.where('storeId').equals(storeId).toArray();
     
     if (!query || !query.trim()) {
-      // If no query, return top 10 favourites and most used
       return allProducts
         .sort((a, b) => {
           if (a.isFavourite !== b.isFavourite) return b.isFavourite ? 1 : -1;
@@ -24,17 +65,16 @@ export const ProductService = {
     
     const q = query.toLowerCase();
     
-    // Filter by Name, Category, Brand, or Unit Name
     const filtered = allProducts.filter(p => {
       const matchesName = p.name && p.name.toLowerCase().includes(q);
       const matchesCategory = p.category && p.category.toLowerCase().includes(q);
       const matchesBrand = p.brand && p.brand.toLowerCase().includes(q);
       const matchesUnit = p.units && p.units.some(u => u.name.toLowerCase().includes(q));
+      const matchesLegacyName = p.name && p.name.toLowerCase().includes(q);
       
-      return matchesName || matchesCategory || matchesBrand || matchesUnit;
+      return matchesName || matchesCategory || matchesBrand || matchesUnit || matchesLegacyName;
     });
 
-    // Apply Smart Ranking
     return filtered.sort((a, b) => {
       if (a.isFavourite !== b.isFavourite) return b.isFavourite ? 1 : -1;
       if ((b.usageCount || 0) !== (a.usageCount || 0)) return (b.usageCount || 0) - (a.usageCount || 0);
@@ -42,9 +82,58 @@ export const ProductService = {
     });
   },
 
-  // 3. CREATE PRODUCT (Template)
+  // 3. GET FAVORITE PRODUCTS
+  getFavorites: async (storeId) => {
+    const allProducts = await db.products.where('storeId').equals(storeId).toArray();
+    return allProducts
+      .filter(p => p.isFavourite)
+      .sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0));
+  },
+
+  // 4. GET RECENTLY USED PRODUCTS
+  // Returns products sorted by lastUsedAt (most recent first)
+  getRecent: async (storeId, limit = 10) => {
+    const allProducts = await db.products.where('storeId').equals(storeId).toArray();
+    return allProducts
+      .filter(p => p.lastUsedAt)
+      .sort((a, b) => new Date(b.lastUsedAt) - new Date(a.lastUsedAt))
+      .slice(0, limit);
+  },
+
+  // 5. GET MOST USED PRODUCTS
+  getMostUsed: async (storeId, limit = 10) => {
+    const allProducts = await db.products.where('storeId').equals(storeId).toArray();
+    return allProducts
+      .filter(p => (p.usageCount || 0) > 0)
+      .sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0))
+      .slice(0, limit);
+  },
+
+  // 6. GET PRODUCTS BY CATEGORY
+  getByCategory: async (storeId, category) => {
+    const allProducts = await db.products.where('storeId').equals(storeId).toArray();
+    if (!category || category === 'All') {
+      return allProducts.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }
+    return allProducts
+      .filter(p => p.category && p.category.toLowerCase() === category.toLowerCase())
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  },
+
+  // 7. GET ALL UNIQUE CATEGORIES
+  getCategories: async (storeId) => {
+    const allProducts = await db.products.where('storeId').equals(storeId).toArray();
+    const categories = new Set();
+    allProducts.forEach(p => {
+      if (p.category && p.category.trim()) {
+        categories.add(p.category.trim());
+      }
+    });
+    return Array.from(categories).sort();
+  },
+
+  // 8. CREATE PRODUCT
   create: async (storeId, productData) => {
-    // Ensure the units array is properly formatted
     const units = (productData.units || []).map((u, index) => ({
       id: u.id || `u_${Date.now()}_${index}`,
       name: (u.name || 'Piece').trim(),
@@ -52,7 +141,6 @@ export const ProductService = {
       defaultSalePrice: parseFloat(u.defaultSalePrice || u.salePrice) || 0
     }));
 
-    // Fallback for legacy single-unit data
     if (units.length === 0 && productData.unit) {
       units.push({
         id: `u_${Date.now()}_0`,
@@ -71,6 +159,7 @@ export const ProductService = {
       units: units,
       isFavourite: productData.isFavourite || false,
       usageCount: 0,
+      lastUsedAt: null,
       createdAt: new Date().toISOString()
     };
 
@@ -78,34 +167,33 @@ export const ProductService = {
     return newProduct.id;
   },
 
-  // 4. UPDATE PRODUCT
-  // Updates defaults only. Never touches historical transactions.
+  // 9. UPDATE PRODUCT
   update: async (productId, updateData) => {
     await db.products.update(productId, updateData);
   },
 
-  // 5. DELETE PRODUCT
+  // 10. DELETE PRODUCT
   delete: async (productId) => {
     await db.products.delete(productId);
   },
 
-  // 6. TRACK USAGE
-  // Increments usage count to help prioritize items in search results
+  // 11. TRACK USAGE (Updated to also track lastUsedAt)
   trackUsage: async (productId) => {
     const product = await db.products.get(productId);
     if (product) {
       await db.products.update(productId, { 
-        usageCount: (product.usageCount || 0) + 1 
+        usageCount: (product.usageCount || 0) + 1,
+        lastUsedAt: new Date().toISOString()
       });
     }
   },
 
-  // 7. GET SINGLE PRODUCT
+  // 12. GET SINGLE PRODUCT
   getById: async (productId) => {
     return await db.products.get(productId);
   },
 
-  // 8. TOGGLE FAVOURITE
+  // 13. TOGGLE FAVOURITE
   toggleFavourite: async (productId) => {
     const product = await db.products.get(productId);
     if (product) {

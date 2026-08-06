@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Users, FileText, Check } from "lucide-react";
+import { Search, Plus, Users, Check } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
@@ -8,7 +8,6 @@ import { DetailedInvoice } from "../components/DetailedInvoice";
 import { TopBar } from "../components/TopBar";
 
 export const RecordPage = () => {
-  // 👇 Added autoDraft, saveDraft, clearAutoDraft, prefillTransaction from store
   const { 
     currentStore, setView, prefillTransaction, setPrefillTransaction, showToast, 
     autoDraft, saveDraft, clearAutoDraft 
@@ -21,7 +20,6 @@ export const RecordPage = () => {
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
   
-  // Invoice State
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [tx, setTx] = useState({ amount: "0", paid: "", discount: "", note: "" });
 
@@ -38,7 +36,7 @@ export const RecordPage = () => {
     }
   }, [currentStore?.id]);
 
-  // 2. Handle prefill (from Customer Profile) AND clear old drafts
+  // 2. Handle prefill from Customer Profile
   useEffect(() => {
     if (prefillTransaction && prefillTransaction.customerId) {
       const customer = (Array.isArray(customers) ? customers : []).find(c => c.id === prefillTransaction.customerId) || {
@@ -50,13 +48,11 @@ export const RecordPage = () => {
         setTx(prev => ({ ...prev, paid: prefillTransaction.paid.toString() }));
       }
       setPrefillTransaction(null);
-      
-      // Clear any old draft since this is a deliberate new action from the profile
       clearAutoDraft();
     }
   }, [prefillTransaction, customers, setPrefillTransaction, clearAutoDraft]);
 
-  // 3. 👇 INTELLIGENT RESTORE: Resume from draft if available
+  // 3. Intelligent Restore from Draft
   useEffect(() => {
     if (autoDraft && autoDraft.draftType === 'sale' && customers.length > 0 && !selectedCustomer && !prefillTransaction) {
       const draftCustomer = customers.find(c => c.id === autoDraft.customerId) || {
@@ -77,7 +73,7 @@ export const RecordPage = () => {
     }
   }, [autoDraft, customers, selectedCustomer, prefillTransaction]);
 
-  // 4. 👇 INTELLIGENT AUTO-SAVE: Debounced save of current state
+  // 4. Intelligent Auto-Save
   useEffect(() => {
     if (mode === 'existing' && selectedCustomer) {
       const draftData = {
@@ -94,7 +90,7 @@ export const RecordPage = () => {
       
       const timeoutId = setTimeout(() => {
         saveDraft(draftData, true);
-      }, 500); // 500ms debounce
+      }, 500);
       
       return () => clearTimeout(timeoutId);
     }
@@ -152,9 +148,7 @@ export const RecordPage = () => {
         tx.note
       );
       
-      // 👇 CLEAR DRAFT ON SUCCESS
       await clearAutoDraft();
-      
       showToast("✅ Sale recorded!");
       setView("customers");
     } catch (error) {
@@ -226,7 +220,6 @@ export const RecordPage = () => {
                 <p className="text-xs text-green-600 dark:text-green-400 uppercase font-bold">Selling to</p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedCustomer.name}</p>
               </div>
-              {/* 👇 CLEAR DRAFT WHEN EXPLICITLY ABANDONING */}
               <button onClick={() => { 
                 setMode("search"); 
                 setSelectedCustomer(null); 
@@ -238,7 +231,7 @@ export const RecordPage = () => {
           </div>
         )}
 
-        {/* 3. DETAILED INVOICE COMPONENT */}
+        {/* 3. DETAILED INVOICE WITH PRODUCT PICKER */}
         {mode === "existing" && (
           <DetailedInvoice 
             tx={tx} 
@@ -246,7 +239,7 @@ export const RecordPage = () => {
             invoiceItems={invoiceItems} 
             setInvoiceItems={setInvoiceItems} 
             products={products} 
-            setProducts={setProducts} 
+            setProducts={setProducts}
             currentStore={currentStore} 
             showToast={showToast} 
           />
