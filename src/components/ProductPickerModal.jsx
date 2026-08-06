@@ -12,7 +12,7 @@ export const ProductPickerModal = ({
   currentStore, 
   onProductsSelected,
   priceType = "sale",
-  onRequestCreateProduct // 👈 NEW: Callback to tell parent to open Add Product Modal
+  onRequestCreateProduct 
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -110,14 +110,9 @@ export const ProductPickerModal = ({
 
   return (
     <div className="fixed inset-0 z-[100] bg-white dark:bg-gray-950 flex flex-col overflow-hidden">
-      
-      {/* FIXED HEADER */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
         <div className="flex items-center justify-between p-4">
-          <button 
-            onClick={onClose} 
-            className="p-2 -ml-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition active:scale-95"
-          >
+          <button onClick={onClose} className="p-2 -ml-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition active:scale-95">
             <ArrowLeft size={20} className="text-gray-700 dark:text-gray-300" />
           </button>
           <h1 className="font-bold text-xl text-gray-900 dark:text-white">
@@ -125,9 +120,7 @@ export const ProductPickerModal = ({
           </h1>
           {addedProducts.length > 0 ? (
             <div className={`px-3 py-1.5 rounded-full text-sm font-bold ${
-              priceType === "purchase" 
-                ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400" 
-                : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+              priceType === "purchase" ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400" : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
             }`}>
               {addedProducts.length} added
             </div>
@@ -138,25 +131,18 @@ export const ProductPickerModal = ({
 
         <div className="px-4 pb-3">
           <div className="relative">
-            <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${
-              priceType === "purchase" ? "text-indigo-400" : "text-green-400"
-            }`} size={20} />
+            <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${priceType === "purchase" ? "text-indigo-400" : "text-green-400"}`} size={20} />
             <input
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search products, brands, categories..."
               className={`w-full pl-12 pr-10 py-3.5 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-2 ${
-                priceType === "purchase" 
-                  ? "focus:ring-indigo-500 focus:border-indigo-500" 
-                  : "focus:ring-green-500 focus:border-green-500"
+                priceType === "purchase" ? "focus:ring-indigo-500 focus:border-indigo-500" : "focus:ring-green-500 focus:border-green-500"
               } dark:text-white text-base`}
               autoFocus
             />
             {searchQuery && (
-              <button 
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-gray-200 dark:bg-gray-700 rounded-full"
-              >
+              <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-gray-200 dark:bg-gray-700 rounded-full">
                 <X size={14} className="text-gray-600 dark:text-gray-300" />
               </button>
             )}
@@ -165,85 +151,29 @@ export const ProductPickerModal = ({
 
         <div className="px-4 pb-2 overflow-x-auto">
           <div className="flex gap-2 min-w-max">
-            <button
-              onClick={() => setActiveTab("all")}
-              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${
-                activeTab === "all"
-                  ? priceType === "purchase" ? "bg-indigo-600 text-white" : "bg-green-600 text-white"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setActiveTab("favorites")}
-              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition flex items-center gap-1 ${
-                activeTab === "favorites"
-                  ? "bg-yellow-500 text-white"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
-              }`}
-            >
-              <Star size={14} /> Favorites
-            </button>
-            <button
-              onClick={() => setActiveTab("recent")}
-              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${
-                activeTab === "recent"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
-              }`}
-            >
-              Recent
-            </button>
-            <button
-              onClick={() => setActiveTab("most-used")}
-              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${
-                activeTab === "most-used"
-                  ? "bg-purple-600 text-white"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
-              }`}
-            >
-              Most Used
-            </button>
+            <button onClick={() => setActiveTab("all")} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${activeTab === "all" ? (priceType === "purchase" ? "bg-indigo-600 text-white" : "bg-green-600 text-white") : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"}`}>All</button>
+            <button onClick={() => setActiveTab("favorites")} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition flex items-center gap-1 ${activeTab === "favorites" ? "bg-yellow-500 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"}`}><Star size={14} /> Favorites</button>
+            <button onClick={() => setActiveTab("recent")} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${activeTab === "recent" ? "bg-blue-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"}`}>Recent</button>
+            <button onClick={() => setActiveTab("most-used")} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${activeTab === "most-used" ? "bg-purple-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"}`}>Most Used</button>
           </div>
         </div>
 
         <div className="px-4 pb-3 overflow-x-auto">
           <div className="flex gap-2 min-w-max">
-            <button
-              onClick={() => setSelectedCategory("All")}
-              className={`px-3 py-1 rounded-full text-xs font-semibold transition ${
-                selectedCategory === "All"
-                  ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
-              }`}
-            >
-              All
-            </button>
+            <button onClick={() => setSelectedCategory("All")} className={`px-3 py-1 rounded-full text-xs font-semibold transition ${selectedCategory === "All" ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"}`}>All</button>
             {categories.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold transition flex items-center gap-1 ${
-                  selectedCategory === cat
-                    ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900"
-                    : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
-                }`}
-              >
-                <span>{ProductService.getCategoryEmoji(cat)}</span>
-                {cat}
+              <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-3 py-1 rounded-full text-xs font-semibold transition flex items-center gap-1 ${selectedCategory === cat ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"}`}>
+                <span>{ProductService.getCategoryEmoji(cat)}</span>{cat}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* SCROLLABLE PRODUCT GRID */}
       <div className="flex-1 overflow-y-auto p-4">
         {filteredProducts.length === 0 ? (
-          // 👇 NEW: Smart Empty State with "Create" Button
           <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-            <div className="text-6xl mb-4 opacity-50">🔍</div>
+            <div className="text-6xl mb-4 opacity-50"></div>
             <p className="text-gray-500 dark:text-gray-400 text-base font-medium">
               {searchQuery ? `No products found for "${searchQuery}"` : "No products in catalog"}
             </p>
@@ -257,7 +187,7 @@ export const ProductPickerModal = ({
                 className={`mt-6 w-full max-w-xs font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg text-base ${
                   priceType === "purchase"
                     ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-                    : "bg-green-600 hover:bg-green-700 text-white"
+                    : "bg-green-600 hover:bg-green-700 text-white" // 👈 EXPLICITLY GREEN FOR SALES
                 }`}
               >
                 <Plus size={20} /> Create "{searchQuery}"
@@ -271,64 +201,26 @@ export const ProductPickerModal = ({
               const isAdded = addedProducts.some(p => p.productId === product.id);
 
               return (
-                <div
-                  key={product.id}
-                  className={`bg-white dark:bg-gray-800 rounded-2xl border-2 p-3 transition-all ${
-                    isAdded
-                      ? priceType === "purchase" 
-                        ? "border-indigo-500 dark:border-indigo-400 shadow-md"
-                        : "border-green-500 dark:border-green-400 shadow-md"
-                      : "border-gray-200 dark:border-gray-700"
-                  }`}
-                >
+                <div key={product.id} className={`bg-white dark:bg-gray-800 rounded-2xl border-2 p-3 transition-all ${isAdded ? (priceType === "purchase" ? "border-indigo-500 dark:border-indigo-400 shadow-md" : "border-green-500 dark:border-green-400 shadow-md") : "border-gray-200 dark:border-gray-700"}`}>
                   <div className="text-center mb-2">
                     <div className="text-5xl mb-1">{emoji}</div>
                     <p className="font-bold text-gray-900 dark:text-white text-sm truncate">{product.name}</p>
-                    {product.category && (
-                      <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{product.category}</p>
-                    )}
-                    {product.brand && (
-                      <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate italic">{product.brand}</p>
-                    )}
+                    {product.category && <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{product.category}</p>}
+                    {product.brand && <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate italic">{product.brand}</p>}
                   </div>
-
                   <div className="space-y-1 mb-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-2">
                     {product.units && product.units.slice(0, 2).map(unit => (
                       <div key={unit.id} className="flex justify-between text-xs">
                         <span className="text-gray-600 dark:text-gray-400 font-medium">{unit.name}</span>
-                        <span className="font-bold text-gray-900 dark:text-white">
-                          {formatCurrency(getPrice(unit), currency)}
-                        </span>
+                        <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(getPrice(unit), currency)}</span>
                       </div>
                     ))}
                     {product.units && product.units.length > 2 && (
-                      <p className="text-[10px] text-gray-500 dark:text-gray-400 text-center pt-1 border-t border-gray-200 dark:border-gray-700">
-                        +{product.units.length - 2} more units
-                      </p>
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400 text-center pt-1 border-t border-gray-200 dark:border-gray-700">+{product.units.length - 2} more units</p>
                     )}
                   </div>
-
-                  <button
-                    onClick={() => handleAddProduct(product)}
-                    className={`w-full py-2.5 rounded-xl font-bold text-sm transition active:scale-95 flex items-center justify-center gap-1 ${
-                      isAdded
-                        ? priceType === "purchase"
-                          ? "bg-indigo-500 text-white"
-                          : "bg-green-500 text-white"
-                        : priceType === "purchase"
-                          ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-                          : "bg-green-600 hover:bg-green-700 text-white"
-                    }`}
-                  >
-                    {isAdded ? (
-                      <>
-                        <Check size={16} /> Added
-                      </>
-                    ) : (
-                      <>
-                        <Plus size={16} /> Add
-                      </>
-                    )}
+                  <button onClick={() => handleAddProduct(product)} className={`w-full py-2.5 rounded-xl font-bold text-sm transition active:scale-95 flex items-center justify-center gap-1 ${isAdded ? (priceType === "purchase" ? "bg-indigo-500 text-white" : "bg-green-500 text-white") : (priceType === "purchase" ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-green-600 hover:bg-green-700 text-white")}`}>
+                    {isAdded ? <><Check size={16} /> Added</> : <><Plus size={16} /> Add</>}
                   </button>
                 </div>
               );
@@ -337,53 +229,27 @@ export const ProductPickerModal = ({
         )}
       </div>
 
-      {/* FIXED DONE BUTTON */}
       {addedProducts.length > 0 && (
         <div className="bg-white dark:bg-gray-900 border-t-2 border-gray-200 dark:border-gray-800 p-4 flex-shrink-0 shadow-2xl">
-          <button
-            onClick={handleDone}
-            className={`w-full font-bold py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg text-lg ${
-              priceType === "purchase"
-                ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-                : "bg-green-600 hover:bg-green-700 text-white"
-            }`}
-          >
-            <Check size={24} />
-            Done ({addedProducts.length} {addedProducts.length === 1 ? "Product" : "Products"})
+          <button onClick={handleDone} className={`w-full font-bold py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg text-lg ${priceType === "purchase" ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"}`}>
+            <Check size={24} /> Done ({addedProducts.length} {addedProducts.length === 1 ? "Product" : "Products"})
           </button>
         </div>
       )}
 
-      {/* Unit Selector Modal */}
       {selectedProductForUnit && (
         <div className="fixed inset-0 bg-black/60 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl p-5">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-lg text-gray-900 dark:text-white">Choose Unit</h3>
-              <button onClick={() => setSelectedProductForUnit(null)} className="p-1.5 bg-gray-100 dark:bg-gray-800 rounded-full">
-                <X size={18} className="text-gray-600 dark:text-gray-300" />
-              </button>
+              <button onClick={() => setSelectedProductForUnit(null)} className="p-1.5 bg-gray-100 dark:bg-gray-800 rounded-full"><X size={18} className="text-gray-600 dark:text-gray-300" /></button>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{selectedProductForUnit.name}</p>
             <div className="space-y-2">
               {selectedProductForUnit.units.map(unit => (
-                <button
-                  key={unit.id}
-                  onClick={() => handleAddProduct(selectedProductForUnit, unit)}
-                  className={`w-full flex items-center justify-between p-3 rounded-xl border-2 transition text-left active:scale-[0.98] ${
-                    priceType === "purchase"
-                      ? "border-gray-200 dark:border-gray-700 hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
-                      : "border-gray-200 dark:border-gray-700 hover:border-green-500 dark:hover:border-green-400 hover:bg-green-50 dark:hover:bg-green-900/20"
-                  }`}
-                >
+                <button key={unit.id} onClick={() => handleAddProduct(selectedProductForUnit, unit)} className={`w-full flex items-center justify-between p-3 rounded-xl border-2 transition text-left active:scale-[0.98] ${priceType === "purchase" ? "border-gray-200 dark:border-gray-700 hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20" : "border-gray-200 dark:border-gray-700 hover:border-green-500 dark:hover:border-green-400 hover:bg-green-50 dark:hover:bg-green-900/20"}`}>
                   <span className="font-semibold text-gray-900 dark:text-white">{unit.name}</span>
-                  <span className={`font-bold ${
-                    priceType === "purchase"
-                      ? "text-indigo-600 dark:text-indigo-400"
-                      : "text-green-600 dark:text-green-400"
-                  }`}>
-                    {formatCurrency(getPrice(unit), currency)}
-                  </span>
+                  <span className={`font-bold ${priceType === "purchase" ? "text-indigo-600 dark:text-indigo-400" : "text-green-600 dark:text-green-400"}`}>{formatCurrency(getPrice(unit), currency)}</span>
                 </button>
               ))}
             </div>
@@ -392,4 +258,4 @@ export const ProductPickerModal = ({
       )}
     </div>
   );
-};  
+};
