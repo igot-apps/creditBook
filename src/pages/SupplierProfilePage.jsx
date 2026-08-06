@@ -41,9 +41,10 @@ export const SupplierProfilePage = () => {
       supplierId: supplierData.id, 
       name: supplierData.name, 
       phone: supplierData.phone, 
+      type: "purchase", // 👈 Tells the next page to show "Add Items"
       items: "", 
       amount: "", 
-      paid: "0" 
+      paid: "" 
     });
     setView("recordSupplierPurchase");
   };
@@ -53,6 +54,7 @@ export const SupplierProfilePage = () => {
       supplierId: supplierData.id, 
       name: supplierData.name, 
       phone: supplierData.phone, 
+      type: "payment", // 👈 Tells the next page to hide "Add Items"
       items: "Payment", 
       amount: "0", 
       paid: "" 

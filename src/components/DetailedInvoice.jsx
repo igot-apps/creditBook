@@ -1,18 +1,22 @@
 import { useState, useMemo, useEffect } from "react";
-import { Search, PlusCircle, X, Tag, ChevronUp, ChevronDown, Circle, Check } from "lucide-react";
+import { Search, Plus, X, Tag, ChevronUp, ChevronDown, Circle, Check } from "lucide-react";
 import { ProductService } from "../services/ProductService";
 import { formatCurrency } from "../utils/helpers";
+import { AddProductModal } from "./AddProductModal";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
 export const DetailedInvoice = ({
   tx, setTx, invoiceItems, setInvoiceItems,
-  products, currentStore, showToast
+  products, setProducts, currentStore, showToast
 }) => {
   const [productSearch, setProductSearch] = useState("");
   const [selectedProductForUnit, setSelectedProductForUnit] = useState(null);
   const [discount, setDiscount] = useState(tx.discount || "");
   const [showSummary, setShowSummary] = useState(true);
+
+  // 👇 Use the full AddProductModal
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
 
   const currency = currentStore?.currency || "GH₵";
 
@@ -58,7 +62,6 @@ export const DetailedInvoice = ({
 
   // 2. Add Unit to Invoice (Stores Historical Facts)
   const addUnitToInvoice = (product, unit) => {
-    // Check if this exact unit of this product is already in the invoice
     const existingIndex = invoiceItems.findIndex(
       i => i.productId === product.id && i.unitName === unit.name
     );
@@ -75,9 +78,9 @@ export const DetailedInvoice = ({
           productId: product.id,
           name: product.name,
           brand: product.brand,
-          unitName: unit.name, // Stores the actual unit used
+          unitName: unit.name,
           quantity: 1,
-          price: unit.defaultSalePrice || 0, // Stores the actual price used
+          price: unit.defaultSalePrice || 0,
           total: unit.defaultSalePrice || 0
         }
       ]);
@@ -86,6 +89,28 @@ export const DetailedInvoice = ({
     setProductSearch("");
     setSelectedProductForUnit(null);
     ProductService.trackUsage(product.id);
+  };
+
+  // 👇 Handle saving the full product template
+  const handleSaveProduct = async (productData) => {
+    try {
+      const newId = await ProductService.create(currentStore.id, productData);
+      
+      // Refresh products list
+      const updatedProducts = await ProductService.getAll(currentStore.id);
+      setProducts(updatedProducts);
+      
+      // Auto-add the first unit to the invoice
+      const createdProduct = updatedProducts.find(p => p.id === newId);
+      if (createdProduct && createdProduct.units && createdProduct.units.length > 0) {
+        addUnitToInvoice(createdProduct, createdProduct.units[0]);
+      }
+      
+      showToast("✅ Product template created and added!");
+    } catch (error) {
+      console.error(error);
+      showToast("❌ Failed to create product.");
+    }
   };
 
   // 3. Update Item Fields
@@ -97,7 +122,6 @@ export const DetailedInvoice = ({
       updated[index][field] = value;
     }
     
-    // Recalculate total if qty or price changes
     if (field === 'quantity' || field === 'price') {
       const qty = parseFloat(updated[index].quantity) || 0;
       const price = parseFloat(updated[index].price) || 0;
@@ -129,7 +153,6 @@ export const DetailedInvoice = ({
           <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 max-h-64 overflow-y-auto shadow-xl z-30">
             {filteredProducts.length > 0 ? (
               filteredProducts.map(p => {
-                // If this product is selected, show its units as Radio Cards
                 if (selectedProductForUnit === p.id) {
                   return (
                     <div key={p.id} className="p-3 border-b border-gray-100 dark:border-gray-700 last:border-0 bg-green-50/30 dark:bg-green-900/10">
@@ -163,7 +186,6 @@ export const DetailedInvoice = ({
                   );
                 }
 
-                // Default product list item
                 return (
                   <button 
                     key={p.id} 
@@ -177,13 +199,20 @@ export const DetailedInvoice = ({
                         {p.brand || 'General'} • {p.units?.length || 0} unit(s)
                       </p>
                     </div>
-                    <PlusCircle size={18} className="text-green-600 flex-shrink-0 ml-2" />
+                    <Plus size={18} className="text-green-600 flex-shrink-0 ml-2" />
                   </button>
                 );
               })
             ) : (
-              <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                No products found.
+              // 👇 Show "No products found" with button to open full AddProductModal
+              <div className="p-4 text-center">
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">No products found for "{productSearch}"</p>
+                <button 
+                  onClick={() => setShowAddProductModal(true)}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition"
+                >
+                  <Plus size={18} /> Create Product Template
+                </button>
               </div>
             )}
           </div>
@@ -285,6 +314,13 @@ export const DetailedInvoice = ({
           </div>
         )}
       </div>
+
+      {/* 👇 Full AddProductModal */}
+      <AddProductModal 
+        isOpen={showAddProductModal} 
+        onClose={() => setShowAddProductModal(false)} 
+        onSave={handleSaveProduct} 
+      />
     </div>
   );
 };

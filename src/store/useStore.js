@@ -84,14 +84,14 @@ const useStore = create((set, get) => ({
     if (!currentStore) return;
     
     try {
+      // 👇 FIX: Guarantee an ID always exists before saving to IndexedDB
       const dataToSave = {
+        id: draftData.id || `draft_${Date.now()}`,
         ...draftData,
         storeId: currentStore.id,
         isAuto: isAuto,
         updatedAt: new Date().toISOString()
       };
-      
-      if (!dataToSave.id) delete dataToSave.id;
 
       if (isAuto) {
         const existingAuto = await db.drafts.where('storeId').equals(currentStore.id).filter(d => d.isAuto === true).first();

@@ -1,90 +1,119 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { Search, Plus, Users, Phone } from "lucide-react";
 import useStore from "../store/useStore";
-import { CustomerCard } from "../components/CustomerCard";
-import { Search, Plus, User, PlusCircle } from "lucide-react";
+import { formatCurrency } from "../utils/helpers";
 import { AddCustomerModal } from "../components/AddCustomerModal";
 import { TopBar } from "../components/TopBar";
 
 export const CustomersPage = () => {
-  const { customers, setView } = useStore();
+  // 👇 Use global customers and refreshCustomers from useStore
+  const { currentStore, customers, refreshCustomers, setSelectedCustomer, setView } = useStore();
   const [searchQuery, setSearchQuery] = useState("");
-  const [isAddingCustomer, setIsAddingCustomer] = useState(false);
-  const [prefillData, setPrefillData] = useState({});
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
+  const currency = currentStore?.currency || "GH₵";
+
+  // Ensure customers are loaded when the page mounts
+  useEffect(() => {
+    if (currentStore?.id) {
+      refreshCustomers();
+    }
+  }, [currentStore?.id]);
+
+  // Filter customers based on search
   const filteredCustomers = useMemo(() => {
+    if (!Array.isArray(customers)) return [];
     if (!searchQuery.trim()) return customers;
     const q = searchQuery.toLowerCase();
-    return customers.filter(c => c.name.toLowerCase().includes(q) || c.phone.includes(q));
+    return customers.filter(c => 
+      c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q))
+    );
   }, [customers, searchQuery]);
 
-  const handleCreateFromSearch = () => {
-    const q = searchQuery.trim();
-    const isPhone = /^\d+$/.test(q.replace(/\s/g, ''));
-    if (isPhone) setPrefillData({ phone: q, name: "" });
-    else setPrefillData({ name: q, phone: "" });
-    setIsAddingCustomer(true);
+  const handleSelectCustomer = (customer) => {
+    setSelectedCustomer(customer);
+    setView("profile");
   };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <TopBar title="Customers" />
       
-      {/* 👇 INCREASED PADDING: 6rem gives plenty of breathing room */}
-      <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 6rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
+      <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
         
-        {/* Search & Add - Added mt-2 for extra spacing */}
-        <div className="relative flex-1 mt-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+        {/* Search & Add Button */}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input 
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search name or phone..."
-              className="w-full pl-10 pr-12 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white"
+              placeholder="Search customers..."
+              className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white text-sm"
             />
-            <button 
-              onClick={() => { setPrefillData({}); setIsAddingCustomer(true); }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-green-700 text-white rounded-lg shadow-sm active:scale-95 transition"
-              title="Add new customer"
-            >
-              <Plus size={18} />
-            </button>
           </div>
-          {searchQuery.trim() && filteredCustomers.length === 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-green-200 dark:border-green-800 rounded-xl shadow-lg z-20 overflow-hidden">
-              <button onClick={handleCreateFromSearch} className="w-full flex items-center gap-3 p-3 text-left hover:bg-green-50 dark:hover:bg-green-900/20 transition">
-                <div className="w-9 h-9 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full flex items-center justify-center flex-shrink-0"><PlusCircle size={20} /></div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-gray-900 dark:text-white">Create new customer</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Use "{searchQuery.trim()}"</p>
-                </div>
-              </button>
-            </div>
-          )}
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="bg-green-600 hover:bg-green-700 text-white p-2.5 rounded-xl flex items-center justify-center active:scale-95 transition shadow-md"
+          >
+            <Plus size={20} />
+          </button>
         </div>
 
-        {/* Customer List */}
-        <div className="space-y-3 pt-2">
-          {filteredCustomers.length === 0 && !searchQuery.trim() ? (
-            <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700">
-              <User className="mx-auto text-gray-300 dark:text-gray-600 mb-3" size={48} />
-              <p className="text-gray-500 dark:text-gray-400 font-medium">No customers yet</p>
-              <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Tap the + button to add your first customer</p>
+        {/* Customers List */}
+        <div className="space-y-3">
+          {filteredCustomers.length === 0 ? (
+            <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700">
+              <Users className="mx-auto text-gray-300 dark:text-gray-600 mb-3" size={48} />
+              <p className="text-gray-500 dark:text-gray-400 font-medium">
+                {searchQuery ? "No customers found" : "No customers yet"}
+              </p>
+              <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">
+                {searchQuery ? "Try a different search term" : "Tap the + button to add your first customer"}
+              </p>
             </div>
-          ) : filteredCustomers.length === 0 ? (
-            <div className="text-center py-8"><p className="text-gray-400 dark:text-gray-500 text-sm">No existing customers match your search.</p></div>
           ) : (
-            filteredCustomers.map(c => <CustomerCard key={c.id} customer={c} />)
+            filteredCustomers.map(customer => (
+              <button 
+                key={customer.id} 
+                onClick={() => handleSelectCustomer(customer)}
+                className="w-full bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center gap-3 text-left active:scale-[0.98] transition"
+              >
+                <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0">
+                  {customer.name.charAt(0)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-gray-900 dark:text-white truncate">{customer.name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate flex items-center gap-1 mt-0.5">
+                    <Phone size={10} /> {customer.phone || "No phone"}
+                  </p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  {customer.balance > 0 ? (
+                    <p className="text-sm font-bold text-orange-600 dark:text-orange-400">
+                      Owes {formatCurrency(customer.balance, currency)}
+                    </p>
+                  ) : customer.balance < 0 ? (
+                    <p className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                      Credit {formatCurrency(Math.abs(customer.balance), currency)}
+                    </p>
+                  ) : (
+                    <p className="text-xs font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-lg">
+                      Paid Up
+                    </p>
+                  )}
+                </div>
+              </button>
+            ))
           )}
         </div>
       </div>
 
-      {isAddingCustomer && (
-        <AddCustomerModal 
-          initialData={prefillData}
-          onClose={() => { setIsAddingCustomer(false); setPrefillData({}); setSearchQuery(""); }} 
-        />
-      )}
+      {/* Modal */}
+      <AddCustomerModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+      />
     </div>
   );
 };
