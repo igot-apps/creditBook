@@ -9,7 +9,7 @@ import { TopBar } from "../components/TopBar";
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
 export const RecordPurchasePage = () => {
-  const { currentStore, setView, prefillTransaction, setPrefillTransaction, showToast } = useStore();
+  const { currentStore, setView, prefillTransaction, setPrefillTransaction, showToast, autoDraft, saveDraft, clearAutoDraft } = useStore();
   const currency = currentStore?.currency || "GH₵";
 
   const [mode, setMode] = useState("search");
@@ -23,6 +23,7 @@ export const RecordPurchasePage = () => {
   const [note, setNote] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
 
+  // 1. Load Data
   useEffect(() => {
     if (currentStore?.id) {
       SupplierService.getAll(currentStore.id)
@@ -34,6 +35,7 @@ export const RecordPurchasePage = () => {
     }
   }, [currentStore?.id]);
 
+  // 2. Handle Prefill (e.g., from Supplier Profile)
   useEffect(() => {
     if (prefillTransaction && prefillTransaction.supplierId) {
       const supplier = (Array.isArray(suppliers) ? suppliers : []).find(s => s.id === prefillTransaction.supplierId) || {
@@ -49,6 +51,35 @@ export const RecordPurchasePage = () => {
       setPrefillTransaction(null);
     }
   }, [prefillTransaction, suppliers, setPrefillTransaction]);
+
+  // 3. Restore Auto-Draft on Mount
+  useEffect(() => {
+    if (autoDraft && autoDraft.supplierId && mode === "search") {
+      const draftSupplier = suppliers.find(s => s.id === autoDraft.supplierId);
+      if (draftSupplier) {
+        setSelectedSupplier(draftSupplier);
+        setMode("existing");
+        setInvoiceItems(autoDraft.invoiceItems || []);
+        setAmountPaid(autoDraft.amountPaid || "");
+        setNote(autoDraft.note || "");
+        showToast("📝 Draft restored!");
+      }
+    }
+  }, [autoDraft, suppliers, mode]);
+
+  // 4. Auto-Save Draft on Change
+  useEffect(() => {
+    if (mode === "existing" && selectedSupplier && (invoiceItems.length > 0 || amountPaid || note)) {
+      const draftData = {
+        supplierId: selectedSupplier.id,
+        supplierName: selectedSupplier.name,
+        invoiceItems,
+        amountPaid,
+        note
+      };
+      saveDraft(draftData, true);
+    }
+  }, [invoiceItems, amountPaid, note, selectedSupplier, mode, saveDraft]);
 
   const filteredSuppliers = useMemo(() => {
     if (!Array.isArray(suppliers)) return [];
@@ -160,6 +191,10 @@ export const RecordPurchasePage = () => {
         invoiceItems,
         note
       );
+      
+      // Clear the auto-draft on success
+      await clearAutoDraft();
+      
       showToast("✅ Purchase recorded!");
       setView("suppliers");
     } catch (error) {
@@ -168,9 +203,18 @@ export const RecordPurchasePage = () => {
     }
   };
 
+  const handleReset = () => {
+    clearAutoDraft();
+    setMode("search");
+    setSelectedSupplier(null);
+    setInvoiceItems([]);
+    setAmountPaid("");
+    setNote("");
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      <TopBar title="Record Purchase" showBack={true} onBack={() => setView("suppliers")} />
+      <TopBar title="Record Purchase" showBack={true} onBack={() => { handleReset(); setView("suppliers"); }} />
       
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
         
@@ -229,7 +273,7 @@ export const RecordPurchasePage = () => {
                 <p className="text-xs text-indigo-600 dark:text-indigo-400 uppercase font-bold">Buying from</p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedSupplier.name}</p>
               </div>
-              <button onClick={() => { setMode("search"); setSelectedSupplier(null); setAmountPaid(""); setInvoiceItems([]); }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
+              <button onClick={handleReset} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
             </div>
           </div>
         )}

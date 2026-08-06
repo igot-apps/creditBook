@@ -2,13 +2,13 @@ import { useState, useEffect, useMemo } from "react";
 import { Search, Plus, Users, FileText, Check } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
-import { CustomerService } from "../services/CustomerService"; // Using the bridge
+import { CustomerService } from "../services/CustomerService";
 import { ProductService } from "../services/ProductService";
 import { DetailedInvoice } from "../components/DetailedInvoice";
 import { TopBar } from "../components/TopBar";
 
 export const RecordPage = () => {
-  const { currentStore, setView, showToast } = useStore();
+  const { currentStore, setView, showToast, autoDraft, saveDraft, clearAutoDraft } = useStore();
   const currency = currentStore?.currency || "GH₵";
 
   const [mode, setMode] = useState("search");
@@ -17,7 +17,6 @@ export const RecordPage = () => {
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
   
-  // Invoice State
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [tx, setTx] = useState({ amount: "0", paid: "", discount: "", note: "" });
 
@@ -27,14 +26,40 @@ export const RecordPage = () => {
       CustomerService.getAll(currentStore.id)
         .then(res => setCustomers(Array.isArray(res) ? res : []))
         .catch(() => setCustomers([]));
-        
       ProductService.getAll(currentStore.id)
         .then(res => setProducts(Array.isArray(res) ? res : []))
         .catch(() => setProducts([]));
     }
   }, [currentStore?.id]);
 
-  // 2. Filter Customers
+  // 2. Restore Auto-Draft on Mount
+  useEffect(() => {
+    if (autoDraft && autoDraft.customerId && mode === "search") {
+      const draftCustomer = customers.find(c => c.id === autoDraft.customerId);
+      if (draftCustomer) {
+        setSelectedCustomer(draftCustomer);
+        setMode("existing");
+        setInvoiceItems(autoDraft.invoiceItems || []);
+        setTx(autoDraft.tx || { amount: "0", paid: "", discount: "", note: "" });
+        showToast("📝 Draft restored!");
+      }
+    }
+  }, [autoDraft, customers, mode]);
+
+  // 3. Auto-Save Draft on Change (Debounced implicitly by React batching, safe for IndexedDB)
+  useEffect(() => {
+    if (mode === "existing" && selectedCustomer && (invoiceItems.length > 0 || tx.paid || tx.note)) {
+      const draftData = {
+        customerId: selectedCustomer.id,
+        customerName: selectedCustomer.name,
+        invoiceItems,
+        tx
+      };
+      // Save silently in the background
+      saveDraft(draftData, true); 
+    }
+  }, [invoiceItems, tx, selectedCustomer, mode, saveDraft]);
+
   const filteredCustomers = useMemo(() => {
     if (!Array.isArray(customers)) return [];
     if (!searchQuery.trim()) return customers;
@@ -42,7 +67,6 @@ export const RecordPage = () => {
     return customers.filter(c => c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)));
   }, [customers, searchQuery]);
 
-  // 3. Actions
   const handleSelectCustomer = (customer) => {
     setSelectedCustomer(customer);
     setMode("existing");
@@ -67,7 +91,6 @@ export const RecordPage = () => {
 
   const handleSaveInvoice = async () => {
     if (!selectedCustomer) return;
-    
     const finalAmount = parseFloat(tx.amount) || 0;
     const finalPaid = parseFloat(tx.paid) || 0;
 
@@ -86,6 +109,9 @@ export const RecordPage = () => {
         tx.note
       );
       
+      // 👇 Clear the auto-draft on success
+      await clearAutoDraft();
+      
       showToast("✅ Sale recorded!");
       setView("customers");
     } catch (error) {
@@ -94,13 +120,21 @@ export const RecordPage = () => {
     }
   };
 
+  // Clear draft if user explicitly cancels/changes customer
+  const handleReset = () => {
+    clearAutoDraft();
+    setMode("search");
+    setSelectedCustomer(null);
+    setInvoiceItems([]);
+    setTx({ amount: "0", paid: "", discount: "", note: "" });
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      <TopBar title="Record Sale" showBack={true} onBack={() => setView("customers")} />
+      <TopBar title="Record Sale" showBack={true} onBack={() => { handleReset(); setView("customers"); }} />
       
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
         
-        {/* 1. CUSTOMER SELECTION */}
         {mode === "search" && (
           <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <p className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
@@ -146,7 +180,6 @@ export const RecordPage = () => {
           </div>
         )}
 
-        {/* 2. SELECTED CUSTOMER CARD */}
         {mode === "existing" && selectedCustomer && (
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-green-100 dark:border-green-900/30">
             <div className="flex items-center gap-3">
@@ -157,12 +190,11 @@ export const RecordPage = () => {
                 <p className="text-xs text-green-600 dark:text-green-400 uppercase font-bold">Selling to</p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedCustomer.name}</p>
               </div>
-              <button onClick={() => { setMode("search"); setSelectedCustomer(null); setInvoiceItems([]); setTx({ amount: "0", paid: "", discount: "", note: "" }); }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
+              <button onClick={handleReset} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
             </div>
           </div>
         )}
 
-        {/* 3. DETAILED INVOICE COMPONENT */}
         {mode === "existing" && (
           <DetailedInvoice 
             tx={tx} 
@@ -175,7 +207,6 @@ export const RecordPage = () => {
           />
         )}
 
-        {/* 4. SAVE BUTTON */}
         {mode === "existing" && (
           <button 
             onClick={handleSaveInvoice}
