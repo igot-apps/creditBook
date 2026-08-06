@@ -1,341 +1,411 @@
-import { useState } from "react";
-import { Phone, PlusCircle, MessageCircle, MessageSquare, Edit3, Trash2, ShoppingBag, CreditCard, Ban, Clock, FileText, RefreshCw, Lock, AlertTriangle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Phone, MessageSquare, MessageCircle, Edit3, Archive, Ban, Clock, AlertTriangle, RotateCcw, FileText, X, Check } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openSMS, openWhatsApp, openDialer } from "../utils/communication";
-import { CustomerService } from "../services/CustomerService";
-import { PageHeader } from "../components/PageHeader";
-import { InvoiceModal } from "../components/InvoiceModal";
-import { EditCustomerModal } from "../components/EditCustomerModal";
+import { CustomerService } from "../services/CustomerService"; // Using the bridge for now
+import { TopBar } from "../components/TopBar";
 
 export const ProfilePage = () => {
-  const { currentStore, selectedCustomer, setSelectedCustomer, setView, refreshCustomers, showToast, triggerConfetti, setPrefillTransaction } = useStore();
+  const { currentStore, selectedCustomer, setSelectedCustomer, setView, setPrefillTransaction, showToast, triggerConfetti } = useStore();
   
   const currency = currentStore?.currency || "GH";
 
-  const [viewingInvoice, setViewingInvoice] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
-  const [showClearDebtModal, setShowClearDebtModal] = useState(false);
-  const [confirmText, setConfirmText] = useState("");
-  
-  // State for the Cancel Sale Modal
+  const [viewingTransaction, setViewingTransaction] = useState(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showRedoModal, setShowRedoModal] = useState(false);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
-  const [txToCancel, setTxToCancel] = useState(null);
+  const [customerData, setCustomerData] = useState(selectedCustomer);
+  const [history, setHistory] = useState([]);
 
-  if (!selectedCustomer) return null;
-
-  const history = selectedCustomer.history || [];
-  const totalPurchases = history.reduce((sum, t) => sum + (t.amount > 0 && !t.isVoid ? t.amount : 0), 0);
-  const totalPaid = history.reduce((sum, t) => sum + (t.paid > 0 && !t.isVoid ? t.paid : 0), 0);
-
-  const generateReminderMessage = (c) =>
-    `Hello ${c.name}, this is a reminder from ${currentStore.name}. You have an outstanding debt of ${formatCurrency(c.balance, currency)}. Please visit us or send payment via MoMo. Thank you!`;
-
-  const handleRecordPayment = () => {
-    setPrefillTransaction({ customerId: selectedCustomer.id, name: selectedCustomer.name, phone: selectedCustomer.phone, items: "Payment", amount: "0", paid: "" });
-    setView("record");
-  };
-
-  const handleAddPurchase = () => {
-    setPrefillTransaction({ customerId: selectedCustomer.id, name: selectedCustomer.name, phone: selectedCustomer.phone, items: "", amount: "", paid: "" });
-    setView("record");
-  };
-
-  const handleRedoTransaction = async (tx) => {
-    if (!window.confirm(`This will CANCEL this sale and open a corrected copy for you to fix. Continue?`)) return;
-    try {
-      await CustomerService.voidTransaction(currentStore.id, selectedCustomer.id, tx.id, "Redoing sale");
-      await refreshCustomers();
-      setPrefillTransaction({
-        customerId: selectedCustomer.id, name: selectedCustomer.name, phone: selectedCustomer.phone,
-        items: tx.items || "", amount: tx.amount.toString(), paid: tx.paid.toString(), invoiceItems: tx.invoiceItems || null
-      });
-      showToast("Old sale cancelled. Please correct and save the new one.");
-      setView("record");
-    } catch (error) { console.error(error); showToast("Failed to redo sale"); }
-  };
-
-  const executeClearDebt = async () => {
-    if (confirmText.toLowerCase().trim() !== "yes") return;
-    setShowClearDebtModal(false); setConfirmText("");
-    try {
-      await CustomerService.clearDebt(currentStore.id, selectedCustomer.id);
-      const refreshed = await refreshCustomers();
-      setSelectedCustomer(refreshed.find(c => c.id === selectedCustomer.id));
-      triggerConfetti(); showToast("Balance cleared!");
-    } catch (error) { showToast("Failed to clear balance"); }
-  };
-
-  const executeDelete = async () => {
-    if (deleteConfirmText.toLowerCase().trim() !== "yes") return;
-    setShowDeleteModal(false); setDeleteConfirmText("");
-    try {
-      await CustomerService.deleteCustomer(currentStore.id, selectedCustomer.id);
-      await refreshCustomers(); setSelectedCustomer(null); setView("home");
-      showToast("Customer deleted permanently");
-    } catch (error) { showToast("Failed to delete customer"); }
-  };
-
-  // Opens the Cancel Sale modal
-  const handleCancelTransaction = (tx) => {
-    setTxToCancel(tx);
-    setCancelReason("");
-    setShowCancelModal(true);
-  };
-
-  // Executes the cancellation
-  const executeCancelTransaction = async () => {
-    if (!cancelReason.trim()) {
-      showToast("Please provide a reason for cancellation.");
-      return;
+  useEffect(() => {
+    if (selectedCustomer?.id) {
+      // Load fresh data and history using the new services
+      CustomerService.getById(selectedCustomer.id).then(setCustomerData);
+      CustomerService.getHistory(selectedCustomer.id).then(setHistory);
     }
+  }, [selectedCustomer?.id]);
+
+  if (!customerData) return null;
+
+  const totalSales = history.reduce((sum, t) => sum + (t.amount > 0 && !t.isVoid ? t.amount : 0), 0);
+  const totalPayments = history.reduce((sum, t) => sum + (t.paid > 0 && !t.isVoid ? t.paid : 0), 0);
+
+  const generateMessage = (c) => 
+    `Hello ${c.name}, this is ${currentStore?.name || "Store"}. Your current balance is ${formatCurrency(c.balance, currency)}. Please send payment when you can. Thank you!`;
+
+  const handleRecordSale = () => {
+    setPrefillTransaction({ 
+      customerId: customerData.id, 
+      name: customerData.name, 
+      phone: customerData.phone, 
+      items: "", 
+      amount: "", 
+      paid: "0" 
+    });
+    setView("record");
+  };
+
+  const handleMakePayment = () => {
+    setPrefillTransaction({ 
+      customerId: customerData.id, 
+      name: customerData.name, 
+      phone: customerData.phone, 
+      items: "Payment", 
+      amount: "0", 
+      paid: "" 
+    });
+    setView("record");
+  };
+
+  const handleClearBalance = async () => {
+    if (customerData.balance <= 0) return;
+    try {
+      await CustomerService.clearDebt(currentStore.id, customerData.id);
+      const updated = await CustomerService.getById(customerData.id);
+      setCustomerData(updated);
+      triggerConfetti();
+      showToast("✅ Balance cleared!");
+    } catch (error) {
+      showToast("❌ Failed to clear balance.");
+    }
+  };
+
+  const handleCancelTransaction = () => setShowCancelModal(true);
+
+  const executeCancelTransaction = async () => {
+    if (!cancelReason.trim()) { showToast("⚠️ Please provide a reason."); return; }
     setShowCancelModal(false);
     try {
-      await CustomerService.voidTransaction(currentStore.id, selectedCustomer.id, txToCancel.id, cancelReason);
-      await refreshCustomers();
-      showToast("Sale cancelled successfully!");
-    } catch (error) { 
-      console.error(error);
-      showToast("Failed to cancel sale."); 
-    }
-    setTxToCancel(null);
+      await CustomerService.voidTransaction(viewingTransaction.id, cancelReason);
+      const updated = await CustomerService.getById(customerData.id);
+      setCustomerData(updated);
+      const updatedHistory = await CustomerService.getHistory(customerData.id);
+      setHistory(updatedHistory);
+      setViewingTransaction(null);
+      showToast("✅ Transaction canceled!");
+    } catch (error) { showToast("❌ Failed to cancel."); }
     setCancelReason("");
+  };
+
+  const handleRedoTransaction = () => setShowRedoModal(true);
+
+  const executeRedoTransaction = async () => {
+    setShowRedoModal(false);
+    try {
+      await CustomerService.redoTransaction(viewingTransaction.id);
+      const updated = await CustomerService.getById(customerData.id);
+      setCustomerData(updated);
+      const updatedHistory = await CustomerService.getHistory(customerData.id);
+      setHistory(updatedHistory);
+      setViewingTransaction(null);
+      showToast("✅ Transaction restored!");
+    } catch (error) { showToast("❌ Failed to restore."); }
+  };
+
+  const handleArchive = async () => {
+    setShowArchiveModal(false);
+    showToast("Customer archived.");
+    setView("customers");
+    setSelectedCustomer(null);
   };
 
   const getTimelineIcon = (tx) => {
     if (tx.isVoid) return <Ban size={16} className="text-gray-500" />;
-    if (tx.amount > 0 && tx.paid === 0) return <ShoppingBag size={16} className="text-orange-500" />;
-    if (tx.amount === 0 && tx.paid > 0) return <CreditCard size={16} className="text-green-500" />;
-    return <ShoppingBag size={16} className="text-blue-500" />;
-  };
-
-  const getTimelineColor = (tx) => {
-    if (tx.isVoid) return "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 opacity-70";
-    if (tx.amount > 0 && tx.paid === 0) return "border-orange-200 dark:border-orange-900/30 bg-orange-50/50 dark:bg-orange-900/10";
-    if (tx.amount === 0 && tx.paid > 0) return "border-green-200 dark:border-green-900/30 bg-green-50/50 dark:bg-green-900/10";
-    return "border-blue-200 dark:border-blue-900/30 bg-blue-50/50 dark:bg-blue-900/10";
+    if (tx.amount > 0 && tx.paid === 0) return <FileText size={16} className="text-orange-500" />;
+    if (tx.amount === 0 && tx.paid > 0) return <Check size={16} className="text-green-500" />;
+    return <FileText size={16} className="text-green-500" />;
   };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      <PageHeader title="Customer Profile" onBack={() => { setView("home"); setSelectedCustomer(null); }} />
-      <div className="p-4 max-w-lg mx-auto space-y-4">
+      <TopBar title="Customer Profile" showBack={true} onBack={() => { setView("customers"); setSelectedCustomer(null); }} />
+      
+      <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
+        
+        {/* 1. Summary Card */}
         <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm text-center border border-gray-100 dark:border-gray-700">
           <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full mx-auto mb-3 flex items-center justify-center text-3xl font-bold">
-            {selectedCustomer.name.charAt(0)}
+            {customerData.name.charAt(0)}
           </div>
-          <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{selectedCustomer.name}</h3>
-          <p className="text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 mt-1"><Phone size={14} /> {selectedCustomer.phone}</p>
-          {selectedCustomer.altPhone && <p className="text-gray-400 text-xs mt-1">Alt: {selectedCustomer.altPhone}</p>}
-          
-          <div className={`mt-4 text-4xl font-bold ${selectedCustomer.balance > 0 ? "text-red-600 dark:text-red-400" : selectedCustomer.balance < 0 ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400"}`}>
-            {selectedCustomer.balance < 0 ? `Credit: ${formatCurrency(Math.abs(selectedCustomer.balance), currency)}` : formatCurrency(selectedCustomer.balance, currency)}
+          <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{customerData.name}</h3>
+          <p className="text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 mt-1">
+            <Phone size={14} /> {customerData.phone}
+          </p>
+          <div className={`mt-4 text-4xl font-bold ${customerData.balance > 0 ? "text-orange-600 dark:text-orange-400" : customerData.balance < 0 ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400"}`}>
+            {customerData.balance < 0 ? `Credit: ${formatCurrency(Math.abs(customerData.balance), currency)}` : formatCurrency(customerData.balance, currency)}
           </div>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-            {selectedCustomer.balance > 0 ? "Amount Owed" : selectedCustomer.balance < 0 ? "Customer Credit" : "All Paid Up"}
+            {customerData.balance > 0 ? "Amount Owed" : customerData.balance < 0 ? "Overpaid (Credit)" : "All Paid Up"}
           </p>
         </div>
 
+        {/* 2. Stats Grid */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
-            <p className="text-xs text-gray-500 uppercase font-bold">Total Purchases</p>
-            <p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(totalPurchases, currency)}</p>
+            <p className="text-xs text-gray-500 uppercase font-bold">Total Sales</p>
+            <p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(totalSales, currency)}</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
             <p className="text-xs text-gray-500 uppercase font-bold">Total Paid</p>
-            <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(totalPaid, currency)}</p>
+            <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(totalPayments, currency)}</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
-            <p className="text-xs text-gray-500 uppercase font-bold">Total Sales</p>
+            <p className="text-xs text-gray-500 uppercase font-bold">Total Transactions</p>
             <p className="text-lg font-bold text-gray-900 dark:text-white">{history.filter(t => !t.isVoid).length}</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
             <p className="text-xs text-gray-500 uppercase font-bold">Customer Since</p>
-            <p className="text-sm font-bold text-gray-900 dark:text-white mt-1">{selectedCustomer.joined ? formatDate(selectedCustomer.joined).split(',')[0] : 'N/A'}</p>
+            <p className="text-sm font-bold text-gray-900 dark:text-white mt-1">{customerData.createdAt ? formatDate(customerData.createdAt).split(',')[0] : 'N/A'}</p>
           </div>
         </div>
 
+        {/* 3. Action Buttons */}
         <div className="grid grid-cols-4 gap-2">
-          <button onClick={handleAddPurchase} className="bg-green-700 text-white p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition shadow-md">
-            <PlusCircle size={20} /> <span className="text-[10px] font-bold">New Sale</span>
+          <button onClick={handleRecordSale} className="bg-green-600 text-white p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition shadow-md">
+            <FileText size={20} /> <span className="text-[10px] font-bold">Sale</span>
           </button>
-          <button onClick={handleRecordPayment} className="bg-blue-600 text-white p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition shadow-md">
-            <CreditCard size={20} /> <span className="text-[10px] font-bold">Payment</span>
+          <button onClick={handleMakePayment} className="bg-blue-600 text-white p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition shadow-md">
+            <Check size={20} /> <span className="text-[10px] font-bold">Payment</span>
           </button>
-          <button onClick={() => openWhatsApp(selectedCustomer.phone, generateReminderMessage(selectedCustomer))} className="bg-green-500 text-white p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition shadow-md">
+          <button onClick={() => openWhatsApp(customerData.phone, generateMessage(customerData))} className="bg-green-500 text-white p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition shadow-md">
             <MessageCircle size={20} /> <span className="text-[10px] font-bold">WhatsApp</span>
           </button>
-          <button onClick={() => openSMS(selectedCustomer.phone, generateReminderMessage(selectedCustomer))} className="bg-blue-500 text-white p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition shadow-md">
+          <button onClick={() => openSMS(customerData.phone, generateMessage(customerData))} className="bg-blue-500 text-white p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition shadow-md">
             <MessageSquare size={20} /> <span className="text-[10px] font-bold">SMS</span>
           </button>
-          <button onClick={() => openDialer(selectedCustomer.phone)} className="col-span-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 p-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
+          <button onClick={() => openDialer(customerData.phone)} className="col-span-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 p-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
             <Phone size={18} /> <span className="text-xs font-bold">Call Customer</span>
           </button>
-          <button onClick={() => setIsEditing(true)} className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
+          <button onClick={() => showToast("Edit feature coming soon")} className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
             <Edit3 size={18} /> <span className="text-[10px] font-bold">Edit</span>
           </button>
-          <button onClick={() => setShowDeleteModal(true)} className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
-            <Trash2 size={18} /> <span className="text-[10px] font-bold">Delete</span>
+          <button onClick={() => setShowArchiveModal(true)} className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-3 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
+            <Archive size={18} /> <span className="text-[10px] font-bold">Archive</span>
           </button>
         </div>
 
+        {/* 4. Transaction History Timeline */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
           <div className="p-4 border-b border-gray-100 dark:border-gray-700 font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-            <Clock size={18} /> Sales History
+            <Clock size={18} /> Transaction History
           </div>
-          <div className="p-4 space-y-0">
+          <div className="p-4 space-y-3">
             {history.length === 0 ? (
-              <p className="text-center text-gray-400 py-6">No sales history yet</p>
+              <p className="text-center text-gray-400 py-6">No transaction history yet</p>
             ) : (
-              [...history].reverse().map((tx, index) => (
-                <div key={tx.id} className="relative pl-8 pb-6 last:pb-0">
-                  {index !== history.length - 1 && (
-                    <div className={`absolute left-[11px] top-6 bottom-0 w-0.5 ${tx.isVoid ? 'bg-gray-100 dark:bg-gray-800' : 'bg-gray-200 dark:bg-gray-700'}`}></div>
-                  )}
-                  <div className={`absolute left-0 top-1 w-6 h-6 rounded-full bg-white dark:bg-gray-800 border-2 flex items-center justify-center z-10 ${tx.isVoid ? 'border-red-300 dark:border-red-800' : 'border-gray-200 dark:border-gray-600'}`}>
-                    {tx.isVoid ? <Ban size={14} className="text-red-500" /> : getTimelineIcon(tx)}
-                  </div>
-                  <div className={`p-3 rounded-xl border transition-all ${tx.isVoid ? 'border-red-200 dark:border-red-900/30 bg-red-50/30 dark:bg-red-900/5 opacity-80' : getTimelineColor(tx)}`}>
-                    <div className="flex justify-between items-start mb-1">
+              [...history].reverse().map((tx) => (
+                <button 
+                  key={tx.id} 
+                  onClick={() => setViewingTransaction(tx)}
+                  className={`w-full text-left p-4 rounded-xl border transition-all active:scale-[0.98] ${
+                    tx.isVoid 
+                      ? 'border-red-200 dark:border-red-900/30 bg-red-50/30 dark:bg-red-900/5 opacity-80' 
+                      : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-green-200 dark:hover:border-green-800'
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <div className={`p-1.5 rounded-full ${tx.isVoid ? 'bg-red-100 dark:bg-red-900/40' : 'bg-green-100 dark:bg-green-900/30'}`}>
+                        {getTimelineIcon(tx)}
+                      </div>
                       <div className="flex-1 min-w-0">
-                        {tx.invoiceNumber && (
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <FileText size={12} className="text-gray-400 flex-shrink-0" />
-                            <span className="text-[10px] font-mono font-bold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">Receipt #{tx.invoiceNumber}</span>
-                          </div>
-                        )}
-                        <p className={`font-bold text-sm flex items-center flex-wrap gap-2 ${tx.isVoid ? 'text-gray-500 line-through decoration-red-500 decoration-2' : 'text-gray-900 dark:text-white'}`}>
-                          {tx.items || "General Sale"} 
-                          {tx.isVoid && <span className="text-[10px] text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 rounded font-bold no-underline tracking-wider">CANCELLED</span>}
+                        <p className={`font-bold text-sm truncate ${tx.isVoid ? 'text-gray-500 line-through' : 'text-gray-900 dark:text-white'}`}>
+                          {tx.items && tx.items.length > 0 ? `${tx.items.length} Item(s)` : (tx.note || "General Transaction")}
                         </p>
-                      </div>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap ml-2 mt-0.5">{formatDate(tx.date)}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm mt-2">
-                      <div className="space-y-0.5">
-                        {tx.amount > 0 && <p className={`text-gray-600 dark:text-gray-300 ${tx.isVoid ? 'line-through' : ''}`}>Sale: <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(tx.amount, currency)}</span></p>}
-                        {tx.paid > 0 && <p className={`text-green-600 dark:text-green-400 ${tx.isVoid ? 'line-through' : ''}`}>Paid: <span className="font-bold">{formatCurrency(tx.paid, currency)}</span></p>}
-                      </div>
-                      <div className="flex gap-1">
-                        {!tx.isVoid && (
-                          <button onClick={() => handleRedoTransaction(tx)} className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-blue-600 transition shadow-sm" title="Fix / Redo this sale">
-                            <RefreshCw size={14} />
-                          </button>
-                        )}
-                        <button onClick={() => setViewingInvoice(tx)} className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-green-600 transition shadow-sm" title="View Receipt">
-                          <FileText size={14} />
-                        </button>
-                        {!tx.isVoid && (
-                          <button onClick={() => handleCancelTransaction(tx)} className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 hover:text-red-600 transition shadow-sm" title="Cancel Sale">
-                            <Ban size={14} />
-                          </button>
-                        )}
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{formatDate(tx.date)}</p>
                       </div>
                     </div>
-
-                    {/* Display Cancellation Reason if it exists */}
-                    {tx.isVoid && tx.voidReason && (
-                      <div className="mt-3 pt-3 border-t border-dashed border-red-200 dark:border-red-800">
-                        <p className="text-[10px] font-bold text-red-500 uppercase flex items-center gap-1 mb-1">
-                          <Ban size={10} /> Reason for Cancellation
-                        </p>
-                        <p className="text-xs text-gray-600 dark:text-gray-300 italic bg-red-50 dark:bg-red-900/20 p-2 rounded-lg">
-                          {tx.voidReason}
-                        </p>
-                      </div>
-                    )}
-
-                    {tx.internalNote && !tx.isVoid && (
-                      <div className="mt-3 pt-3 border-t border-dashed border-gray-200 dark:border-gray-700">
-                        <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase flex items-center gap-1 mb-1">
-                          <Lock size={10} /> Private Note
-                        </p>
-                        <p className="text-xs text-gray-600 dark:text-gray-300 italic bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg">
-                          {tx.internalNote}
-                        </p>
-                      </div>
-                    )}
+                    <div className="text-right flex-shrink-0 ml-2">
+                      {tx.amount > 0 && <p className={`text-sm font-bold ${tx.isVoid ? 'text-gray-400' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(tx.amount, currency)}</p>}
+                      {tx.isVoid && <span className="text-[9px] text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 rounded font-bold uppercase">Canceled</span>}
+                    </div>
                   </div>
-                </div>
+                  {tx.paid > 0 && !tx.isVoid && (
+                    <p className="text-xs text-green-600 dark:text-green-400 font-semibold mt-1 pl-9">Paid: {formatCurrency(tx.paid, currency)}</p>
+                  )}
+                </button>
               ))
             )}
           </div>
         </div>
-
-        {selectedCustomer.notes && (
-          <div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800/30 p-4 rounded-2xl">
-            <p className="text-xs font-bold text-yellow-800 dark:text-yellow-400 uppercase mb-1">Notes</p>
-            <p className="text-sm text-yellow-900 dark:text-yellow-200">{selectedCustomer.notes}</p>
-          </div>
-        )}
       </div>
 
-      {viewingInvoice && <InvoiceModal onClose={() => setViewingInvoice(null)} transaction={viewingInvoice} customerName={selectedCustomer.name} customerPhone={selectedCustomer.phone} />}
-      {isEditing && <EditCustomerModal customer={selectedCustomer} onClose={() => setIsEditing(false)} />}
-      
-      {showClearDebtModal && (
-        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
-            <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Clear Balance?</h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">Type <span className="text-red-600 font-mono bg-red-50 px-1 rounded">yes</span> to clear {formatCurrency(selectedCustomer.balance, currency)}.</p>
-            <input type="text" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white mb-4 text-center font-mono" placeholder="yes" autoFocus />
-            <div className="flex gap-3">
-              <button onClick={() => setShowClearDebtModal(false)} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Cancel</button>
-              <button onClick={executeClearDebt} disabled={confirmText.toLowerCase().trim() !== "yes"} className="flex-1 bg-green-700 text-white font-bold py-3 rounded-xl disabled:opacity-50">Confirm</button>
+      {/* VIEW INVOICE / DETAILS MODAL (Immutable Facts) */}
+      {viewingTransaction && (
+        <div className="fixed inset-0 bg-black/60 z-[90] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white dark:bg-gray-900 p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center z-10">
+              <h3 className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2">
+                <FileText size={20} className="text-green-600" /> Sale Receipt
+              </h3>
+              <button onClick={() => setViewingTransaction(null)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
+                <X size={18} className="text-gray-600 dark:text-gray-300" />
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-4">
+              {/* Status Badge */}
+              <div className="flex justify-center">
+                {viewingTransaction.isVoid ? (
+                  <span className="px-4 py-1.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full text-xs font-bold uppercase tracking-wider">Canceled Transaction</span>
+                ) : (
+                  <span className="px-4 py-1.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-xs font-bold uppercase tracking-wider">Completed</span>
+                )}
+              </div>
+
+              {/* Historical Items List (Immutable Facts) */}
+              {viewingTransaction.items && viewingTransaction.items.length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider px-1">
+                    Items Sold ({viewingTransaction.items.length})
+                  </p>
+                  <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {viewingTransaction.items.map((item, idx) => (
+                        <div key={idx} className={`px-4 py-3 ${viewingTransaction.isVoid ? 'opacity-60' : ''}`}>
+                          <div className="sm:hidden space-y-2">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1 min-w-0 pr-2">
+                                <p className={`font-semibold text-sm text-gray-900 dark:text-white truncate ${viewingTransaction.isVoid ? 'line-through' : ''}`}>
+                                  {item.name}
+                                </p>
+                                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 uppercase tracking-wider">
+                                  {item.unitName || 'Piece'}
+                                </p>
+                              </div>
+                              <p className={`text-base font-bold flex-shrink-0 ${viewingTransaction.isVoid ? 'text-gray-400 line-through' : 'text-gray-900 dark:text-white'}`}>
+                                {formatCurrency(item.total || 0, currency)}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs">
+                              <div className="flex items-center gap-1">
+                                <span className="text-gray-500 dark:text-gray-400">Qty:</span>
+                                <span className="inline-block px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded font-bold">
+                                  {item.quantity || 1}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-gray-500 dark:text-gray-400">Price:</span>
+                                <span className="font-semibold text-purple-600 dark:text-purple-400">
+                                  {formatCurrency(item.price || 0, currency)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Transaction Details */}
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Date</span>
+                  <span className="font-semibold text-gray-900 dark:text-white">{formatDate(viewingTransaction.date)}</span>
+                </div>
+                {viewingTransaction.note && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Note</span>
+                    <span className="font-semibold text-gray-900 dark:text-white text-right max-w-[60%] truncate">{viewingTransaction.note}</span>
+                  </div>
+                )}
+                <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-2"></div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Total Sale</span>
+                  <span className={`font-bold ${viewingTransaction.isVoid ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>
+                    {formatCurrency(viewingTransaction.amount, currency)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Amount Paid</span>
+                  <span className={`font-bold ${viewingTransaction.isVoid ? 'line-through text-gray-400' : 'text-green-600 dark:text-green-400'}`}>
+                    {formatCurrency(viewingTransaction.paid, currency)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Cancellation Reason */}
+              {viewingTransaction.isVoid && viewingTransaction.voidReason && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-xl">
+                  <p className="text-[10px] font-bold text-red-500 uppercase flex items-center gap-1 mb-1">
+                    <AlertTriangle size={10} /> Reason for Cancellation
+                  </p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300 italic">{viewingTransaction.voidReason}</p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="pt-2">
+                {!viewingTransaction.isVoid ? (
+                  <button 
+                    onClick={handleCancelTransaction}
+                    className="w-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"
+                  >
+                    <Ban size={18} /> Cancel this Transaction
+                  </button>
+                ) : (
+                  <button 
+                    onClick={handleRedoTransaction}
+                    className="w-full bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"
+                  >
+                    <RotateCcw size={18} /> Redo / Restore Transaction
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
-            <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Delete Customer?</h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">This will permanently delete <span className="font-bold text-red-600">{selectedCustomer.name}</span> and all their sales history. This cannot be undone.</p>
-            <p className="text-gray-600 dark:text-gray-400 mb-2 text-sm">Type <span className="text-red-600 font-mono bg-red-50 dark:bg-red-900/30 px-1 rounded">yes</span> to confirm.</p>
-            <input type="text" value={deleteConfirmText} onChange={(e) => setDeleteConfirmText(e.target.value)} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-red-500 dark:text-white mb-4 text-center font-mono" placeholder="yes" autoFocus />
-            <div className="flex gap-3">
-              <button onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(""); }} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Cancel</button>
-              <button onClick={executeDelete} disabled={deleteConfirmText.toLowerCase().trim() !== "yes"} className="flex-1 bg-red-600 text-white font-bold py-3 rounded-xl disabled:opacity-50">Delete Permanently</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Cancel Sale Reason Modal */}
+      {/* Cancel Confirmation Modal */}
       {showCancelModal && (
-        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full">
-                <AlertTriangle size={20} className="text-red-600 dark:text-red-400" />
-              </div>
-              <h3 className="font-bold text-xl text-gray-900 dark:text-white">Cancel Sale</h3>
+              <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full"><AlertTriangle size={20} className="text-red-600 dark:text-red-400" /></div>
+              <h3 className="font-bold text-xl text-gray-900 dark:text-white">Cancel Transaction?</h3>
             </div>
-            <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">
-              You are about to cancel this sale for <span className="font-bold text-red-600">{formatCurrency(txToCancel?.amount, currency)}</span>.
-            </p>
-            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 block">Reason for Cancellation *</label>
-            <textarea
-              value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              placeholder="e.g., Customer returned item, wrong price entered..."
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-red-500 dark:text-white mb-4 text-sm"
-              rows="3"
-              autoFocus
-            />
+            <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">This will reverse the <span className="font-bold text-orange-600">{formatCurrency(viewingTransaction?.amount, currency)}</span> sale.</p>
+            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 block">Reason *</label>
+            <textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="e.g., Recorded wrong amount..." className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-red-500 dark:text-white mb-4 text-sm" rows="3" autoFocus />
             <div className="flex gap-3">
-              <button onClick={() => setShowCancelModal(false)} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Cancel</button>
-              <button
-                onClick={executeCancelTransaction}
-                disabled={!cancelReason.trim()}
-                className="flex-1 bg-red-600 text-white font-bold py-3 rounded-xl disabled:opacity-50"
-              >
-                Cancel Sale
-              </button>
+              <button onClick={() => setShowCancelModal(false)} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Go Back</button>
+              <button onClick={executeCancelTransaction} disabled={!cancelReason.trim()} className="flex-1 bg-red-600 text-white font-bold py-3 rounded-xl disabled:opacity-50 active:scale-95 transition">Yes, Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Redo Confirmation Modal */}
+      {showRedoModal && (
+        <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-full"><RotateCcw size={20} className="text-green-600 dark:text-green-400" /></div>
+              <h3 className="font-bold text-xl text-gray-900 dark:text-white">Redo Transaction?</h3>
+            </div>
+            <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">This will restore the canceled <span className="font-bold text-orange-600">{formatCurrency(viewingTransaction?.amount, currency)}</span> sale and add it back to the balance.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowRedoModal(false)} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Go Back</button>
+              <button onClick={executeRedoTransaction} className="flex-1 bg-green-600 text-white font-bold py-3 rounded-xl active:scale-95 transition">Yes, Redo</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Archive Modal */}
+      {showArchiveModal && (
+        <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
+            <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Archive Customer?</h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">This will hide <span className="font-bold text-green-600">{customerData.name}</span> from your active list.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowArchiveModal(false)} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Cancel</button>
+              <button onClick={handleArchive} className="flex-1 bg-red-600 text-white font-bold py-3 rounded-xl">Archive</button>
             </div>
           </div>
         </div>
