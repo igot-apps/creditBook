@@ -3,6 +3,7 @@ import { Plus, X, Tag, ChevronUp, ChevronDown, Package } from "lucide-react";
 import { ProductService } from "../services/ProductService";
 import { formatCurrency } from "../utils/helpers";
 import { ProductPickerModal } from "./ProductPickerModal";
+import { AddProductModal } from "./AddProductModal";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
@@ -11,6 +12,8 @@ export const DetailedInvoice = ({
   products, setProducts, currentStore, showToast
 }) => {
   const [showProductPicker, setShowProductPicker] = useState(false);
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [newProductName, setNewProductName] = useState("");
   const [discount, setDiscount] = useState(tx.discount || "");
   const [showSummary, setShowSummary] = useState(true);
 
@@ -34,6 +37,57 @@ export const DetailedInvoice = ({
   const handleProductsSelected = (selectedProducts) => {
     setInvoiceItems(prev => [...prev, ...selectedProducts]);
     setShowProductPicker(false);
+  };
+
+  // 👇 NEW: Handle saving the full product template from AddProductModal
+  const handleSaveProduct = async (productData) => {
+    try {
+      const newId = await ProductService.create(currentStore.id, productData);
+      
+      // Refresh products list
+      const updatedProducts = await ProductService.getAll(currentStore.id);
+      setProducts(updatedProducts);
+      
+      // Auto-add the first unit to the invoice
+      const createdProduct = updatedProducts.find(p => p.id === newId);
+      if (createdProduct && createdProduct.units && createdProduct.units.length > 0) {
+        addUnitToInvoice(createdProduct, createdProduct.units[0]);
+      }
+      
+      showToast("✅ Product template created and added!");
+    } catch (error) {
+      console.error(error);
+      showToast("❌ Failed to create product.");
+    }
+  };
+
+  // Add Unit to Invoice (Stores Historical Facts)
+  const addUnitToInvoice = (product, unit) => {
+    const existingIndex = invoiceItems.findIndex(
+      i => i.productId === product.id && i.unitName === unit.name
+    );
+
+    if (existingIndex >= 0) {
+      const updated = [...invoiceItems];
+      updated[existingIndex].quantity = (updated[existingIndex].quantity || 1) + 1;
+      updated[existingIndex].total = updated[existingIndex].quantity * updated[existingIndex].price;
+      setInvoiceItems(updated);
+    } else {
+      setInvoiceItems([
+        ...invoiceItems,
+        {
+          productId: product.id,
+          name: product.name,
+          brand: product.brand,
+          unitName: unit.name,
+          quantity: 1,
+          price: unit.defaultSalePrice || 0,
+          total: unit.defaultSalePrice || 0
+        }
+      ]);
+    }
+    
+    ProductService.trackUsage(product.id);
   };
 
   // Update Item Fields
@@ -168,13 +222,22 @@ export const DetailedInvoice = ({
         )}
       </div>
 
-      {/* Product Picker Modal */}
+      {/* 👇 PRODUCT PICKER MODAL (with new onRequestCreateProduct prop) */}
       <ProductPickerModal
         isOpen={showProductPicker}
         onClose={() => setShowProductPicker(false)}
         products={products}
         currentStore={currentStore}
         onProductsSelected={handleProductsSelected}
+        onRequestCreateProduct={(name) => { setNewProductName(name); setShowAddProductModal(true); }}
+      />
+
+      {/* 👇 FULL PRODUCT TEMPLATE MODAL (with initialName prop) */}
+      <AddProductModal
+        isOpen={showAddProductModal}
+        onClose={() => setShowAddProductModal(false)}
+        onSave={handleSaveProduct}
+        initialName={newProductName}
       />
     </div>
   );

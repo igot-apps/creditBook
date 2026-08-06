@@ -11,7 +11,8 @@ export const ProductPickerModal = ({
   products, 
   currentStore, 
   onProductsSelected,
-  priceType = "sale"
+  priceType = "sale",
+  onRequestCreateProduct // 👈 NEW: Callback to tell parent to open Add Product Modal
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -108,12 +109,10 @@ export const ProductPickerModal = ({
   if (!isOpen) return null;
 
   return (
-    // TRUE FULLSCREEN - Edge to edge
     <div className="fixed inset-0 z-[100] bg-white dark:bg-gray-950 flex flex-col overflow-hidden">
       
-      {/* 👇 FIXED HEADER - Absolutely cannot scroll */}
+      {/* FIXED HEADER */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
-        {/* Top bar */}
         <div className="flex items-center justify-between p-4">
           <button 
             onClick={onClose} 
@@ -137,7 +136,6 @@ export const ProductPickerModal = ({
           )}
         </div>
 
-        {/* Search Box */}
         <div className="px-4 pb-3">
           <div className="relative">
             <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${
@@ -165,7 +163,6 @@ export const ProductPickerModal = ({
           </div>
         </div>
 
-        {/* Smart Tabs */}
         <div className="px-4 pb-2 overflow-x-auto">
           <div className="flex gap-2 min-w-max">
             <button
@@ -211,7 +208,6 @@ export const ProductPickerModal = ({
           </div>
         </div>
 
-        {/* Category Chips */}
         <div className="px-4 pb-3 overflow-x-auto">
           <div className="flex gap-2 min-w-max">
             <button
@@ -242,15 +238,31 @@ export const ProductPickerModal = ({
         </div>
       </div>
 
-      {/* 👇 SCROLLABLE PRODUCT GRID - Only this scrolls */}
+      {/* SCROLLABLE PRODUCT GRID */}
       <div className="flex-1 overflow-y-auto p-4">
         {filteredProducts.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="text-6xl mb-4">📦</div>
-            <p className="text-gray-500 dark:text-gray-400 text-base font-medium">No products found</p>
-            <p className="text-gray-400 dark:text-gray-500 text-sm mt-2">
-              {searchQuery ? `No results for "${searchQuery}"` : "Try a different category or search term"}
+          // 👇 NEW: Smart Empty State with "Create" Button
+          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+            <div className="text-6xl mb-4 opacity-50">🔍</div>
+            <p className="text-gray-500 dark:text-gray-400 text-base font-medium">
+              {searchQuery ? `No products found for "${searchQuery}"` : "No products in catalog"}
             </p>
+            <p className="text-gray-400 dark:text-gray-500 text-sm mt-2 max-w-xs">
+              {searchQuery ? "You can quickly create this product and add it to your invoice." : "Create your first product to get started."}
+            </p>
+            
+            {searchQuery && onRequestCreateProduct && (
+              <button
+                onClick={() => onRequestCreateProduct(searchQuery)}
+                className={`mt-6 w-full max-w-xs font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg text-base ${
+                  priceType === "purchase"
+                    ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+                    : "bg-green-600 hover:bg-green-700 text-white"
+                }`}
+              >
+                <Plus size={20} /> Create "{searchQuery}"
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
@@ -325,7 +337,7 @@ export const ProductPickerModal = ({
         )}
       </div>
 
-      {/* 👇 FIXED DONE BUTTON - Always visible at bottom */}
+      {/* FIXED DONE BUTTON */}
       {addedProducts.length > 0 && (
         <div className="bg-white dark:bg-gray-900 border-t-2 border-gray-200 dark:border-gray-800 p-4 flex-shrink-0 shadow-2xl">
           <button
@@ -380,4 +392,4 @@ export const ProductPickerModal = ({
       )}
     </div>
   );
-};
+};  

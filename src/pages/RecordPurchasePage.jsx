@@ -4,6 +4,8 @@ import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { SupplierService } from "../services/SupplierService";
 import { ProductService } from "../services/ProductService";
+import { ProductPickerModal } from "../components/ProductPickerModal";
+import { AddProductModal } from "../components/AddProductModal";
 import { TopBar } from "../components/TopBar";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
@@ -16,24 +18,19 @@ export const RecordPurchasePage = () => {
   const currency = currentStore?.currency || "GH₵";
 
   const [mode, setMode] = useState("search");
-  const [transactionType, setTransactionType] = useState("purchase"); // "purchase" or "payment"
+  const [transactionType, setTransactionType] = useState("purchase");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [productSearch, setProductSearch] = useState("");
-  const [selectedProductForUnit, setSelectedProductForUnit] = useState(null);
   const [note, setNote] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
   
-  const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const [newProduct, setNewProduct] = useState({
-    name: "",
-    unit: "Piece",
-    defaultPurchasePrice: "",
-    defaultSalePrice: ""
-  });
+  // Modals
+  const [showProductPicker, setShowProductPicker] = useState(false);
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
 
   // 1. Load initial data
   useEffect(() => {
@@ -51,7 +48,7 @@ export const RecordPurchasePage = () => {
       };
       setSelectedSupplier(supplier);
       setMode("existing");
-      setTransactionType(prefillTransaction.type || "purchase"); // 👈 Set mode based on button clicked
+      setTransactionType(prefillTransaction.type || "purchase");
       
       if (prefillTransaction.paid !== undefined) {
         setAmountPaid(prefillTransaction.paid.toString());
@@ -108,19 +105,6 @@ export const RecordPurchasePage = () => {
     return suppliers.filter(s => s.name.toLowerCase().includes(q) || (s.phone && s.phone.includes(q)));
   }, [suppliers, searchQuery]);
 
-  const filteredProducts = useMemo(() => {
-    if (!Array.isArray(products)) return [];
-    if (!productSearch.trim()) {
-      return products.sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0)).slice(0, 8);
-    }
-    const q = productSearch.toLowerCase();
-    return products.filter(p => 
-      (p.name && p.name.toLowerCase().includes(q)) ||
-      (p.category && p.category.toLowerCase().includes(q)) ||
-      (p.brand && p.brand.toLowerCase().includes(q))
-    ).sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0));
-  }, [productSearch, products]);
-
   const handleSelectSupplier = (supplier) => { 
     setSelectedSupplier(supplier); 
     setMode("existing"); 
@@ -139,55 +123,41 @@ export const RecordPurchasePage = () => {
     }
   };
 
-  const handleQuickAddProduct = async () => {
-    if (!newProduct.name.trim()) {
-      showToast("⚠️ Product name is required");
-      return;
-    }
+  // Handle products selected from ProductPickerModal
+  const handleProductsSelected = (selectedProducts) => {
+    setInvoiceItems(prev => [...prev, ...selectedProducts]);
+    setShowProductPicker(false);
+  };
+
+  // Handle saving the full product template
+  const handleSaveProduct = async (productData) => {
     try {
-      const productData = {
-        name: newProduct.name.trim(),
-        unit: newProduct.unit || "Piece",
-        defaultPurchasePrice: parseFloat(newProduct.defaultPurchasePrice) || 0,
-        defaultSalePrice: parseFloat(newProduct.defaultSalePrice) || 0
-      };
       const newId = await ProductService.create(currentStore.id, productData);
+      
+      // Refresh products list
       const updatedProducts = await ProductService.getAll(currentStore.id);
       setProducts(updatedProducts);
       
+      // Auto-add the first unit to the invoice
       const createdProduct = updatedProducts.find(p => p.id === newId);
-      if (createdProduct) {
+      if (createdProduct && createdProduct.units && createdProduct.units.length > 0) {
+        const unit = createdProduct.units[0];
         setInvoiceItems(prev => [...prev, {
-          productId: newId, name: createdProduct.name, brand: createdProduct.brand || "",
-          unitName: createdProduct.unit || "Piece", quantity: 1,
-          price: productData.defaultPurchasePrice, total: productData.defaultPurchasePrice
+          productId: newId,
+          name: createdProduct.name,
+          brand: createdProduct.brand || "",
+          unitName: unit.name,
+          quantity: 1,
+          price: unit.defaultPurchasePrice || 0,
+          total: unit.defaultPurchasePrice || 0
         }]);
       }
-      setNewProduct({ name: "", unit: "Piece", defaultPurchasePrice: "", defaultSalePrice: "" });
-      setShowQuickAdd(false);
-      setProductSearch("");
-      showToast("✅ Product created and added!");
+      
+      showToast("✅ Product template created and added!");
     } catch (error) {
       console.error(error);
       showToast("❌ Failed to create product.");
     }
-  };
-
-  const addUnitToInvoice = (product, unit) => {
-    const existingIndex = invoiceItems.findIndex(i => i.productId === product.id && i.unitName === unit.name);
-    if (existingIndex >= 0) {
-      const updated = [...invoiceItems];
-      updated[existingIndex].quantity = (updated[existingIndex].quantity || 1) + 1;
-      updated[existingIndex].total = updated[existingIndex].quantity * updated[existingIndex].price;
-      setInvoiceItems(updated);
-    } else {
-      setInvoiceItems([...invoiceItems, {
-        productId: product.id, name: product.name, brand: product.brand, unitName: unit.name,
-        quantity: 1, price: unit.defaultPurchasePrice || 0, total: unit.defaultPurchasePrice || 0
-      }]);
-    }
-    setProductSearch(""); setSelectedProductForUnit(null);
-    ProductService.trackUsage(product.id);
   };
 
   const updateItem = (index, field, value) => {
@@ -212,7 +182,6 @@ export const RecordPurchasePage = () => {
   const handleSavePurchase = async () => {
     if (!selectedSupplier) return;
     const finalPaid = parseFloat(amountPaid) || 0;
-    // If it's a pure payment, total purchase amount is 0
     const finalTotal = transactionType === "payment" ? 0 : totalAmount;
 
     if (finalTotal === 0 && finalPaid === 0 && !note.trim() && invoiceItems.length === 0) {
@@ -284,65 +253,31 @@ export const RecordPurchasePage = () => {
 
         {mode === "existing" && (
           <>
-            {/* 👇 ONLY SHOW "ADD ITEMS" IF IT'S A PURCHASE */}
+            {/* 👇 ADD PRODUCTS SECTION - Only show for purchases */}
             {transactionType === "purchase" && (
-              <>
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+              <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+                <div className="flex justify-between items-center">
                   <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2"><Package size={18} className="text-indigo-600" /> Add Items</h3>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                    <input value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search product, brand, or category..." className="w-full pl-9 pr-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm" />
-                  </div>
-                  {productSearch && (
-                    <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700 max-h-64 overflow-y-auto">
-                      {filteredProducts.length > 0 ? (
-                        filteredProducts.map(p => {
-                          if (selectedProductForUnit === p.id) {
-                            return (
-                              <div key={p.id} className="p-3 border-b border-gray-100 dark:border-gray-700 last:border-0 bg-indigo-50/30 dark:bg-indigo-900/10">
-                                <p className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-2">{p.name} {p.brand && `(${p.brand})`}</p>
-                                <div className="space-y-2">
-                                  {p.units && p.units.map(unit => (
-                                    <button key={unit.id} onClick={() => addUnitToInvoice(p, unit)} className="w-full flex items-center justify-between p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition text-left">
-                                      <div className="flex items-center gap-2"><Circle size={16} className="text-gray-400" /><span className="text-sm font-semibold text-gray-900 dark:text-white">{unit.name}</span></div>
-                                      <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{formatCurrency(unit.defaultPurchasePrice, currency)}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                                <button onClick={() => setSelectedProductForUnit(null)} className="w-full mt-2 text-xs text-gray-500 font-medium">Cancel</button>
-                              </div>
-                            );
-                          }
-                          return (
-                            <button key={p.id} onClick={() => setSelectedProductForUnit(p.id)} className="w-full flex justify-between items-center p-3 hover:bg-gray-100 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 last:border-0 text-left">
-                              <div className="min-w-0 flex-1">
-                                <p className="font-semibold text-gray-900 dark:text-white text-sm truncate">{p.name}</p>
-                                <p className="text-xs text-gray-500 truncate">{p.category && `${p.category} • `}{p.brand || 'General'} • {p.units?.length || 0} unit(s)</p>
-                              </div>
-                              <Plus size={16} className="text-indigo-600 flex-shrink-0 ml-2" />
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <div className="p-4 text-center">
-                          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">No products found for "{productSearch}"</p>
-                          <button 
-                            onClick={() => {
-                              setNewProduct(prev => ({ ...prev, name: productSearch }));
-                              setShowQuickAdd(true);
-                            }}
-                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition"
-                          >
-                            <Plus size={18} /> Create "{productSearch}"
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <button
+                    onClick={() => setShowAddProductModal(true)}
+                    className="text-xs bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition"
+                  >
+                    <Plus size={14} /> New Product
+                  </button>
                 </div>
+                
+                <button
+                  onClick={() => setShowProductPicker(true)}
+                  className="w-full bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 border-2 border-dashed border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-400 font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"
+                >
+                  <Plus size={20} />
+                  Add Products
+                </button>
 
                 <div className="space-y-2">
-                  {invoiceItems.length === 0 ? <p className="text-center text-gray-400 text-sm py-4">Search and tap a product to add it, or enter a payment amount below.</p> : (
+                  {invoiceItems.length === 0 ? (
+                    <p className="text-center text-gray-400 text-sm py-4">Tap "Add Products" to browse catalog or "New Product" to create one</p>
+                  ) : (
                     invoiceItems.map((item, index) => (
                       <div key={index} className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
                         <div className="flex justify-between items-center mb-2">
@@ -371,10 +306,10 @@ export const RecordPurchasePage = () => {
                     ))
                   )}
                 </div>
-              </>
+              </div>
             )}
 
-            {/* 👇 PAYMENT SECTION: ALWAYS VISIBLE when a supplier is selected */}
+            {/* 👇 PAYMENT SECTION: ALWAYS VISIBLE */}
             <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
               {transactionType === "purchase" && invoiceItems.length > 0 && (
                 <div className="flex justify-between items-center text-lg font-bold">
@@ -393,7 +328,7 @@ export const RecordPurchasePage = () => {
                   onChange={e => setAmountPaid(e.target.value)} 
                   placeholder="0.00" 
                   className={`w-full text-xl font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`}
-                  autoFocus={transactionType === "payment"} // Auto-focus if it's a pure payment
+                  autoFocus={transactionType === "payment"}
                 />
               </div>
               <textarea 
@@ -414,42 +349,22 @@ export const RecordPurchasePage = () => {
         )}
       </div>
 
-      {/* Quick Add Product Modal */}
-      {showQuickAdd && (
-        <div className="fixed inset-0 bg-black/60 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white dark:bg-gray-900 p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center z-10">
-              <h3 className="font-bold text-lg text-gray-900 dark:text-white">Quick Add Product</h3>
-              <button onClick={() => setShowQuickAdd(false)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
-                <X size={18} className="text-gray-600 dark:text-gray-300" />
-              </button>
-            </div>
-            <div className="p-4 space-y-4">
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Product Name *</label>
-                <input value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} placeholder="e.g., Royal Rice" className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm" autoFocus />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Unit</label>
-                <input value={newProduct.unit} onChange={e => setNewProduct({ ...newProduct, unit: e.target.value })} placeholder="e.g., Carton, Kg, Piece" className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Buying Price</label>
-                  <input type="number" inputMode="decimal" value={newProduct.defaultPurchasePrice} onChange={e => setNewProduct({ ...newProduct, defaultPurchasePrice: e.target.value })} placeholder="0.00" className={`w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm ${noSpinnerClass}`} />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Selling Price</label>
-                  <input type="number" inputMode="decimal" value={newProduct.defaultSalePrice} onChange={e => setNewProduct({ ...newProduct, defaultSalePrice: e.target.value })} placeholder="0.00" className={`w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm ${noSpinnerClass}`} />
-                </div>
-              </div>
-              <button onClick={handleQuickAddProduct} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg">
-                <Check size={20} /> Create & Add to Invoice
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Product Picker Modal */}
+      <ProductPickerModal
+        isOpen={showProductPicker}
+        onClose={() => setShowProductPicker(false)}
+        products={products}
+        currentStore={currentStore}
+        onProductsSelected={handleProductsSelected}
+        priceType="purchase"
+      />
+
+      {/* Full Product Template Modal */}
+      <AddProductModal
+        isOpen={showAddProductModal}
+        onClose={() => setShowAddProductModal(false)}
+        onSave={handleSaveProduct}
+      />
     </div>
   );
 };

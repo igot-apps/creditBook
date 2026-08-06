@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Plus, Search, Package, Tag, Trash2 } from "lucide-react";
+import { Plus, Search, Package, Tag, Trash2, Edit3, Star } from "lucide-react";
 import useStore from "../store/useStore";
 import { ProductService } from "../services/ProductService";
 import { AddProductModal } from "../components/AddProductModal";
@@ -10,6 +10,7 @@ export const ProductsPage = () => {
   const { currentStore, showToast } = useStore();
   const [products, setProducts] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editProduct, setEditProduct] = useState(null); // 👈 Tracks product being edited
   const [searchQuery, setSearchQuery] = useState("");
 
   const loadProducts = async () => {
@@ -36,16 +37,26 @@ export const ProductsPage = () => {
     );
   }, [products, searchQuery]);
 
+  // 👇 CREATE / UPDATE HANDLER
   const handleSaveProduct = async (productData) => {
     try {
-      await ProductService.create(currentStore.id, productData);
-      showToast("✅ Product template saved!");
+      if (productData.id) {
+        // UPDATE existing
+        await ProductService.update(productData.id, productData);
+        showToast("✅ Product updated!");
+      } else {
+        // CREATE new
+        await ProductService.create(currentStore.id, productData);
+        showToast("✅ Product template saved!");
+      }
       await loadProducts();
+      setEditProduct(null);
     } catch (error) {
       showToast("❌ Failed to save product.");
     }
   };
 
+  // 👇 DELETE HANDLER
   const handleDeleteProduct = async (productId) => {
     if (window.confirm("Are you sure you want to delete this product template?")) {
       try {
@@ -56,6 +67,26 @@ export const ProductsPage = () => {
         showToast("❌ Failed to delete product.");
       }
     }
+  };
+
+  // 👇 FAVORITE TOGGLE HANDLER
+  const handleToggleFavorite = async (productId) => {
+    try {
+      await ProductService.toggleFavourite(productId);
+      await loadProducts();
+    } catch (error) {
+      showToast("❌ Failed to update favorite.");
+    }
+  };
+
+  const handleEditClick = (product) => {
+    setEditProduct(product);
+    setIsModalOpen(true);
+  };
+
+  const handleAddClick = () => {
+    setEditProduct(null);
+    setIsModalOpen(true);
   };
 
   return (
@@ -76,7 +107,7 @@ export const ProductsPage = () => {
             />
           </div>
           <button 
-            onClick={() => setIsModalOpen(true)}
+            onClick={handleAddClick}
             className="bg-indigo-600 hover:bg-indigo-700 text-white p-2.5 rounded-xl flex items-center justify-center active:scale-95 transition shadow-md"
           >
             <Plus size={20} />
@@ -94,9 +125,14 @@ export const ProductsPage = () => {
           ) : (
             filteredProducts.map(product => (
               <div key={product.id} className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+                
+                {/* Header with Actions */}
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex-1 min-w-0 pr-2">
-                    <h3 className="font-bold text-gray-900 dark:text-white truncate text-base">{product.name}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-gray-900 dark:text-white truncate text-base">{product.name}</h3>
+                      {product.isFavourite && <Star size={14} className="text-yellow-500 fill-yellow-500 flex-shrink-0" />}
+                    </div>
                     {(product.category || product.brand) && (
                       <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
                         {product.category && <span>{product.category}</span>}
@@ -105,12 +141,32 @@ export const ProductsPage = () => {
                       </p>
                     )}
                   </div>
-                  <button 
-                    onClick={() => handleDeleteProduct(product.id)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button 
+                      onClick={() => handleToggleFavorite(product.id)}
+                      className={`p-1.5 rounded-lg transition ${
+                        product.isFavourite 
+                          ? "text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20" 
+                          : "text-gray-400 hover:text-yellow-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      }`}
+                    >
+                      <Star size={16} className={product.isFavourite ? "fill-current" : ""} />
+                    </button>
+                    <button 
+                      onClick={() => handleEditClick(product)}
+                      className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition"
+                    >
+                      <Edit3 size={16} />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteProduct(product.id)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </div>
                 
                 {/* Units List */}
@@ -123,7 +179,7 @@ export const ProductsPage = () => {
                       </span>
                       <div className="flex gap-3">
                         <span className="text-gray-500 dark:text-gray-400">
-                          Buy: <span className="font-medium text-gray-700 dark:text-gray-300">{formatCurrency(unit.defaultPurchasePrice, currentStore?.currency || "GH")}</span>
+                          Buy: <span className="font-medium text-gray-700 dark:text-gray-300">{formatCurrency(unit.defaultPurchasePrice, currentStore?.currency || "GH₵")}</span>
                         </span>
                         <span className="text-gray-500 dark:text-gray-400">
                           Sell: <span className="font-medium text-green-600 dark:text-green-400">{formatCurrency(unit.defaultSalePrice, currentStore?.currency || "GH₵")}</span>
@@ -138,11 +194,12 @@ export const ProductsPage = () => {
         </div>
       </div>
 
-      {/* Add Product Modal */}
+      {/* Unified Add/Edit Modal */}
       <AddProductModal 
         isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
+        onClose={() => { setIsModalOpen(false); setEditProduct(null); }} 
         onSave={handleSaveProduct} 
+        editProduct={editProduct} 
       />
     </div>
   );

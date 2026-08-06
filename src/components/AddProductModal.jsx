@@ -1,15 +1,35 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Plus, Trash2 } from "lucide-react";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
-export const AddProductModal = ({ isOpen, onClose, onSave }) => {
+// 👇 Added 'editProduct' prop
+export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProduct }) => {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [brand, setBrand] = useState("");
   const [units, setUnits] = useState([
     { id: Date.now().toString(), name: "", defaultPurchasePrice: "", defaultSalePrice: "" }
   ]);
+
+  // Smart initialization: Edit mode vs Create mode
+  useEffect(() => {
+    if (isOpen) {
+      if (editProduct) {
+        // EDIT MODE: Populate with existing data
+        setName(editProduct.name || "");
+        setCategory(editProduct.category || "");
+        setBrand(editProduct.brand || "");
+        setUnits(editProduct.units && editProduct.units.length > 0 ? editProduct.units : [{ id: Date.now().toString(), name: "", defaultPurchasePrice: "", defaultSalePrice: "" }]);
+      } else {
+        // CREATE MODE: Reset form (or use initialName from search)
+        setName(initialName || "");
+        setCategory("");
+        setBrand("");
+        setUnits([{ id: Date.now().toString(), name: "", defaultPurchasePrice: "", defaultSalePrice: "" }]);
+      }
+    }
+  }, [isOpen, editProduct, initialName]);
 
   if (!isOpen) return null;
 
@@ -39,7 +59,6 @@ export const AddProductModal = ({ isOpen, onClose, onSave }) => {
       return;
     }
 
-    // Format units to ensure prices are numbers
     const formattedUnits = validUnits.map(u => ({
       id: u.id,
       name: u.name.trim(),
@@ -48,17 +67,13 @@ export const AddProductModal = ({ isOpen, onClose, onSave }) => {
     }));
 
     onSave({
+      id: editProduct ? editProduct.id : undefined, // Pass ID if editing
       name: name.trim(),
       category: category.trim(),
       brand: brand.trim(),
       units: formattedUnits
     });
     
-    // Reset form
-    setName("");
-    setCategory("");
-    setBrand("");
-    setUnits([{ id: Date.now().toString(), name: "", defaultPurchasePrice: "", defaultSalePrice: "" }]);
     onClose();
   };
 
@@ -68,7 +83,9 @@ export const AddProductModal = ({ isOpen, onClose, onSave }) => {
         
         {/* Header */}
         <div className="sticky top-0 bg-white dark:bg-gray-900 p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center z-10">
-          <h3 className="font-bold text-lg text-gray-900 dark:text-white">Create Product Template</h3>
+          <h3 className="font-bold text-lg text-gray-900 dark:text-white">
+            {editProduct ? "Edit Product Template" : "Create Product Template"}
+          </h3>
           <button onClick={onClose} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
             <X size={18} className="text-gray-600 dark:text-gray-300" />
           </button>
@@ -132,7 +149,6 @@ export const AddProductModal = ({ isOpen, onClose, onSave }) => {
                     )}
                   </div>
                   
-                  {/* Unit Name */}
                   <input 
                     value={unit.name} 
                     onChange={e => updateUnit(unit.id, 'name', e.target.value)} 
@@ -140,13 +156,11 @@ export const AddProductModal = ({ isOpen, onClose, onSave }) => {
                     className="w-full px-2 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 dark:text-white"
                   />
                   
-                  {/* Prices Only - No Conversion, No Inventory */}
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Buying Price</label>
                       <input 
-                        type="number" 
-                        step="0.01"
+                        type="number" step="0.01"
                         value={unit.defaultPurchasePrice} 
                         onChange={e => updateUnit(unit.id, 'defaultPurchasePrice', e.target.value)} 
                         placeholder="0.00" 
@@ -156,8 +170,7 @@ export const AddProductModal = ({ isOpen, onClose, onSave }) => {
                     <div>
                       <label className="text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Selling Price</label>
                       <input 
-                        type="number" 
-                        step="0.01"
+                        type="number" step="0.01"
                         value={unit.defaultSalePrice} 
                         onChange={e => updateUnit(unit.id, 'defaultSalePrice', e.target.value)} 
                         placeholder="0.00" 
@@ -172,9 +185,13 @@ export const AddProductModal = ({ isOpen, onClose, onSave }) => {
 
           <button 
             onClick={handleSave}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg mt-2"
+            className={`w-full font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg mt-2 ${
+              editProduct 
+                ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                : "bg-indigo-600 hover:bg-indigo-700 text-white"
+            }`}
           >
-            Save Product Template
+            {editProduct ? "Update Product" : "Save Product Template"}
           </button>
         </div>
       </div>
