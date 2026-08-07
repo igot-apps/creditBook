@@ -14,10 +14,14 @@ export const SupplierProfilePage = () => {
   const [viewingTransaction, setViewingTransaction] = useState(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  
+  // 👇 NEW: Fix Reason Modal State
+  const [showFixModal, setShowFixModal] = useState(false);
+  const [fixReason, setFixReason] = useState("");
+  const [txToFix, setTxToFix] = useState(null);
+
   const [supplierData, setSupplierData] = useState(selectedSupplier);
   const [history, setHistory] = useState([]);
-  
-  // State for expanding old receipts inline
   const [expandedOldTx, setExpandedOldTx] = useState(null);
 
   useEffect(() => {
@@ -63,8 +67,17 @@ export const SupplierProfilePage = () => {
     } catch (error) { showToast("❌ Failed to clear balance."); }
   };
 
+  // 👇 UPDATED: Opens the Fix Reason Modal
   const handleFixTransaction = (tx) => {
-    setFixTransaction(tx);
+    setTxToFix(tx);
+    setFixReason("");
+    setShowFixModal(true);
+  };
+
+  // 👇 NEW: Confirms the fix and navigates to Record Page
+  const confirmFix = () => {
+    setFixTransaction({ ...txToFix, fixReason: fixReason });
+    setShowFixModal(false);
     setView("recordSupplierPurchase");
   };
 
@@ -88,13 +101,12 @@ export const SupplierProfilePage = () => {
     setCancelReason("");
   };
 
-  // 👇 FIXED: Toggle inline expansion of old receipt
   const toggleOldReceipt = async (tx) => {
     if (expandedOldTx && expandedOldTx.id === tx.correctsTransactionId) {
-      setExpandedOldTx(null); // Collapse
+      setExpandedOldTx(null);
     } else {
       const oldTx = await TransactionService.getById(tx.correctsTransactionId);
-      setExpandedOldTx(oldTx); // Expand
+      setExpandedOldTx(oldTx);
     }
   };
 
@@ -106,7 +118,6 @@ export const SupplierProfilePage = () => {
     return <FileText size={16} className="text-indigo-500" />;
   };
 
-  // Filter out old replaced receipts from the main list
   const visibleHistory = history.filter(tx => !tx.replacedByTransactionId);
 
   return (
@@ -154,7 +165,6 @@ export const SupplierProfilePage = () => {
 
                 return (
                   <div key={tx.id} className="space-y-2">
-                    {/* MAIN RECEIPT CARD */}
                     <button onClick={() => setViewingTransaction(tx)} className={`w-full text-left p-4 rounded-xl border transition-all active:scale-[0.98] ${
                       isCancelled ? 'border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20 border-l-4 border-l-red-500' :
                       isBeingCorrected ? 'border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20 border-l-4 border-l-yellow-500' :
@@ -169,7 +179,12 @@ export const SupplierProfilePage = () => {
                             <p className={`font-bold text-sm truncate ${isInvalid ? 'text-gray-500 dark:text-gray-400 line-through decoration-2' : 'text-gray-900 dark:text-white'}`}>
                               {tx.items && tx.items.length > 0 ? `${tx.items.length} Item(s)` : (tx.note || "General Transaction")}
                             </p>
-                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{formatDate(tx.date || tx.createdAt)}</p>
+                            
+                            {/* 👇 FULL DATE AND TRANSACTION ID */}
+                            <div className="flex flex-col mt-0.5 gap-0.5">
+                              <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDate(tx.date || tx.createdAt)}</p>
+                              <p className="text-[9px] font-mono text-gray-400 dark:text-gray-500 break-all leading-tight">ID: {tx.id}</p>
+                            </div>
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0 ml-2 flex flex-col items-end gap-1">
@@ -204,13 +219,9 @@ export const SupplierProfilePage = () => {
                       </div>
                     </button>
 
-                    {/* INLINE EXPANDED OLD RECEIPT */}
                     {tx.correctsTransactionId && expandedOldTx && expandedOldTx.id === tx.correctsTransactionId && (
                       <div className="ml-4 pl-4 border-l-2 border-gray-300 dark:border-gray-700">
-                        <button 
-                          onClick={() => setViewingTransaction(expandedOldTx)}
-                          className="w-full text-left p-3 rounded-lg border border-dashed border-red-300 dark:border-red-800 bg-red-50/30 dark:bg-red-950/10 transition active:scale-[0.98]"
-                        >
+                        <button onClick={() => setViewingTransaction(expandedOldTx)} className="w-full text-left p-3 rounded-lg border border-dashed border-red-300 dark:border-red-800 bg-red-50/30 dark:bg-red-950/10 transition active:scale-[0.98]">
                           <div className="flex justify-between items-center mb-1">
                             <div className="flex items-center gap-2">
                               <Ban size={12} className="text-red-500" />
@@ -218,18 +229,17 @@ export const SupplierProfilePage = () => {
                             </div>
                             <p className="text-xs font-bold text-gray-500 line-through">{formatCurrency(expandedOldTx.amount, currency)}</p>
                           </div>
-                          <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDate(expandedOldTx.date || expandedOldTx.createdAt)}</p>
+                          <div className="flex flex-col mt-0.5 gap-0.5">
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDate(expandedOldTx.date || expandedOldTx.createdAt)}</p>
+                            <p className="text-[9px] font-mono text-gray-400 dark:text-gray-500 break-all leading-tight">ID: {expandedOldTx.id}</p>
+                          </div>
                           {expandedOldTx.cancelReason && <p className="text-[10px] text-red-500 italic mt-1">Reason: {expandedOldTx.cancelReason}</p>}
                         </button>
                       </div>
                     )}
 
-                    {/* TOGGLE BUTTON FOR OLD RECEIPTS */}
                     {tx.correctsTransactionId && (
-                      <button 
-                        onClick={() => toggleOldReceipt(tx)}
-                        className="w-full flex items-center justify-center gap-1 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition"
-                      >
+                      <button onClick={() => toggleOldReceipt(tx)} className="w-full flex items-center justify-center gap-1 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition">
                         {expandedOldTx && expandedOldTx.id === tx.correctsTransactionId ? (
                           <>Hide Previous Version <ChevronUp size={12} /></>
                         ) : (
@@ -303,7 +313,23 @@ export const SupplierProfilePage = () => {
 
               <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl space-y-3">
                 <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Date</span><span className="font-semibold text-gray-900 dark:text-white">{formatDate(viewingTransaction.date || viewingTransaction.createdAt)}</span></div>
+                
+                {/* 👇 FULL TRANSACTION ID IN MODAL */}
+                <div className="flex justify-between text-sm items-start gap-2">
+                  <span className="text-gray-500 dark:text-gray-400 flex-shrink-0">Transaction ID</span>
+                  <span className="font-mono text-xs font-semibold text-gray-900 dark:text-white break-all text-right">{viewingTransaction.id}</span>
+                </div>
+
                 {viewingTransaction.note && <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Note</span><span className="font-semibold text-gray-900 dark:text-white text-right max-w-[60%] truncate">{viewingTransaction.note}</span></div>}
+                
+                {/* 👇 FIX REASON DISPLAY */}
+                {viewingTransaction.fixReason && (
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-xl">
+                    <p className="text-[10px] font-bold text-blue-500 uppercase flex items-center gap-1 mb-1"><Edit3 size={10} /> Reason for Fix</p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300 italic">{viewingTransaction.fixReason}</p>
+                  </div>
+                )}
+
                 <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-2"></div>
                 <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Total Purchase</span><span className={`font-bold ${viewingTransaction.status !== 'active' ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(viewingTransaction.amount, currency)}</span></div>
                 <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Amount Paid</span><span className={`font-bold ${viewingTransaction.status !== 'active' ? 'line-through text-gray-400' : 'text-green-600 dark:text-green-400'}`}>{formatCurrency(viewingTransaction.paid, currency)}</span></div>
@@ -322,6 +348,34 @@ export const SupplierProfilePage = () => {
                   <button onClick={() => handleCancelTransaction(viewingTransaction)} className="w-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"><Ban size={18} /> Cancel Purchase</button>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 👇 REASON FOR FIX MODAL */}
+      {showFixModal && (
+        <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full"><Edit3 size={20} className="text-blue-600 dark:text-blue-400" /></div>
+              <h3 className="font-bold text-xl text-gray-900 dark:text-white">Reason for Fix</h3>
+            </div>
+            <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">
+              Why are you correcting this purchase?
+              <span className="text-gray-400 text-xs block mt-1">(Optional, but helpful for records)</span>
+            </p>
+            <textarea 
+              value={fixReason} 
+              onChange={(e) => setFixReason(e.target.value)} 
+              placeholder="e.g., Supplier charged wrong price..." 
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 dark:text-white mb-4 text-sm" 
+              rows="3" 
+              autoFocus 
+            />
+            <div className="flex gap-3">
+              <button onClick={() => setShowFixModal(false)} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Cancel</button>
+              <button onClick={confirmFix} className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-xl active:scale-95 transition">Continue</button>
             </div>
           </div>
         </div>

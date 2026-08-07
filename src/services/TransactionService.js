@@ -25,7 +25,7 @@ export const TransactionService = {
     return await db.transactions.get(txId);
   },
 
-  // 3. UPDATE TRANSACTION (👈 ADDED: Used for linking corrected transactions)
+  // 3. UPDATE TRANSACTION
   update: async (txId, updates) => {
     return await db.transactions.update(txId, updates);
   },
@@ -43,10 +43,11 @@ export const TransactionService = {
       note: note || '',
       date: new Date().toISOString(),
       createdAt: new Date().toISOString(),
-      // 👇 NEW: Save contact details for reliable "Fix" restoration
+      // 👇 NEW: Save contact details and fix reason for reliable restoration and audit trail
       contactName: extraData.contactName || null,
       contactPhone: extraData.contactPhone || null,
-      // 👇 NEW FIELDS FOR FIX/CANCEL WORKFLOW
+      fixReason: extraData.fixReason || null, 
+      // 👇 FIELDS FOR FIX/CANCEL WORKFLOW
       status: extraData.status || 'active', 
       cancelReason: extraData.cancelReason || null,
       replacedByTransactionId: extraData.replacedByTransactionId || null,
@@ -54,6 +55,8 @@ export const TransactionService = {
     };
 
     await db.transactions.add(newTx);
+
+    // Automatically recalculate and update the contact's balance
     await ContactService.updateBalance(contactId);
 
     return newTx.id;

@@ -29,6 +29,7 @@ export const RecordPage = () => {
   const [isFixing, setIsFixing] = useState(false);
   const [fixingOldId, setFixingOldId] = useState(null);
   const [originalAmount, setOriginalAmount] = useState(0);
+  const [fixReason, setFixReason] = useState(""); // 👈 NEW: Holds the reason for the fix
 
   const [undoData, setUndoData] = useState(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
@@ -60,6 +61,8 @@ export const RecordPage = () => {
       setInvoiceItems(fixTransaction.items || []);
       setTx({ amount: fixTransaction.amount?.toString() || "0", paid: fixTransaction.paid?.toString() || "", discount: fixTransaction.discount?.toString() || "", note: fixTransaction.note || "" });
       setOriginalAmount(parseFloat(fixTransaction.amount) || 0);
+      setFixReason(fixTransaction.fixReason || ""); // 👈 NEW: Capture the reason from the modal
+      
       setMode("existing"); setIsFixing(true); setFixingOldId(fixTransaction.id);
       
       // 👇 LOCK THE RECEIPT: Mark as being corrected
@@ -69,16 +72,12 @@ export const RecordPage = () => {
     }
   }, [fixTransaction, customers, setFixTransaction]);
 
-  // 👇 REVERT IF USER ABANDONS FIX
   const handleAbortFix = async () => {
     if (fixingOldId) {
       await TransactionService.update(fixingOldId, { status: 'active' });
     }
-    setIsFixing(false);
-    setFixingOldId(null);
-    setMode("search");
-    setSelectedCustomer(null);
-    setInvoiceItems([]);
+    setIsFixing(false); setFixingOldId(null); setFixReason("");
+    setMode("search"); setSelectedCustomer(null); setInvoiceItems([]);
     setTx({ amount: "0", paid: "", discount: "", note: "" });
     clearAutoDraft();
   };
@@ -144,13 +143,17 @@ export const RecordPage = () => {
     }
 
     try {
-      const extraData = { contactName: selectedCustomer.name, contactPhone: selectedCustomer.phone };
+      const extraData = { 
+        contactName: selectedCustomer.name, 
+        contactPhone: selectedCustomer.phone 
+      };
 
       if (isFixing && fixingOldId) {
         extraData.correctsTransactionId = fixingOldId;
+        extraData.fixReason = fixReason; // 👈 NEW: Pass the reason to the database
+        
         const newId = await TransactionService.create(currentStore.id, selectedCustomer.id, 'sale', invoiceItems, finalAmount, finalPaid, tx.note, extraData);
         
-        // 👇 FINALIZE: Mark old as cancelled only AFTER successful save
         await TransactionService.update(fixingOldId, { 
           replacedByTransactionId: newId,
           status: 'cancelled',
@@ -162,7 +165,7 @@ export const RecordPage = () => {
         setShowUndoToast(true);
         setTimeout(() => { setShowUndoToast(false); setUndoData(null); }, 10000);
         
-        setIsFixing(false); setFixingOldId(null);
+        setIsFixing(false); setFixingOldId(null); setFixReason("");
       } else {
         await TransactionService.create(currentStore.id, selectedCustomer.id, 'sale', invoiceItems, finalAmount, finalPaid, tx.note, extraData);
         await clearAutoDraft();
@@ -194,6 +197,12 @@ export const RecordPage = () => {
                 {difference >= 0 ? "+" : ""}{formatCurrency(difference, currency)}
               </span>
             </div>
+            {fixReason && (
+              <div className="mt-2 pt-2 border-t border-yellow-200 dark:border-yellow-800/50">
+                <p className="text-[10px] font-bold text-yellow-800 dark:text-yellow-400 uppercase">Reason for Fix:</p>
+                <p className="text-xs text-gray-700 dark:text-gray-300 italic mt-0.5">{fixReason}</p>
+              </div>
+            )}
           </div>
         )}
 
