@@ -32,9 +32,30 @@ export const ProductPickerModal = ({
     }
   }, [currentStore?.id]);
 
+  // 👇 HELPER: Get only units visible for the current workflow
+  const getVisibleUnits = (product) => {
+    if (!product.units) return [];
+    return product.units.filter(u => 
+      priceType === "purchase" ? u.visibleInPurchases !== false : u.visibleInSales !== false
+    );
+  };
+
   const filteredProducts = useMemo(() => {
     if (!Array.isArray(products)) return [];
     let result = [...products];
+
+    // 👇 NEW: Filter by product-level AND unit-level visibility
+    result = result.filter(p => {
+      const productVisible = priceType === "sale" 
+        ? p.visibility?.sales !== false 
+        : p.visibility?.purchases !== false;
+        
+      const hasVisibleUnit = p.units && p.units.some(u => 
+        priceType === "sale" ? u.visibleInSales !== false : u.visibleInPurchases !== false
+      );
+      
+      return productVisible && hasVisibleUnit;
+    });
 
     if (activeTab === "favorites") result = result.filter(p => p.isFavourite);
     else if (activeTab === "recent") result = result.filter(p => p.lastUsedAt).sort((a, b) => new Date(b.lastUsedAt) - new Date(a.lastUsedAt)).slice(0, 10);
@@ -55,13 +76,14 @@ export const ProductPickerModal = ({
       if (a.isFavourite !== b.isFavourite) return b.isFavourite ? 1 : -1;
       return (b.usageCount || 0) - (a.usageCount || 0);
     });
-  }, [products, searchQuery, selectedCategory, activeTab]);
+  }, [products, searchQuery, selectedCategory, activeTab, priceType]);
 
   const getPrice = (unit) => priceType === "purchase" ? (unit.defaultPurchasePrice || 0) : (unit.defaultSalePrice || 0);
 
-  // 👇 SINGLE UNIT HANDLERS
+  // 👇 SINGLE UNIT HANDLERS (Updated to use first VISIBLE unit)
   const handleSingleUnitAdd = (product, delta) => {
-    const unit = product.units?.[0] || { name: "Piece", defaultSalePrice: 0, defaultPurchasePrice: 0 };
+    const visibleUnits = getVisibleUnits(product);
+    const unit = visibleUnits[0] || { name: "Piece", defaultSalePrice: 0, defaultPurchasePrice: 0 };
     const price = getPrice(unit);
 
     setAddedProducts(prev => {
@@ -87,9 +109,9 @@ export const ProductPickerModal = ({
     if (delta > 0) ProductService.trackUsage(product.id);
   };
 
-  // 👇 NEW: Handler for typing fractional quantities directly
   const handleSingleUnitSetQty = (product, value) => {
-    const unit = product.units?.[0] || { name: "Piece", defaultSalePrice: 0, defaultPurchasePrice: 0 };
+    const visibleUnits = getVisibleUnits(product);
+    const unit = visibleUnits[0] || { name: "Piece", defaultSalePrice: 0, defaultPurchasePrice: 0 };
     const price = getPrice(unit);
     const qty = parseFloat(value);
 
@@ -120,7 +142,8 @@ export const ProductPickerModal = ({
     setMultiUnitProduct(product);
     const existing = addedProducts.filter(p => p.productId === product.id);
     const initialQtys = {};
-    product.units.forEach(u => {
+    // Only initialize quantities for visible units
+    getVisibleUnits(product).forEach(u => {
       const found = existing.find(ep => ep.unitName === u.name);
       initialQtys[u.id] = found ? found.quantity : 0;
     });
@@ -134,7 +157,6 @@ export const ProductPickerModal = ({
     }));
   };
 
-  // 👇 NEW: Handler for typing fractional quantities in the multi-unit modal
   const updateModalQtyInput = (unitId, value) => {
     const qty = parseFloat(value);
     setTempQuantities(prev => ({
@@ -149,7 +171,8 @@ export const ProductPickerModal = ({
     setAddedProducts(prev => {
       let newProducts = prev.filter(p => p.productId !== multiUnitProduct.id);
       
-      multiUnitProduct.units.forEach(unit => {
+      // Only process visible units
+      getVisibleUnits(multiUnitProduct).forEach(unit => {
         const qty = tempQuantities[unit.id] || 0;
         if (qty > 0) {
           const price = getPrice(unit);
@@ -220,7 +243,6 @@ export const ProductPickerModal = ({
               className={`w-full pl-12 pr-10 py-3.5 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-2 ${
                 priceType === "purchase" ? "focus:ring-indigo-500 focus:border-indigo-500" : "focus:ring-green-500 focus:border-green-500"
               } dark:text-white text-base`}
-              // 👇 REMOVED: autoFocus to prevent keyboard from popping up automatically
             />
             {searchQuery && (
               <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-gray-200 dark:bg-gray-700 rounded-full">
@@ -272,7 +294,8 @@ export const ProductPickerModal = ({
             {filteredProducts.map(product => {
               const emoji = ProductService.getCategoryEmoji(product.category);
               const totalQty = addedProducts.filter(p => p.productId === product.id).reduce((sum, item) => sum + item.quantity, 0);
-              const isMultiUnit = product.units && product.units.length > 1;
+              const visibleUnits = getVisibleUnits(product);
+              const isMultiUnit = visibleUnits.length > 1;
 
               return (
                 <div key={product.id} className={`bg-white dark:bg-gray-800 rounded-2xl border-2 p-3 transition-all ${
@@ -285,19 +308,20 @@ export const ProductPickerModal = ({
                     {product.brand && <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate italic">{product.brand}</p>}
                   </div>
                   
+                  {/* 👇 UPDATED: Only show visible units */}
                   <div className="space-y-1 mb-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-2">
-                    {product.units && product.units.slice(0, 2).map(unit => (
+                    {visibleUnits.slice(0, 2).map(unit => (
                       <div key={unit.id} className="flex justify-between text-xs">
                         <span className="text-gray-600 dark:text-gray-400 font-medium">{unit.name}</span>
                         <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(getPrice(unit), currency)}</span>
                       </div>
                     ))}
-                    {product.units && product.units.length > 2 && (
-                      <p className="text-[10px] text-gray-500 dark:text-gray-400 text-center pt-1 border-t border-gray-200 dark:border-gray-700">+{product.units.length - 2} more</p>
+                    {visibleUnits.length > 2 && (
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400 text-center pt-1 border-t border-gray-200 dark:border-gray-700">+{visibleUnits.length - 2} more</p>
                     )}
                   </div>
 
-                  {/* 👇 SMART CONTROLS */}
+                  {/*  SMART CONTROLS */}
                   {!isMultiUnit ? (
                     totalQty === 0 ? (
                       <button 
@@ -316,7 +340,6 @@ export const ProductPickerModal = ({
                           <Minus size={18} />
                         </button>
                         
-                        {/* 👇 EDITABLE INPUT FOR FRACTIONS */}
                         <input 
                           type="number" 
                           step="0.1" 
@@ -378,7 +401,8 @@ export const ProductPickerModal = ({
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {multiUnitProduct.units.map(unit => {
+              {/* 👇 UPDATED: Only show visible units in modal */}
+              {getVisibleUnits(multiUnitProduct).map(unit => {
                 const currentQty = tempQuantities[unit.id] || 0;
                 return (
                   <div key={unit.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
@@ -399,7 +423,6 @@ export const ProductPickerModal = ({
                         <Minus size={16} />
                       </button>
                       
-                      {/* 👇 EDITABLE INPUT FOR FRACTIONS IN MODAL */}
                       <input 
                         type="number" 
                         step="0.1" 

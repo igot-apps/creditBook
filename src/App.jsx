@@ -7,6 +7,7 @@ import { Layout } from "./components/Layout";
 import { HomePage } from "./pages/HomePage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { ProductsPage } from "./pages/ProductsPage";
+import { VisibilityManagerPage } from "./pages/VisibilityManagerPage"; // 👈 NEW
 import { RecordPage } from "./pages/RecordPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -35,6 +36,7 @@ const AppRouter = () => {
       case "home": return <HomePage key={pageKey} />;
       case "customers": return <CustomersPage key={pageKey} />;
       case "products": return <ProductsPage key={pageKey} />;
+      case "visibilityManager": return <VisibilityManagerPage key={pageKey} />; // 👈 NEW
       case "record": return <RecordPage key={pageKey} />;
       case "profile": return <ProfilePage key={pageKey} />;
       case "reports": return <ReportsPage key={pageKey} />;

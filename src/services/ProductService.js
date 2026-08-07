@@ -4,8 +4,8 @@ import { db } from '../database/db';
 export const CATEGORY_EMOJIS = {
   'rice': '🍚',
   'milk': '🥛',
-  'drinks': '🥤',
-  'beverages': '🥤',
+  'drinks': '',
+  'beverages': '',
   'oil': '🫒',
   'sugar': '🍬',
   'soap': '🧼',
@@ -13,15 +13,15 @@ export const CATEGORY_EMOJIS = {
   'bread': '🍞',
   'frozen': '🧊',
   'medicine': '💊',
-  'snacks': '🍿',
+  'snacks': '',
   'water': '💧',
   'meat': '🥩',
   'fish': '🐟',
   'chicken': '🍗',
   'eggs': '🥚',
   'fruit': '🍎',
-  'fruits': '🍎',
-  'vegetable': '🥬',
+  'fruits': '',
+  'vegetable': '',
   'vegetables': '🥬',
   'spices': '🌶️',
   'grains': '🌾',
@@ -30,8 +30,8 @@ export const CATEGORY_EMOJIS = {
   'tea': '🍵',
   'coffee': '☕',
   'cereal': '🥣',
-  'sauce': '🥫',
-  'cleaning': '🧹',
+  'sauce': '',
+  'cleaning': '',
   'baby': '🍼',
   'default': '📦'
 };
@@ -91,7 +91,6 @@ export const ProductService = {
   },
 
   // 4. GET RECENTLY USED PRODUCTS
-  // Returns products sorted by lastUsedAt (most recent first)
   getRecent: async (storeId, limit = 10) => {
     const allProducts = await db.products.where('storeId').equals(storeId).toArray();
     return allProducts
@@ -134,11 +133,14 @@ export const ProductService = {
 
   // 8. CREATE PRODUCT
   create: async (storeId, productData) => {
+    // 👇 NEW: Map units with default visibility flags
     const units = (productData.units || []).map((u, index) => ({
       id: u.id || `u_${Date.now()}_${index}`,
       name: (u.name || 'Piece').trim(),
       defaultPurchasePrice: parseFloat(u.defaultPurchasePrice || u.purchasePrice) || 0,
-      defaultSalePrice: parseFloat(u.defaultSalePrice || u.salePrice) || 0
+      defaultSalePrice: parseFloat(u.defaultSalePrice || u.salePrice) || 0,
+      visibleInSales: u.visibleInSales ?? true,
+      visibleInPurchases: u.visibleInPurchases ?? true
     }));
 
     if (units.length === 0 && productData.unit) {
@@ -146,7 +148,9 @@ export const ProductService = {
         id: `u_${Date.now()}_0`,
         name: productData.unit,
         defaultPurchasePrice: parseFloat(productData.defaultPurchasePrice || productData.price) || 0,
-        defaultSalePrice: parseFloat(productData.defaultSalePrice || productData.price) || 0
+        defaultSalePrice: parseFloat(productData.defaultSalePrice || productData.price) || 0,
+        visibleInSales: true,
+        visibleInPurchases: true
       });
     }
 
@@ -160,7 +164,12 @@ export const ProductService = {
       isFavourite: productData.isFavourite || false,
       usageCount: 0,
       lastUsedAt: null,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      // 👇 NEW: Default product-level visibility (kept for backward compatibility)
+      visibility: {
+        sales: productData.visibility?.sales ?? true,
+        purchases: productData.visibility?.purchases ?? true
+      }
     };
 
     await db.products.add(newProduct);
@@ -169,7 +178,27 @@ export const ProductService = {
 
   // 9. UPDATE PRODUCT
   update: async (productId, updateData) => {
-    await db.products.update(productId, updateData);
+    const existingProduct = await db.products.get(productId);
+    if (!existingProduct) throw new Error("Product not found");
+
+    // If updating units, ensure they have visibility flags
+    if (updateData.units) {
+      updateData.units = updateData.units.map(u => ({
+        ...u,
+        visibleInSales: u.visibleInSales ?? true,
+        visibleInPurchases: u.visibleInPurchases ?? true
+      }));
+    }
+
+    const updatedData = {
+      ...updateData,
+      visibility: {
+        sales: updateData.visibility?.sales ?? existingProduct.visibility?.sales ?? true,
+        purchases: updateData.visibility?.purchases ?? existingProduct.visibility?.purchases ?? true
+      }
+    };
+    
+    await db.products.update(productId, updatedData);
   },
 
   // 10. DELETE PRODUCT
@@ -177,7 +206,7 @@ export const ProductService = {
     await db.products.delete(productId);
   },
 
-  // 11. TRACK USAGE (Updated to also track lastUsedAt)
+  // 11. TRACK USAGE
   trackUsage: async (productId) => {
     const product = await db.products.get(productId);
     if (product) {
@@ -201,5 +230,44 @@ export const ProductService = {
         isFavourite: !product.isFavourite 
       });
     }
+  },
+
+  // 👇 14. NEW: UPDATE SINGLE UNIT VISIBILITY
+  updateUnitVisibility: async (productId, unitId, visibilityData) => {
+    const product = await db.products.get(productId);
+    if (!product) throw new Error("Product not found");
+
+    const updatedUnits = product.units.map(u => {
+      if (u.id === unitId) {
+        return {
+          ...u,
+          // Lazy migration: default to true if missing
+          visibleInSales: visibilityData.visibleInSales ?? u.visibleInSales ?? true,
+          visibleInPurchases: visibilityData.visibleInPurchases ?? u.visibleInPurchases ?? true
+        };
+      }
+      return u;
+    });
+
+    await db.products.update(productId, { units: updatedUnits });
+  },
+
+  // 👇 15. NEW: BULK UPDATE UNIT VISIBILITY
+  bulkUpdateUnitVisibility: async (productId, unitIds, visibilityData) => {
+    const product = await db.products.get(productId);
+    if (!product) throw new Error("Product not found");
+
+    const updatedUnits = product.units.map(u => {
+      if (unitIds.includes(u.id)) {
+        return {
+          ...u,
+          visibleInSales: visibilityData.visibleInSales ?? u.visibleInSales ?? true,
+          visibleInPurchases: visibilityData.visibleInPurchases ?? u.visibleInPurchases ?? true
+        };
+      }
+      return u;
+    });
+
+    await db.products.update(productId, { units: updatedUnits });
   }
 };

@@ -3,7 +3,6 @@ import { X, Plus, Trash2 } from "lucide-react";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
-// 👇 Added 'editProduct' prop
 export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProduct }) => {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
@@ -11,6 +10,10 @@ export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProd
   const [units, setUnits] = useState([
     { id: Date.now().toString(), name: "", defaultPurchasePrice: "", defaultSalePrice: "" }
   ]);
+  
+  // 👇 NEW: Visibility state
+  const [showInSales, setShowInSales] = useState(true);
+  const [showInPurchases, setShowInPurchases] = useState(true);
 
   // Smart initialization: Edit mode vs Create mode
   useEffect(() => {
@@ -21,12 +24,17 @@ export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProd
         setCategory(editProduct.category || "");
         setBrand(editProduct.brand || "");
         setUnits(editProduct.units && editProduct.units.length > 0 ? editProduct.units : [{ id: Date.now().toString(), name: "", defaultPurchasePrice: "", defaultSalePrice: "" }]);
+        // 👇 Set visibility, defaulting to true for backward compatibility
+        setShowInSales(editProduct.visibility?.sales ?? true);
+        setShowInPurchases(editProduct.visibility?.purchases ?? true);
       } else {
         // CREATE MODE: Reset form (or use initialName from search)
         setName(initialName || "");
         setCategory("");
         setBrand("");
         setUnits([{ id: Date.now().toString(), name: "", defaultPurchasePrice: "", defaultSalePrice: "" }]);
+        setShowInSales(true);
+        setShowInPurchases(true);
       }
     }
   }, [isOpen, editProduct, initialName]);
@@ -53,6 +61,12 @@ export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProd
       return;
     }
     
+    // 👇 NEW: Validation to ensure product is visible somewhere
+    if (!showInSales && !showInPurchases) {
+      alert("Product must be available in at least one place (Sales or Purchases).");
+      return;
+    }
+    
     const validUnits = units.filter(u => u.name.trim());
     if (validUnits.length === 0) {
       alert("At least one unit name is required");
@@ -67,11 +81,16 @@ export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProd
     }));
 
     onSave({
-      id: editProduct ? editProduct.id : undefined, // Pass ID if editing
+      id: editProduct ? editProduct.id : undefined,
       name: name.trim(),
       category: category.trim(),
       brand: brand.trim(),
-      units: formattedUnits
+      units: formattedUnits,
+      // 👇 NEW: Pass visibility to the service
+      visibility: {
+        sales: showInSales,
+        purchases: showInPurchases
+      }
     });
     
     onClose();
@@ -181,6 +200,37 @@ export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProd
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* 👇 NEW: AVAILABILITY TOGGLES */}
+          <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
+            <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Availability</p>
+            
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <input 
+                type="checkbox" 
+                checked={showInSales} 
+                onChange={(e) => setShowInSales(e.target.checked)} 
+                className="mt-0.5 w-5 h-5 rounded border-gray-300 dark:border-gray-600 text-green-600 focus:ring-green-500 bg-gray-50 dark:bg-gray-800" 
+              />
+              <div>
+                <span className="text-sm font-semibold text-gray-900 dark:text-white group-hover:text-green-600 dark:group-hover:text-green-400 transition">Available when selling to customers</span>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Show this product in the sales picker.</p>
+              </div>
+            </label>
+
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <input 
+                type="checkbox" 
+                checked={showInPurchases} 
+                onChange={(e) => setShowInPurchases(e.target.checked)} 
+                className="mt-0.5 w-5 h-5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 bg-gray-50 dark:bg-gray-800" 
+              />
+              <div>
+                <span className="text-sm font-semibold text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition">Available when buying from suppliers</span>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Show this product in the purchase picker.</p>
+              </div>
+            </label>
           </div>
 
           <button 
