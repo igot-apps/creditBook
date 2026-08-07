@@ -349,7 +349,7 @@ const CancelModal = ({ isOpen, onClose, onConfirm, cancelReason, setCancelReason
 // MAIN PAGE COMPONENT
 // ==========================================
 
-export const ProfilePage = () => {
+export const CustomerProfilePage = () => {
   const { currentStore, selectedCustomer, setSelectedCustomer, setView, setPrefillTransaction, setFixTransaction, showToast, lastScrollPosition, setLastScrollPosition } = useStore();
   const currency = currentStore?.currency || "GH₵";
 

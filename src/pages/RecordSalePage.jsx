@@ -9,7 +9,7 @@ import { DetailedInvoice } from "../components/DetailedInvoice";
 import { TopBar } from "../components/TopBar";
 import { db } from "../database/db";
 
-export const RecordPage = () => {
+export const RecordSalePage = () => {
   const { 
     currentStore, setView, prefillTransaction, setPrefillTransaction, showToast, 
     autoDraft, saveDraft, clearAutoDraft,

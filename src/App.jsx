@@ -6,13 +6,13 @@ import { Layout } from "./components/Layout";
 
 import { HomePage } from "./pages/HomePage";
 import { CustomersPage } from "./pages/CustomersPage";
+import { CustomerProfilePage } from "./pages/CustomerProfilePage"; // 👈 Renamed
+import { RecordSalePage } from "./pages/RecordSalePage"; // 👈 Renamed
+import { CustomerFollowUpsPage } from "./pages/CustomerFollowUpsPage"; // 👈 Renamed
+
 import { ProductsPage } from "./pages/ProductsPage";
-import { VisibilityManagerPage } from "./pages/VisibilityManagerPage"; // 👈 NEW
-import { RecordPage } from "./pages/RecordPage";
-import { ProfilePage } from "./pages/ProfilePage";
+import { VisibilityManagerPage } from "./pages/VisibilityManagerPage";
 import { ReportsPage } from "./pages/ReportsPage";
-import { SettingsPage } from "./pages/SettingsPage";
-import { FollowUpsPage } from "./pages/FollowUpsPage";
 import { MorePage } from "./pages/MorePage";
 
 // Supplier Pages
@@ -35,13 +35,18 @@ const AppRouter = () => {
   const renderPage = () => {
     switch (view) {
       case "home": return <HomePage key={pageKey} />;
+      
+      // Customer Routes
       case "customers": return <CustomersPage key={pageKey} />;
+      case "profile": return <CustomerProfilePage key={pageKey} />; // 👈 Updated
+      case "record": return <RecordSalePage key={pageKey} />; // 👈 Updated
+      case "followups": return <CustomerFollowUpsPage key={pageKey} />; // 👈 Updated
+      
+      // Product & Utility Routes
       case "products": return <ProductsPage key={pageKey} />;
-      case "visibilityManager": return <VisibilityManagerPage key={pageKey} />; // 👈 NEW
-      case "record": return <RecordPage key={pageKey} />;
-      case "profile": return <ProfilePage key={pageKey} />;
+      case "visibilityManager": return <VisibilityManagerPage key={pageKey} />;
       case "reports": return <ReportsPage key={pageKey} />;
-      case "settings": return <MorePage key={pageKey} />; // 👈 Renders the new More Menu      case "followups": return <FollowUpsPage key={pageKey} />;
+      case "settings": return <MorePage key={pageKey} />;
       
       // Supplier Routes
       case "suppliers": return <SuppliersPage key={pageKey} />;

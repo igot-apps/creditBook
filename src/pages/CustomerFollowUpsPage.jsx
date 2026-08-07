@@ -6,7 +6,7 @@ import { openSMS, openWhatsApp, openDialer } from "../utils/communication";
 import { CustomerService } from "../services/CustomerService";
 import { TopBar } from "../components/TopBar"; // 👈 Import TopBar
 
-export const FollowUpsPage = () => {
+export const CustomerFollowUpsPage = () => {
   const { currentStore, customers, refreshCustomers, showToast, triggerConfetti } = useStore();
   const currency = currentStore?.currency || "GH₵";
   const [filter, setFilter] = useState("all");
