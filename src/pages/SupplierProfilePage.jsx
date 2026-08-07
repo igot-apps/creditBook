@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Phone, MessageSquare, MessageCircle, Edit3, Archive, Ban, Clock, AlertTriangle, FileText, X, Check, ArrowRight, ArrowLeft } from "lucide-react";
+import { Phone, MessageSquare, MessageCircle, Edit3, Archive, Ban, Clock, AlertTriangle, FileText, X, Check, ArrowRight, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openSMS, openWhatsApp, openDialer } from "../utils/communication";
@@ -16,6 +16,9 @@ export const SupplierProfilePage = () => {
   const [cancelReason, setCancelReason] = useState("");
   const [supplierData, setSupplierData] = useState(selectedSupplier);
   const [history, setHistory] = useState([]);
+  
+  // State for expanding old receipts inline
+  const [expandedOldTx, setExpandedOldTx] = useState(null);
 
   useEffect(() => {
     if (selectedSupplier?.id) {
@@ -85,6 +88,16 @@ export const SupplierProfilePage = () => {
     setCancelReason("");
   };
 
+  // 👇 FIXED: Toggle inline expansion of old receipt
+  const toggleOldReceipt = async (tx) => {
+    if (expandedOldTx && expandedOldTx.id === tx.correctsTransactionId) {
+      setExpandedOldTx(null); // Collapse
+    } else {
+      const oldTx = await TransactionService.getById(tx.correctsTransactionId);
+      setExpandedOldTx(oldTx); // Expand
+    }
+  };
+
   const getTimelineIcon = (tx) => {
     if (tx.status === 'being_corrected') return <Edit3 size={16} className="text-yellow-600" />;
     if (tx.status === 'cancelled') return <Ban size={16} className="text-red-500" />;
@@ -92,6 +105,9 @@ export const SupplierProfilePage = () => {
     if (tx.amount === 0 && tx.paid > 0) return <Check size={16} className="text-green-500" />;
     return <FileText size={16} className="text-indigo-500" />;
   };
+
+  // Filter out old replaced receipts from the main list
+  const visibleHistory = history.filter(tx => !tx.replacedByTransactionId);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
@@ -111,7 +127,7 @@ export const SupplierProfilePage = () => {
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700"><p className="text-xs text-gray-500 uppercase font-bold">Total Purchases</p><p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(totalPurchases, currency)}</p></div>
           <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700"><p className="text-xs text-gray-500 uppercase font-bold">Total Paid</p><p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(totalPayments, currency)}</p></div>
-          <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700"><p className="text-xs text-gray-500 uppercase font-bold">Total Transactions</p><p className="text-lg font-bold text-gray-900 dark:text-white">{history.filter(t => t.status !== 'cancelled' && t.status !== 'being_corrected').length}</p></div>
+          <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700"><p className="text-xs text-gray-500 uppercase font-bold">Total Transactions</p><p className="text-lg font-bold text-gray-900 dark:text-white">{visibleHistory.filter(t => t.status !== 'cancelled' && t.status !== 'being_corrected').length}</p></div>
           <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700"><p className="text-xs text-gray-500 uppercase font-bold">Supplier Since</p><p className="text-sm font-bold text-gray-900 dark:text-white mt-1">{supplierData.createdAt ? formatDate(supplierData.createdAt).split(',')[0] : 'N/A'}</p></div>
         </div>
 
@@ -128,63 +144,100 @@ export const SupplierProfilePage = () => {
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
           <div className="p-4 border-b border-gray-100 dark:border-gray-700 font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2"><Clock size={18} /> Purchase History</div>
           <div className="p-4 space-y-3">
-            {history.length === 0 ? (
+            {visibleHistory.length === 0 ? (
               <p className="text-center text-gray-400 py-6">No purchase history yet</p>
             ) : (
-              history.map((tx) => {
+              visibleHistory.map((tx) => {
                 const isBeingCorrected = tx.status === 'being_corrected';
                 const isCancelled = tx.status === 'cancelled';
                 const isInvalid = isBeingCorrected || isCancelled;
 
                 return (
-                  <button key={tx.id} onClick={() => setViewingTransaction(tx)} className={`w-full text-left p-4 rounded-xl border transition-all active:scale-[0.98] ${
-                    isCancelled ? 'border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20 border-l-4 border-l-red-500' :
-                    isBeingCorrected ? 'border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20 border-l-4 border-l-yellow-500' :
-                    'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-indigo-200 dark:hover:border-indigo-800'
-                  }`}>
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <div className={`p-1.5 rounded-full flex-shrink-0 ${isInvalid ? (isCancelled ? 'bg-red-100 dark:bg-red-900/40' : 'bg-yellow-100 dark:bg-yellow-900/40') : 'bg-indigo-100 dark:bg-indigo-900/30'}`}>
-                          {getTimelineIcon(tx)}
+                  <div key={tx.id} className="space-y-2">
+                    {/* MAIN RECEIPT CARD */}
+                    <button onClick={() => setViewingTransaction(tx)} className={`w-full text-left p-4 rounded-xl border transition-all active:scale-[0.98] ${
+                      isCancelled ? 'border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20 border-l-4 border-l-red-500' :
+                      isBeingCorrected ? 'border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20 border-l-4 border-l-yellow-500' :
+                      'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-indigo-200 dark:hover:border-indigo-800'
+                    }`}>
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className={`p-1.5 rounded-full flex-shrink-0 ${isInvalid ? (isCancelled ? 'bg-red-100 dark:bg-red-900/40' : 'bg-yellow-100 dark:bg-yellow-900/40') : 'bg-indigo-100 dark:bg-indigo-900/30'}`}>
+                            {getTimelineIcon(tx)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-bold text-sm truncate ${isInvalid ? 'text-gray-500 dark:text-gray-400 line-through decoration-2' : 'text-gray-900 dark:text-white'}`}>
+                              {tx.items && tx.items.length > 0 ? `${tx.items.length} Item(s)` : (tx.note || "General Transaction")}
+                            </p>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{formatDate(tx.date || tx.createdAt)}</p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`font-bold text-sm truncate ${isInvalid ? 'text-gray-500 dark:text-gray-400 line-through decoration-2' : 'text-gray-900 dark:text-white'}`}>
-                            {tx.items && tx.items.length > 0 ? `${tx.items.length} Item(s)` : (tx.note || "General Transaction")}
+                        <div className="text-right flex-shrink-0 ml-2 flex flex-col items-end gap-1">
+                          {tx.amount > 0 && <p className={`text-sm font-bold ${isInvalid ? 'text-gray-400' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(tx.amount, currency)}</p>}
+                          {isBeingCorrected && (
+                            <span className="text-[10px] font-bold text-yellow-700 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/40 px-2 py-0.5 rounded-md uppercase tracking-wide flex items-center gap-1">
+                              <Edit3 size={10} /> Being corrected
+                            </span>
+                          )}
+                          {isCancelled && (
+                            <span className="text-[10px] font-bold text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-2 py-0.5 rounded-md uppercase tracking-wide flex items-center gap-1">
+                              <Ban size={10} /> Cancelled
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {tx.paid > 0 && !isInvalid && <p className="text-xs text-green-600 dark:text-green-400 font-semibold mt-1 pl-9">Paid: {formatCurrency(tx.paid, currency)}</p>}
+                      {isCancelled && tx.cancelReason && <p className="text-[10px] text-red-600 dark:text-red-400 mt-1 pl-9 italic truncate">Reason: {tx.cancelReason}</p>}
+                      
+                      <div className="flex justify-between items-center mt-1 pl-9 pr-2">
+                        {tx.correctsTransactionId && (
+                          <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1">
+                            <ArrowLeft size={10} /> Previous Version
                           </p>
-                          <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{formatDate(tx.date || tx.createdAt)}</p>
-                        </div>
-                      </div>
-                      <div className="text-right flex-shrink-0 ml-2 flex flex-col items-end gap-1">
-                        {tx.amount > 0 && <p className={`text-sm font-bold ${isInvalid ? 'text-gray-400' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(tx.amount, currency)}</p>}
-                        {isBeingCorrected && (
-                          <span className="text-[10px] font-bold text-yellow-700 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/40 px-2 py-0.5 rounded-md uppercase tracking-wide flex items-center gap-1">
-                            <Edit3 size={10} /> Being corrected
-                          </span>
                         )}
-                        {isCancelled && (
-                          <span className="text-[10px] font-bold text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-2 py-0.5 rounded-md uppercase tracking-wide flex items-center gap-1">
-                            <Ban size={10} /> Cancelled
-                          </span>
+                        {tx.replacedByTransactionId && (
+                          <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1">
+                            Updated Receipt <ArrowRight size={10} />
+                          </p>
                         )}
                       </div>
-                    </div>
-                    {tx.paid > 0 && !isInvalid && <p className="text-xs text-green-600 dark:text-green-400 font-semibold mt-1 pl-9">Paid: {formatCurrency(tx.paid, currency)}</p>}
-                    {isCancelled && tx.cancelReason && <p className="text-[10px] text-red-600 dark:text-red-400 mt-1 pl-9 italic truncate">Reason: {tx.cancelReason}</p>}
-                    
-                    {/* 👇 SMART LINKING: Side-by-side layout */}
-                    <div className="flex justify-between items-center mt-1 pl-9 pr-2">
-                      {tx.correctsTransactionId && (
-                        <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1">
-                          <ArrowLeft size={10} /> Previous Version
-                        </p>
-                      )}
-                      {tx.replacedByTransactionId && (
-                        <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1">
-                          Updated Receipt <ArrowRight size={10} />
-                        </p>
-                      )}
-                    </div>
-                  </button>
+                    </button>
+
+                    {/* INLINE EXPANDED OLD RECEIPT */}
+                    {tx.correctsTransactionId && expandedOldTx && expandedOldTx.id === tx.correctsTransactionId && (
+                      <div className="ml-4 pl-4 border-l-2 border-gray-300 dark:border-gray-700">
+                        <button 
+                          onClick={() => setViewingTransaction(expandedOldTx)}
+                          className="w-full text-left p-3 rounded-lg border border-dashed border-red-300 dark:border-red-800 bg-red-50/30 dark:bg-red-950/10 transition active:scale-[0.98]"
+                        >
+                          <div className="flex justify-between items-center mb-1">
+                            <div className="flex items-center gap-2">
+                              <Ban size={12} className="text-red-500" />
+                              <p className="text-xs font-bold text-red-600 dark:text-red-400 uppercase">Previous Version (Cancelled)</p>
+                            </div>
+                            <p className="text-xs font-bold text-gray-500 line-through">{formatCurrency(expandedOldTx.amount, currency)}</p>
+                          </div>
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDate(expandedOldTx.date || expandedOldTx.createdAt)}</p>
+                          {expandedOldTx.cancelReason && <p className="text-[10px] text-red-500 italic mt-1">Reason: {expandedOldTx.cancelReason}</p>}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* TOGGLE BUTTON FOR OLD RECEIPTS */}
+                    {tx.correctsTransactionId && (
+                      <button 
+                        onClick={() => toggleOldReceipt(tx)}
+                        className="w-full flex items-center justify-center gap-1 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition"
+                      >
+                        {expandedOldTx && expandedOldTx.id === tx.correctsTransactionId ? (
+                          <>Hide Previous Version <ChevronUp size={12} /></>
+                        ) : (
+                          <>View Previous Version <ChevronDown size={12} /></>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 );
               })
             )}
@@ -208,12 +261,19 @@ export const SupplierProfilePage = () => {
                 ) : (
                   <span className="px-4 py-1.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full text-xs font-bold uppercase tracking-wider">Completed</span>
                 )}
-                {viewingTransaction.replacedByTransactionId && (
-                  <button onClick={async () => { const replacement = await TransactionService.getById(viewingTransaction.replacedByTransactionId); setViewingTransaction(replacement); }} className="text-xs text-blue-600 dark:text-blue-400 underline flex items-center gap-1">Updated Receipt <ArrowRight size={12} /></button>
-                )}
-                {viewingTransaction.correctsTransactionId && (
-                  <button onClick={async () => { const original = await TransactionService.getById(viewingTransaction.correctsTransactionId); setViewingTransaction(original); }} className="text-xs text-blue-600 dark:text-blue-400 underline flex items-center gap-1"><ArrowLeft size={12} /> Previous Version</button>
-                )}
+                
+                <div className="flex justify-between items-center w-full mt-2 px-2">
+                  {viewingTransaction.correctsTransactionId && (
+                    <button onClick={async () => { const original = await TransactionService.getById(viewingTransaction.correctsTransactionId); setViewingTransaction(original); }} className="text-xs text-blue-600 dark:text-blue-400 underline flex items-center gap-1">
+                      <ArrowLeft size={12} /> Previous Version
+                    </button>
+                  )}
+                  {viewingTransaction.replacedByTransactionId && (
+                    <button onClick={async () => { const replacement = await TransactionService.getById(viewingTransaction.replacedByTransactionId); setViewingTransaction(replacement); }} className="text-xs text-blue-600 dark:text-blue-400 underline flex items-center gap-1">
+                      Updated Receipt <ArrowRight size={12} />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {viewingTransaction.items && viewingTransaction.items.length > 0 && (
