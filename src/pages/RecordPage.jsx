@@ -29,7 +29,7 @@ export const RecordPage = () => {
   const [isFixing, setIsFixing] = useState(false);
   const [fixingOldId, setFixingOldId] = useState(null);
   const [originalAmount, setOriginalAmount] = useState(0);
-  const [fixReason, setFixReason] = useState(""); // 👈 NEW: Holds the reason for the fix
+  const [fixReason, setFixReason] = useState("");
 
   const [undoData, setUndoData] = useState(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
@@ -61,13 +61,10 @@ export const RecordPage = () => {
       setInvoiceItems(fixTransaction.items || []);
       setTx({ amount: fixTransaction.amount?.toString() || "0", paid: fixTransaction.paid?.toString() || "", discount: fixTransaction.discount?.toString() || "", note: fixTransaction.note || "" });
       setOriginalAmount(parseFloat(fixTransaction.amount) || 0);
-      setFixReason(fixTransaction.fixReason || ""); // 👈 NEW: Capture the reason from the modal
+      setFixReason(fixTransaction.fixReason || "");
       
       setMode("existing"); setIsFixing(true); setFixingOldId(fixTransaction.id);
-      
-      // 👇 LOCK THE RECEIPT: Mark as being corrected
       TransactionService.update(fixTransaction.id, { status: 'being_corrected' });
-      
       setFixTransaction(null);
     }
   }, [fixTransaction, customers, setFixTransaction]);
@@ -117,7 +114,7 @@ export const RecordPage = () => {
         setSelectedCustomer(newCustomer); setMode("existing"); setSearchQuery("");
         showToast("✅ Customer created!");
         CustomerService.getAll(currentStore.id).then(setCustomers);
-      }).catch(() => showToast("❌ Failed to create customer."));
+      }).catch(() => showToast(" Failed to create customer."));
     }
   };
 
@@ -150,7 +147,7 @@ export const RecordPage = () => {
 
       if (isFixing && fixingOldId) {
         extraData.correctsTransactionId = fixingOldId;
-        extraData.fixReason = fixReason; // 👈 NEW: Pass the reason to the database
+        extraData.fixReason = fixReason;
         
         const newId = await TransactionService.create(currentStore.id, selectedCustomer.id, 'sale', invoiceItems, finalAmount, finalPaid, tx.note, extraData);
         
@@ -246,6 +243,21 @@ export const RecordPage = () => {
         {mode === "existing" && (
           <DetailedInvoice tx={tx} setTx={setTx} invoiceItems={invoiceItems} setInvoiceItems={setInvoiceItems} products={products} setProducts={setProducts} currentStore={currentStore} showToast={showToast} />
         )}
+        
+        {/* 👇 NOTE FIELD - ADDED FOR CONSISTENCY WITH SUPPLIER SIDE */}
+        {mode === "existing" && (
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 block">Add a note (optional)</label>
+            <textarea 
+              value={tx.note} 
+              onChange={e => setTx({...tx, note: e.target.value})} 
+              placeholder="Add a note (optional)..." 
+              className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white text-sm resize-none" 
+              rows="2" 
+            />
+          </div>
+        )}
+
         {mode === "existing" && (
           <button onClick={handleSaveInvoice} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg">
             <Check size={24} /> {isFixing ? "Save Corrected Sale" : "Save Sale"}
