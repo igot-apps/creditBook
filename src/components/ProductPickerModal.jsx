@@ -219,7 +219,8 @@ export const ProductPickerModal = ({
               placeholder="Search products, brands, categories..."
               className={`w-full pl-12 pr-10 py-3.5 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-2 ${
                 priceType === "purchase" ? "focus:ring-indigo-500 focus:border-indigo-500" : "focus:ring-green-500 focus:border-green-500"
-              } dark:text-white text-base`} autoFocus
+              } dark:text-white text-base`}
+              // 👇 REMOVED: autoFocus to prevent keyboard from popping up automatically
             />
             {searchQuery && (
               <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-gray-200 dark:bg-gray-700 rounded-full">
@@ -254,7 +255,7 @@ export const ProductPickerModal = ({
       <div className="flex-1 overflow-y-auto p-4">
         {filteredProducts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-            <div className="text-6xl mb-4 opacity-50"></div>
+            <div className="text-6xl mb-4 opacity-50">📦</div>
             <p className="text-gray-500 dark:text-gray-400 text-base font-medium">
               {searchQuery ? `No products found for "${searchQuery}"` : "No products in catalog"}
             </p>
@@ -436,4 +437,4 @@ export const ProductPickerModal = ({
       )}
     </div>
   );
-}; 
+};
