@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Truck, Package, Check, X } from "lucide-react";
+import { Search, Plus, Truck, Package, Check, X, RotateCcw } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { SupplierService } from "../services/SupplierService";
@@ -8,6 +8,7 @@ import { TransactionService } from "../services/TransactionService";
 import { ProductPickerModal } from "../components/ProductPickerModal";
 import { AddProductModal } from "../components/AddProductModal";
 import { TopBar } from "../components/TopBar";
+import { db } from "../database/db";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
@@ -15,7 +16,7 @@ export const RecordPurchasePage = () => {
   const { 
     currentStore, setView, prefillTransaction, setPrefillTransaction, showToast, 
     autoDraft, saveDraft, clearAutoDraft,
-    fixTransaction, setFixTransaction
+    fixTransaction, setFixTransaction, lastScrollPosition, setLastScrollPosition
   } = useStore();
   const currency = currentStore?.currency || "GH₵";
 
@@ -35,6 +36,10 @@ export const RecordPurchasePage = () => {
   
   const [isFixing, setIsFixing] = useState(false);
   const [fixingOldId, setFixingOldId] = useState(null);
+  const [originalAmount, setOriginalAmount] = useState(0);
+
+  const [undoData, setUndoData] = useState(null);
+  const [showUndoToast, setShowUndoToast] = useState(false);
 
   useEffect(() => {
     if (currentStore?.id) {
@@ -64,12 +69,25 @@ export const RecordPurchasePage = () => {
       setInvoiceItems(fixTransaction.items || []);
       setNote(fixTransaction.note || '');
       setAmountPaid(fixTransaction.paid?.toString() || '');
+      setOriginalAmount(parseFloat(fixTransaction.amount) || 0);
       setMode("existing");
       setIsFixing(true);
       setFixingOldId(fixTransaction.id);
+      
+      // 👇 LOCK THE RECEIPT
+      TransactionService.update(fixTransaction.id, { status: 'being_corrected' });
+      
       setFixTransaction(null);
     }
   }, [fixTransaction, suppliers, setFixTransaction]);
+
+  const handleAbortFix = async () => {
+    if (fixingOldId) {
+      await TransactionService.update(fixingOldId, { status: 'active' });
+    }
+    setIsFixing(false); setFixingOldId(null);
+    setMode("search"); setSelectedSupplier(null); setAmountPaid(""); setInvoiceItems([]); setNote(""); clearAutoDraft();
+  };
 
   useEffect(() => {
     if (autoDraft && autoDraft.draftType === 'purchase' && suppliers.length > 0 && !selectedSupplier && !prefillTransaction && !isFixing) {
@@ -95,7 +113,6 @@ export const RecordPurchasePage = () => {
   }, [suppliers, searchQuery]);
 
   const handleSelectSupplier = (supplier) => { setSelectedSupplier(supplier); setMode("existing"); setSearchQuery(""); };
-  
   const handleCreateSupplier = () => {
     const name = searchQuery.trim();
     if (name) {
@@ -109,7 +126,6 @@ export const RecordPurchasePage = () => {
   };
 
   const handleProductsSelected = (selectedProducts) => { setInvoiceItems(prev => [...prev, ...selectedProducts]); setShowProductPicker(false); };
-
   const handleSaveProduct = async (productData) => {
     try {
       const newId = await ProductService.create(currentStore.id, productData);
@@ -139,6 +155,18 @@ export const RecordPurchasePage = () => {
   const removeItem = (index) => setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
   const totalAmount = invoiceItems.reduce((sum, item) => { const qty = parseFloat(item.quantity) || 0; const price = parseFloat(item.price) || 0; return sum + (qty * price); }, 0);
 
+  const handleUndoFix = async () => {
+    if (!undoData) return;
+    try {
+      await db.transactions.delete(undoData.newId);
+      await TransactionService.update(undoData.oldId, { status: 'active', cancelReason: null, replacedByTransactionId: null });
+      await SupplierService.updateBalance(undoData.supplierId);
+      setShowUndoToast(false); setUndoData(null);
+      showToast("✅ Correction undone.");
+      setView("suppliers");
+    } catch (error) { console.error(error); showToast("❌ Failed to undo."); }
+  };
+
   const handleSavePurchase = async () => {
     if (!selectedSupplier) return;
     const finalPaid = parseFloat(amountPaid) || 0;
@@ -146,49 +174,61 @@ export const RecordPurchasePage = () => {
     if (finalTotal === 0 && finalPaid === 0 && !note.trim() && invoiceItems.length === 0) { showToast("⚠️ Please add items, a payment amount, or a note."); return; }
 
     try {
+      const extraData = { contactName: selectedSupplier.name, contactPhone: selectedSupplier.phone };
+
       if (isFixing && fixingOldId) {
+        extraData.correctsTransactionId = fixingOldId;
         const newId = await TransactionService.create(
-          currentStore.id,
-          selectedSupplier.id,
-          transactionType === "payment" ? "payment" : "purchase",
-          invoiceItems,
-          finalTotal,
-          finalPaid,
-          note,
-          { 
-            correctsTransactionId: fixingOldId,
-            contactName: selectedSupplier.name,
-            contactPhone: selectedSupplier.phone
-          }
+          currentStore.id, selectedSupplier.id, transactionType === "payment" ? "payment" : "purchase",
+          invoiceItems, finalTotal, finalPaid, note, extraData
         );
-        await TransactionService.update(fixingOldId, { replacedByTransactionId: newId });
-        showToast("✅ Transaction corrected!");
+        
+        await TransactionService.update(fixingOldId, { 
+          replacedByTransactionId: newId,
+          status: 'cancelled',
+          cancelReason: `Replaced by ${transactionType === "payment" ? "Payment" : "Purchase"} ${newId}`
+        });
+        await SupplierService.updateBalance(selectedSupplier.id);
+        
+        setUndoData({ newId, oldId: fixingOldId, supplierId: selectedSupplier.id });
+        setShowUndoToast(true);
+        setTimeout(() => { setShowUndoToast(false); setUndoData(null); }, 10000);
+        
         setIsFixing(false); setFixingOldId(null);
       } else {
-        await TransactionService.create(
-          currentStore.id,
-          selectedSupplier.id,
-          transactionType === "payment" ? "payment" : "purchase",
-          invoiceItems,
-          finalTotal,
-          finalPaid,
-          note,
-          {
-            contactName: selectedSupplier.name,
-            contactPhone: selectedSupplier.phone
-          }
-        );
+        await TransactionService.create(currentStore.id, selectedSupplier.id, transactionType === "payment" ? "payment" : "purchase", invoiceItems, finalTotal, finalPaid, note, extraData);
         await clearAutoDraft();
         showToast("✅ Transaction recorded!");
       }
+      setLastScrollPosition(window.scrollY);
       setView("suppliers");
     } catch (error) { console.error(error); showToast("❌ Failed to record transaction."); }
   };
 
+  const currentTotal = transactionType === "payment" ? 0 : totalAmount;
+  const difference = currentTotal - originalAmount;
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      <TopBar title={isFixing ? (transactionType === "purchase" ? "Fix Purchase" : "Fix Payment") : (transactionType === "purchase" ? "Record Purchase" : "Make Payment")} showBack={true} onBack={() => setView("suppliers")} />
+      <TopBar title={isFixing ? (transactionType === "purchase" ? "Fix Purchase" : "Fix Payment") : (transactionType === "purchase" ? "Record Purchase" : "Make Payment")} showBack={true} onBack={isFixing ? handleAbortFix : () => setView("suppliers")} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
+        
+        {isFixing && transactionType === "purchase" && (
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 p-3 rounded-r-xl shadow-sm">
+            <p className="text-[10px] font-bold text-yellow-800 dark:text-yellow-400 uppercase tracking-wider mb-1">Editing Previous Purchase</p>
+            <div className="flex justify-between text-sm mb-1">
+              <span className="text-gray-600 dark:text-gray-400">Original: {formatCurrency(originalAmount, currency)}</span>
+              <span className="font-bold text-gray-900 dark:text-white">Current: {formatCurrency(currentTotal, currency)}</span>
+            </div>
+            <div className="pt-1 border-t border-yellow-200 dark:border-yellow-800/50 flex justify-between text-sm font-bold">
+              <span className="text-gray-700 dark:text-gray-300">Difference:</span>
+              <span className={difference >= 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}>
+                {difference >= 0 ? "+" : ""}{formatCurrency(difference, currency)}
+              </span>
+            </div>
+          </div>
+        )}
+
         {mode === "search" && (
           <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <p className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2"><Truck size={16} className="text-indigo-600" /> Select Supplier</p>
@@ -220,7 +260,7 @@ export const RecordPurchasePage = () => {
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedSupplier.name}</p>
               </div>
               {!isFixing && (
-                <button onClick={() => { setMode("search"); setSelectedSupplier(null); setAmountPaid(""); setInvoiceItems([]); setNote(""); clearAutoDraft(); }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
+                <button onClick={handleAbortFix} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
               )}
             </div>
           </div>
@@ -271,6 +311,18 @@ export const RecordPurchasePage = () => {
       </div>
       <ProductPickerModal isOpen={showProductPicker} onClose={() => setShowProductPicker(false)} products={products} currentStore={currentStore} onProductsSelected={handleProductsSelected} priceType="purchase" onRequestCreateProduct={(name) => { setShowProductPicker(false); setNewProductName(name); setShowAddProductModal(true); }} />
       <AddProductModal isOpen={showAddProductModal} onClose={() => setShowAddProductModal(false)} onSave={handleSaveProduct} initialName={newProductName} />
+
+      {showUndoToast && (
+        <div className="fixed bottom-24 left-4 right-4 max-w-lg mx-auto bg-gray-900 dark:bg-white text-white dark:text-gray-900 p-4 rounded-xl shadow-2xl flex items-center justify-between z-[200] animate-in slide-in-from-bottom-5">
+          <div>
+            <p className="font-bold text-sm">Transaction corrected!</p>
+            <p className="text-xs opacity-80">Tap undo to revert changes.</p>
+          </div>
+          <button onClick={handleUndoFix} className="flex items-center gap-1 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 rounded-lg font-bold text-sm active:scale-95 transition">
+            <RotateCcw size={14} /> Undo
+          </button>
+        </div>
+      )}
     </div>
   );
 };

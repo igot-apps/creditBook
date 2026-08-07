@@ -33,14 +33,16 @@ const useStore = create((set, get) => ({
   selectedCustomer: null,
   selectedSupplier: null,
   prefillTransaction: null,
-  fixTransaction: null, // 👈 NEW: Holds the transaction data when the user clicks "Fix"
+  fixTransaction: null, 
   drafts: [],
   autoDraft: null,
   isMenuOpen: false,
   pageKey: Date.now(), 
+  lastScrollPosition: 0, // 👈 NEW: For scroll preservation
 
   setView: (view) => set({ view }),
   refreshPage: () => set({ pageKey: Date.now() }),
+  setLastScrollPosition: (pos) => set({ lastScrollPosition: pos }), // 👈 NEW: Setter
 
   setTheme: (theme) => {
     safeLocalStorage.setItem('cb_theme', theme);
@@ -65,7 +67,7 @@ const useStore = create((set, get) => ({
   setSelectedCustomer: (customer) => set({ selectedCustomer: customer }),
   setSelectedSupplier: (supplier) => set({ selectedSupplier: supplier }),
   setPrefillTransaction: (tx) => set({ prefillTransaction: tx }),
-  setFixTransaction: (tx) => set({ fixTransaction: tx }), // 👈 NEW: Setter for fix transaction
+  setFixTransaction: (tx) => set({ fixTransaction: tx }), 
   setIsMenuOpen: (isOpen) => set({ isMenuOpen: isOpen }),
 
   fetchDrafts: async () => {
@@ -86,7 +88,6 @@ const useStore = create((set, get) => ({
     if (!currentStore) return;
     
     try {
-      // 👇 FIX: Guarantee an ID always exists before saving to IndexedDB
       const dataToSave = {
         id: draftData.id || `draft_${Date.now()}`,
         ...draftData,
@@ -179,7 +180,6 @@ const useStore = create((set, get) => ({
       set({ view: 'home' });
     } catch (error) {
       console.error("DB init failed (Safari fallback triggered):", error);
-      // 👇 Solid fallback to prevent white screen even if DB completely fails
       set({ 
         view: 'home', 
         currentStore: { name: 'My Business', ownerName: 'Owner', currency: 'GH₵' }, 
