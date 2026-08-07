@@ -4,7 +4,6 @@ import { ContactService } from './ContactService';
 export const TransactionService = {
 
   // 1. GET ALL TRANSACTIONS
-  // Can filter by store, contact, or type ('sale' | 'purchase')
   getAll: async (storeId, filters = {}) => {
     let query = db.transactions.where('storeId').equals(storeId);
     
@@ -18,7 +17,7 @@ export const TransactionService = {
     const transactions = await query.toArray();
     
     // Sort by date descending (newest first)
-    return transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+    return transactions.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
   },
 
   // 2. GET SINGLE TRANSACTION
@@ -26,67 +25,92 @@ export const TransactionService = {
     return await db.transactions.get(txId);
   },
 
-  // 3. CREATE TRANSACTION (The Immutable Fact)
-  // Saves exactly what happened. Never references current product defaults.
-  create: async (storeId, contactId, type, items, amount, paid, note) => {
+  // 3. UPDATE TRANSACTION (👈 ADDED: Used for linking corrected transactions)
+  update: async (txId, updates) => {
+    return await db.transactions.update(txId, updates);
+  },
+
+  // 4. CREATE TRANSACTION (The Immutable Fact)
+  create: async (storeId, contactId, type, items, amount, paid, note, extraData = {}) => {
     const newTx = {
       id: 'tx_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
       storeId,
       contactId,
-      type, // 'sale' or 'purchase'
-      items: items || [], // Array of { name, unitName, quantity, unitPrice, total }
+      type, // 'sale' or 'purchase' or 'payment'
+      items: items || [], 
       amount: parseFloat(amount) || 0,
       paid: parseFloat(paid) || 0,
       note: note || '',
       date: new Date().toISOString(),
-      isVoid: false,
-      voidReason: null
+      createdAt: new Date().toISOString(),
+      // 👇 NEW: Save contact details for reliable "Fix" restoration
+      contactName: extraData.contactName || null,
+      contactPhone: extraData.contactPhone || null,
+      // 👇 NEW FIELDS FOR FIX/CANCEL WORKFLOW
+      status: extraData.status || 'active', 
+      cancelReason: extraData.cancelReason || null,
+      replacedByTransactionId: extraData.replacedByTransactionId || null,
+      correctsTransactionId: extraData.correctsTransactionId || null
     };
 
     await db.transactions.add(newTx);
-
-    // Automatically recalculate and update the contact's balance
     await ContactService.updateBalance(contactId);
 
     return newTx.id;
   },
 
-  // 4. VOID (CANCEL) TRANSACTION
-  // Marks as void and provides a reason. Does NOT delete the record.
-  voidTransaction: async (txId, reason) => {
+  // 5. CANCEL TRANSACTION
+  cancelTransaction: async (txId, reason) => {
     const tx = await db.transactions.get(txId);
     if (!tx) throw new Error("Transaction not found");
 
     await db.transactions.update(txId, {
-      isVoid: true,
-      voidReason: reason || 'No reason provided',
-      voidedAt: new Date().toISOString()
+      status: 'cancelled',
+      cancelReason: reason || 'No reason provided',
+      cancelledAt: new Date().toISOString()
     });
 
     // Recalculate balance to remove the impact of this transaction
     await ContactService.updateBalance(tx.contactId);
   },
 
-  // 5. REDO (RESTORE) TRANSACTION
-  // Brings a voided transaction back to life.
+  // 6. REDO (RESTORE) TRANSACTION
   redoTransaction: async (txId) => {
     const tx = await db.transactions.get(txId);
     if (!tx) throw new Error("Transaction not found");
 
     await db.transactions.update(txId, {
-      isVoid: false,
-      voidReason: null,
-      voidedAt: null
+      status: 'active',
+      cancelReason: null,
+      cancelledAt: null
     });
 
     // Recalculate balance to re-apply the impact
     await ContactService.updateBalance(tx.contactId);
   },
 
-  // 6. GET HISTORY FOR A CONTACT
-  // Used by Profile pages to show the timeline of sales/purchases
+  // 7. GET HISTORY FOR A CONTACT
   getHistory: async (contactId) => {
     const transactions = await db.transactions.where('contactId').equals(contactId).toArray();
-    return transactions.sort((a, b) => new Date(a.date) - new Date(b.date)); // Oldest first for timeline
+    // Sort newest first for the timeline
+    return transactions.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
+  },
+
+  // 8. CALCULATE BALANCE (Ignores cancelled transactions)
+  calculateBalance: async (contactId) => {
+    const transactions = await db.transactions.where('contactId').equals(contactId).toArray();
+    
+    let totalAmount = 0;
+    let totalPaid = 0;
+
+    transactions.forEach(tx => {
+      // 👇 CRITICAL: Ignore cancelled transactions for balance calculation
+      if (tx.status !== 'cancelled') {
+        totalAmount += parseFloat(tx.amount) || 0;
+        totalPaid += parseFloat(tx.paid) || 0;
+      }
+    });
+
+    return totalAmount - totalPaid;
   }
 };

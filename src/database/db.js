@@ -56,9 +56,9 @@ db.version(3).stores({
 
 // Version 4: Force refresh to fix SchemaError
 db.version(4).stores({
-  stores: 'id, name, ownerName, email, phone, currency, createdAt',
-  contacts: 'id, storeId, name, phone, type, balance, isArchived, createdAt',
-  products: 'id, storeId, name, category, brand, isFavourite, usageCount, createdAt',
-  transactions: 'id, storeId, contactId, type, amount, paid, date, isVoid', 
-  drafts: 'id, storeId, isAuto, createdAt, updatedAt'
+  stores: '++id, name',
+  contacts: '++id, storeId, type, name, phone, createdAt',
+  products: '++id, storeId, name, category, brand, isFavourite, usageCount, lastUsedAt, createdAt',
+  // 👇 NEW: Added indexes for status, replacedByTransactionId, correctsTransactionId
+  transactions: '++id, storeId, contactId, type, status, replacedByTransactionId, correctsTransactionId, createdAt'
 });

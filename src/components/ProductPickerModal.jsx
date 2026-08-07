@@ -436,4 +436,4 @@ export const ProductPickerModal = ({
       )}
     </div>
   );
-};
+}; 

@@ -33,6 +33,7 @@ const useStore = create((set, get) => ({
   selectedCustomer: null,
   selectedSupplier: null,
   prefillTransaction: null,
+  fixTransaction: null, // 👈 NEW: Holds the transaction data when the user clicks "Fix"
   drafts: [],
   autoDraft: null,
   isMenuOpen: false,
@@ -64,6 +65,7 @@ const useStore = create((set, get) => ({
   setSelectedCustomer: (customer) => set({ selectedCustomer: customer }),
   setSelectedSupplier: (supplier) => set({ selectedSupplier: supplier }),
   setPrefillTransaction: (tx) => set({ prefillTransaction: tx }),
+  setFixTransaction: (tx) => set({ fixTransaction: tx }), // 👈 NEW: Setter for fix transaction
   setIsMenuOpen: (isOpen) => set({ isMenuOpen: isOpen }),
 
   fetchDrafts: async () => {

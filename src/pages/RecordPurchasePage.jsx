@@ -4,6 +4,7 @@ import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { SupplierService } from "../services/SupplierService";
 import { ProductService } from "../services/ProductService";
+import { TransactionService } from "../services/TransactionService";
 import { ProductPickerModal } from "../components/ProductPickerModal";
 import { AddProductModal } from "../components/AddProductModal";
 import { TopBar } from "../components/TopBar";
@@ -11,7 +12,11 @@ import { TopBar } from "../components/TopBar";
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
 export const RecordPurchasePage = () => {
-  const { currentStore, setView, prefillTransaction, setPrefillTransaction, showToast, autoDraft, saveDraft, clearAutoDraft } = useStore();
+  const { 
+    currentStore, setView, prefillTransaction, setPrefillTransaction, showToast, 
+    autoDraft, saveDraft, clearAutoDraft,
+    fixTransaction, setFixTransaction
+  } = useStore();
   const currency = currentStore?.currency || "GH₵";
 
   const [mode, setMode] = useState("search");
@@ -27,6 +32,9 @@ export const RecordPurchasePage = () => {
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [showAddProductModal, setShowAddProductModal] = useState(false);
   const [newProductName, setNewProductName] = useState("");
+  
+  const [isFixing, setIsFixing] = useState(false);
+  const [fixingOldId, setFixingOldId] = useState(null);
 
   useEffect(() => {
     if (currentStore?.id) {
@@ -40,34 +48,44 @@ export const RecordPurchasePage = () => {
       const supplier = (Array.isArray(suppliers) ? suppliers : []).find(s => s.id === prefillTransaction.supplierId) || {
         id: prefillTransaction.supplierId, name: prefillTransaction.name || "Unknown Supplier", phone: prefillTransaction.phone || ""
       };
-      setSelectedSupplier(supplier);
-      setMode("existing");
-      setTransactionType(prefillTransaction.type || "purchase");
+      setSelectedSupplier(supplier); setMode("existing"); setTransactionType(prefillTransaction.type || "purchase");
       if (prefillTransaction.paid !== undefined) setAmountPaid(prefillTransaction.paid.toString());
-      setPrefillTransaction(null);
-      clearAutoDraft();
+      setPrefillTransaction(null); clearAutoDraft();
     }
   }, [prefillTransaction, suppliers, setPrefillTransaction, clearAutoDraft]);
 
   useEffect(() => {
-    if (autoDraft && autoDraft.draftType === 'purchase' && suppliers.length > 0 && !selectedSupplier && !prefillTransaction) {
-      const draftSupplier = suppliers.find(s => s.id === autoDraft.supplierId) || { id: autoDraft.supplierId, name: autoDraft.supplierName || 'Unknown Supplier', phone: autoDraft.supplierPhone || '' };
-      setSelectedSupplier(draftSupplier);
-      setTransactionType(autoDraft.transactionType || "purchase");
-      setInvoiceItems(autoDraft.invoiceItems || []);
-      setNote(autoDraft.note || '');
-      setAmountPaid(autoDraft.amountPaid || '');
+    if (fixTransaction && fixTransaction.id) {
+      const supplier = (Array.isArray(suppliers) ? suppliers : []).find(s => s.id === fixTransaction.contactId) || {
+        id: fixTransaction.contactId, name: fixTransaction.contactName || "Unknown Supplier", phone: fixTransaction.contactPhone || ""
+      };
+      setSelectedSupplier(supplier);
+      setTransactionType(fixTransaction.type || "purchase");
+      setInvoiceItems(fixTransaction.items || []);
+      setNote(fixTransaction.note || '');
+      setAmountPaid(fixTransaction.paid?.toString() || '');
       setMode("existing");
+      setIsFixing(true);
+      setFixingOldId(fixTransaction.id);
+      setFixTransaction(null);
     }
-  }, [autoDraft, suppliers, selectedSupplier, prefillTransaction]);
+  }, [fixTransaction, suppliers, setFixTransaction]);
 
   useEffect(() => {
-    if (mode === 'existing' && selectedSupplier) {
+    if (autoDraft && autoDraft.draftType === 'purchase' && suppliers.length > 0 && !selectedSupplier && !prefillTransaction && !isFixing) {
+      const draftSupplier = suppliers.find(s => s.id === autoDraft.supplierId) || { id: autoDraft.supplierId, name: autoDraft.supplierName || 'Unknown Supplier', phone: autoDraft.supplierPhone || '' };
+      setSelectedSupplier(draftSupplier); setTransactionType(autoDraft.transactionType || "purchase");
+      setInvoiceItems(autoDraft.invoiceItems || []); setNote(autoDraft.note || ''); setAmountPaid(autoDraft.amountPaid || ''); setMode("existing");
+    }
+  }, [autoDraft, suppliers, selectedSupplier, prefillTransaction, isFixing]);
+
+  useEffect(() => {
+    if (mode === 'existing' && selectedSupplier && !isFixing) {
       const draftData = { supplierId: selectedSupplier.id, supplierName: selectedSupplier.name, supplierPhone: selectedSupplier.phone, transactionType, invoiceItems, note, amountPaid, draftType: 'purchase' };
       const timeoutId = setTimeout(() => { saveDraft(draftData, true); }, 500);
       return () => clearTimeout(timeoutId);
     }
-  }, [selectedSupplier, transactionType, invoiceItems, note, amountPaid, mode, saveDraft]);
+  }, [selectedSupplier, transactionType, invoiceItems, note, amountPaid, mode, saveDraft, isFixing]);
 
   const filteredSuppliers = useMemo(() => {
     if (!Array.isArray(suppliers)) return [];
@@ -77,6 +95,7 @@ export const RecordPurchasePage = () => {
   }, [suppliers, searchQuery]);
 
   const handleSelectSupplier = (supplier) => { setSelectedSupplier(supplier); setMode("existing"); setSearchQuery(""); };
+  
   const handleCreateSupplier = () => {
     const name = searchQuery.trim();
     if (name) {
@@ -125,17 +144,50 @@ export const RecordPurchasePage = () => {
     const finalPaid = parseFloat(amountPaid) || 0;
     const finalTotal = transactionType === "payment" ? 0 : totalAmount;
     if (finalTotal === 0 && finalPaid === 0 && !note.trim() && invoiceItems.length === 0) { showToast("⚠️ Please add items, a payment amount, or a note."); return; }
+
     try {
-      await SupplierService.addTransaction(currentStore.id, selectedSupplier.id, finalTotal, finalPaid, invoiceItems, note);
-      await clearAutoDraft();
-      showToast("✅ Transaction recorded!");
+      if (isFixing && fixingOldId) {
+        const newId = await TransactionService.create(
+          currentStore.id,
+          selectedSupplier.id,
+          transactionType === "payment" ? "payment" : "purchase",
+          invoiceItems,
+          finalTotal,
+          finalPaid,
+          note,
+          { 
+            correctsTransactionId: fixingOldId,
+            contactName: selectedSupplier.name,
+            contactPhone: selectedSupplier.phone
+          }
+        );
+        await TransactionService.update(fixingOldId, { replacedByTransactionId: newId });
+        showToast("✅ Transaction corrected!");
+        setIsFixing(false); setFixingOldId(null);
+      } else {
+        await TransactionService.create(
+          currentStore.id,
+          selectedSupplier.id,
+          transactionType === "payment" ? "payment" : "purchase",
+          invoiceItems,
+          finalTotal,
+          finalPaid,
+          note,
+          {
+            contactName: selectedSupplier.name,
+            contactPhone: selectedSupplier.phone
+          }
+        );
+        await clearAutoDraft();
+        showToast("✅ Transaction recorded!");
+      }
       setView("suppliers");
     } catch (error) { console.error(error); showToast("❌ Failed to record transaction."); }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      <TopBar title={transactionType === "purchase" ? "Record Purchase" : "Make Payment"} showBack={true} onBack={() => setView("suppliers")} />
+      <TopBar title={isFixing ? (transactionType === "purchase" ? "Fix Purchase" : "Fix Payment") : (transactionType === "purchase" ? "Record Purchase" : "Make Payment")} showBack={true} onBack={() => setView("suppliers")} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
         {mode === "search" && (
           <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
@@ -163,8 +215,13 @@ export const RecordPurchasePage = () => {
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-indigo-100 dark:border-indigo-900/30">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0">{selectedSupplier.name.charAt(0)}</div>
-              <div className="flex-1 min-w-0"><p className="text-xs text-indigo-600 dark:text-indigo-400 uppercase font-bold">{transactionType === "purchase" ? "Buying from" : "Paying to"}</p><p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedSupplier.name}</p></div>
-              <button onClick={() => { setMode("search"); setSelectedSupplier(null); setAmountPaid(""); setInvoiceItems([]); setNote(""); clearAutoDraft(); }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-indigo-600 dark:text-indigo-400 uppercase font-bold">{isFixing ? "Correcting" : (transactionType === "purchase" ? "Buying from" : "Paying to")}</p>
+                <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedSupplier.name}</p>
+              </div>
+              {!isFixing && (
+                <button onClick={() => { setMode("search"); setSelectedSupplier(null); setAmountPaid(""); setInvoiceItems([]); setNote(""); clearAutoDraft(); }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
+              )}
             </div>
           </div>
         )}
@@ -207,33 +264,13 @@ export const RecordPurchasePage = () => {
                 <input type="number" inputMode="decimal" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="0.00" className={`w-full text-xl font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`} autoFocus={transactionType === "payment"} />
               </div>
               <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Add a note (optional)..." className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm resize-none" rows="2" />
-              <button onClick={handleSavePurchase} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"><Check size={24} /> {transactionType === "purchase" && totalAmount > 0 ? "Save Purchase" : "Save Payment"}</button>
+              <button onClick={handleSavePurchase} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"><Check size={24} /> {isFixing ? "Save Corrected Transaction" : (transactionType === "purchase" && totalAmount > 0 ? "Save Purchase" : "Save Payment")}</button>
             </div>
           </>
         )}
       </div>
-
-      <ProductPickerModal
-        isOpen={showProductPicker}
-        onClose={() => setShowProductPicker(false)}
-        products={products}
-        currentStore={currentStore}
-        onProductsSelected={handleProductsSelected}
-        priceType="purchase"
-        // 👇 FIX: Close the picker BEFORE opening the Add Product modal to prevent z-index conflicts
-        onRequestCreateProduct={(name) => { 
-          setShowProductPicker(false); 
-          setNewProductName(name); 
-          setShowAddProductModal(true); 
-        }}
-      />
-
-      <AddProductModal
-        isOpen={showAddProductModal}
-        onClose={() => setShowAddProductModal(false)}
-        onSave={handleSaveProduct}
-        initialName={newProductName}
-      />
+      <ProductPickerModal isOpen={showProductPicker} onClose={() => setShowProductPicker(false)} products={products} currentStore={currentStore} onProductsSelected={handleProductsSelected} priceType="purchase" onRequestCreateProduct={(name) => { setShowProductPicker(false); setNewProductName(name); setShowAddProductModal(true); }} />
+      <AddProductModal isOpen={showAddProductModal} onClose={() => setShowAddProductModal(false)} onSave={handleSaveProduct} initialName={newProductName} />
     </div>
   );
 };

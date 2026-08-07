@@ -4,13 +4,15 @@ import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
 import { ProductService } from "../services/ProductService";
+import { TransactionService } from "../services/TransactionService";
 import { DetailedInvoice } from "../components/DetailedInvoice";
 import { TopBar } from "../components/TopBar";
 
 export const RecordPage = () => {
   const { 
     currentStore, setView, prefillTransaction, setPrefillTransaction, showToast, 
-    autoDraft, saveDraft, clearAutoDraft 
+    autoDraft, saveDraft, clearAutoDraft,
+    fixTransaction, setFixTransaction
   } = useStore();
   const currency = currentStore?.currency || "GH₵";
 
@@ -22,6 +24,9 @@ export const RecordPage = () => {
   
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [tx, setTx] = useState({ amount: "0", paid: "", discount: "", note: "" });
+  
+  const [isFixing, setIsFixing] = useState(false);
+  const [fixingOldId, setFixingOldId] = useState(null);
 
   // 1. Load Data
   useEffect(() => {
@@ -29,14 +34,13 @@ export const RecordPage = () => {
       CustomerService.getAll(currentStore.id)
         .then(res => setCustomers(Array.isArray(res) ? res : []))
         .catch(() => setCustomers([]));
-        
       ProductService.getAll(currentStore.id)
         .then(res => setProducts(Array.isArray(res) ? res : []))
         .catch(() => setProducts([]));
     }
   }, [currentStore?.id]);
 
-  // 2. Handle prefill from Customer Profile
+  // 2. Handle Prefill (from profile)
   useEffect(() => {
     if (prefillTransaction && prefillTransaction.customerId) {
       const customer = (Array.isArray(customers) ? customers : []).find(c => c.id === prefillTransaction.customerId) || {
@@ -52,15 +56,36 @@ export const RecordPage = () => {
     }
   }, [prefillTransaction, customers, setPrefillTransaction, clearAutoDraft]);
 
-  // 3. Intelligent Restore from Draft
+  // 3. Handle Fix Transaction
   useEffect(() => {
-    if (autoDraft && autoDraft.draftType === 'sale' && customers.length > 0 && !selectedCustomer && !prefillTransaction) {
-      const draftCustomer = customers.find(c => c.id === autoDraft.customerId) || {
-        id: autoDraft.customerId,
-        name: autoDraft.customerName || 'Unknown Customer',
-        phone: autoDraft.customerPhone || ''
+    if (fixTransaction && fixTransaction.id) {
+      const customer = (Array.isArray(customers) ? customers : []).find(c => c.id === fixTransaction.contactId) || {
+        id: fixTransaction.contactId, 
+        name: fixTransaction.contactName || "Unknown Customer", 
+        phone: fixTransaction.contactPhone || ""
       };
       
+      setSelectedCustomer(customer);
+      setInvoiceItems(fixTransaction.items || []);
+      setTx({
+        amount: fixTransaction.amount?.toString() || "0",
+        paid: fixTransaction.paid?.toString() || "",
+        discount: fixTransaction.discount?.toString() || "",
+        note: fixTransaction.note || ""
+      });
+      setMode("existing");
+      setIsFixing(true);
+      setFixingOldId(fixTransaction.id);
+      setFixTransaction(null);
+    }
+  }, [fixTransaction, customers, setFixTransaction]);
+
+  // 4. Intelligent Restore (Drafts)
+  useEffect(() => {
+    if (autoDraft && autoDraft.draftType === 'sale' && customers.length > 0 && !selectedCustomer && !prefillTransaction && !isFixing) {
+      const draftCustomer = customers.find(c => c.id === autoDraft.customerId) || {
+        id: autoDraft.customerId, name: autoDraft.customerName || 'Unknown Customer', phone: autoDraft.customerPhone || ''
+      };
       setSelectedCustomer(draftCustomer);
       setInvoiceItems(autoDraft.invoiceItems || []);
       setTx({
@@ -71,32 +96,20 @@ export const RecordPage = () => {
       });
       setMode("existing");
     }
-  }, [autoDraft, customers, selectedCustomer, prefillTransaction]);
+  }, [autoDraft, customers, selectedCustomer, prefillTransaction, isFixing]);
 
-  // 4. Intelligent Auto-Save
+  // 5. Intelligent Auto-Save
   useEffect(() => {
-    if (mode === 'existing' && selectedCustomer) {
+    if (mode === 'existing' && selectedCustomer && !isFixing) {
       const draftData = {
-        customerId: selectedCustomer.id,
-        customerName: selectedCustomer.name,
-        customerPhone: selectedCustomer.phone,
-        invoiceItems,
-        amount: tx.amount,
-        paid: tx.paid,
-        discount: tx.discount,
-        note: tx.note,
-        draftType: 'sale'
+        customerId: selectedCustomer.id, customerName: selectedCustomer.name, customerPhone: selectedCustomer.phone,
+        invoiceItems, amount: tx.amount, paid: tx.paid, discount: tx.discount, note: tx.note, draftType: 'sale'
       };
-      
-      const timeoutId = setTimeout(() => {
-        saveDraft(draftData, true);
-      }, 500);
-      
+      const timeoutId = setTimeout(() => { saveDraft(draftData, true); }, 500);
       return () => clearTimeout(timeoutId);
     }
-  }, [selectedCustomer, invoiceItems, tx, mode, saveDraft]);
+  }, [selectedCustomer, invoiceItems, tx, mode, saveDraft, isFixing]);
 
-  // 5. Filter Customers
   const filteredCustomers = useMemo(() => {
     if (!Array.isArray(customers)) return [];
     if (!searchQuery.trim()) return customers;
@@ -104,11 +117,10 @@ export const RecordPage = () => {
     return customers.filter(c => c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)));
   }, [customers, searchQuery]);
 
-  // 6. Actions
-  const handleSelectCustomer = (customer) => {
-    setSelectedCustomer(customer);
-    setMode("existing");
-    setSearchQuery("");
+  const handleSelectCustomer = (customer) => { 
+    setSelectedCustomer(customer); 
+    setMode("existing"); 
+    setSearchQuery(""); 
   };
 
   const handleCreateCustomer = () => {
@@ -129,7 +141,6 @@ export const RecordPage = () => {
 
   const handleSaveInvoice = async () => {
     if (!selectedCustomer) return;
-    
     const finalAmount = parseFloat(tx.amount) || 0;
     const finalPaid = parseFloat(tx.paid) || 0;
 
@@ -139,17 +150,44 @@ export const RecordPage = () => {
     }
 
     try {
-      await CustomerService.addTransaction(
-        currentStore.id,
-        selectedCustomer.id,
-        finalAmount,
-        finalPaid,
-        invoiceItems,
-        tx.note
-      );
+      const extraData = {
+        contactName: selectedCustomer.name,
+        contactPhone: selectedCustomer.phone
+      };
+
+      if (isFixing && fixingOldId) {
+        extraData.correctsTransactionId = fixingOldId;
+        
+        const newId = await TransactionService.create(
+          currentStore.id,
+          selectedCustomer.id,
+          'sale',
+          invoiceItems,
+          finalAmount,
+          finalPaid,
+          tx.note,
+          extraData
+        );
+        
+        await TransactionService.update(fixingOldId, { replacedByTransactionId: newId });
+        showToast("✅ Sale corrected!");
+        setIsFixing(false);
+        setFixingOldId(null);
+      } else {
+        await TransactionService.create(
+          currentStore.id,
+          selectedCustomer.id,
+          'sale',
+          invoiceItems,
+          finalAmount,
+          finalPaid,
+          tx.note,
+          extraData
+        );
+        await clearAutoDraft();
+        showToast("✅ Sale recorded!");
+      }
       
-      await clearAutoDraft();
-      showToast("✅ Sale recorded!");
       setView("customers");
     } catch (error) {
       console.error(error);
@@ -159,7 +197,7 @@ export const RecordPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      <TopBar title="Record Sale" showBack={true} onBack={() => setView("customers")} />
+      <TopBar title={isFixing ? "Fix Sale" : "Record Sale"} showBack={true} onBack={() => setView("customers")} />
       
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
         
@@ -217,21 +255,27 @@ export const RecordPage = () => {
                 {selectedCustomer.name.charAt(0)}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-green-600 dark:text-green-400 uppercase font-bold">Selling to</p>
+                <p className="text-xs text-green-600 dark:text-green-400 uppercase font-bold">
+                  {isFixing ? "Correcting sale for" : "Selling to"}
+                </p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedCustomer.name}</p>
               </div>
-              <button onClick={() => { 
-                setMode("search"); 
-                setSelectedCustomer(null); 
-                setInvoiceItems([]); 
-                setTx({ amount: "0", paid: "", discount: "", note: "" });
-                clearAutoDraft(); 
-              }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
+              {!isFixing && (
+                <button onClick={() => { 
+                  setMode("search"); 
+                  setSelectedCustomer(null); 
+                  setInvoiceItems([]); 
+                  setTx({ amount: "0", paid: "", discount: "", note: "" }); 
+                  clearAutoDraft(); 
+                }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">
+                  Change
+                </button>
+              )}
             </div>
           </div>
         )}
 
-        {/* 3. DETAILED INVOICE WITH PRODUCT PICKER */}
+        {/* 3. DETAILED INVOICE COMPONENT */}
         {mode === "existing" && (
           <DetailedInvoice 
             tx={tx} 
@@ -239,7 +283,7 @@ export const RecordPage = () => {
             invoiceItems={invoiceItems} 
             setInvoiceItems={setInvoiceItems} 
             products={products} 
-            setProducts={setProducts}
+            setProducts={setProducts} 
             currentStore={currentStore} 
             showToast={showToast} 
           />
@@ -251,7 +295,7 @@ export const RecordPage = () => {
             onClick={handleSaveInvoice}
             className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
           >
-            <Check size={24} /> Save Sale
+            <Check size={24} /> {isFixing ? "Save Corrected Sale" : "Save Sale"}
           </button>
         )}
       </div>
