@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Search, X, Plus, Check, Star, ArrowLeft } from "lucide-react";
+import { Search, X, Plus, Check, Star, ArrowLeft, Minus } from "lucide-react";
 import { ProductService, CATEGORY_EMOJIS } from "../services/ProductService";
 import { formatCurrency } from "../utils/helpers";
 
@@ -17,7 +17,10 @@ export const ProductPickerModal = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [activeTab, setActiveTab] = useState("all");
-  const [selectedProductForUnit, setSelectedProductForUnit] = useState(null);
+  
+  const [multiUnitProduct, setMultiUnitProduct] = useState(null);
+  const [tempQuantities, setTempQuantities] = useState({});
+
   const [addedProducts, setAddedProducts] = useState([]);
   const [categories, setCategories] = useState([]);
 
@@ -31,20 +34,13 @@ export const ProductPickerModal = ({
 
   const filteredProducts = useMemo(() => {
     if (!Array.isArray(products)) return [];
-
     let result = [...products];
 
-    if (activeTab === "favorites") {
-      result = result.filter(p => p.isFavourite);
-    } else if (activeTab === "recent") {
-      result = result.filter(p => p.lastUsedAt).sort((a, b) => new Date(b.lastUsedAt) - new Date(a.lastUsedAt)).slice(0, 10);
-    } else if (activeTab === "most-used") {
-      result = result.filter(p => (p.usageCount || 0) > 0).sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0)).slice(0, 10);
-    }
+    if (activeTab === "favorites") result = result.filter(p => p.isFavourite);
+    else if (activeTab === "recent") result = result.filter(p => p.lastUsedAt).sort((a, b) => new Date(b.lastUsedAt) - new Date(a.lastUsedAt)).slice(0, 10);
+    else if (activeTab === "most-used") result = result.filter(p => (p.usageCount || 0) > 0).sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0)).slice(0, 10);
 
-    if (selectedCategory !== "All") {
-      result = result.filter(p => p.category && p.category.toLowerCase() === selectedCategory.toLowerCase());
-    }
+    if (selectedCategory !== "All") result = result.filter(p => p.category && p.category.toLowerCase() === selectedCategory.toLowerCase());
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -61,55 +57,141 @@ export const ProductPickerModal = ({
     });
   }, [products, searchQuery, selectedCategory, activeTab]);
 
-  const getPrice = (unit) => {
-    return priceType === "purchase" 
-      ? (unit.defaultPurchasePrice || 0)
-      : (unit.defaultSalePrice || 0);
+  const getPrice = (unit) => priceType === "purchase" ? (unit.defaultPurchasePrice || 0) : (unit.defaultSalePrice || 0);
+
+  // 👇 SINGLE UNIT HANDLERS
+  const handleSingleUnitAdd = (product, delta) => {
+    const unit = product.units?.[0] || { name: "Piece", defaultSalePrice: 0, defaultPurchasePrice: 0 };
+    const price = getPrice(unit);
+
+    setAddedProducts(prev => {
+      const existingIndex = prev.findIndex(p => p.productId === product.id && p.unitName === unit.name);
+      const newPrev = [...prev];
+
+      if (existingIndex >= 0) {
+        const newQty = newPrev[existingIndex].quantity + delta;
+        if (newQty <= 0) {
+          newPrev.splice(existingIndex, 1);
+        } else {
+          newPrev[existingIndex].quantity = newQty;
+          newPrev[existingIndex].total = newQty * price;
+        }
+      } else if (delta > 0) {
+        newPrev.push({
+          productId: product.id, name: product.name, brand: product.brand, unitName: unit.name,
+          quantity: 1, price: price, total: price
+        });
+      }
+      return newPrev;
+    });
+    if (delta > 0) ProductService.trackUsage(product.id);
   };
 
-  const handleAddProduct = async (product, unit = null) => {
-    if (product.units && product.units.length > 1 && !unit) {
-      setSelectedProductForUnit(product);
-      return;
-    }
+  // 👇 NEW: Handler for typing fractional quantities directly
+  const handleSingleUnitSetQty = (product, value) => {
+    const unit = product.units?.[0] || { name: "Piece", defaultSalePrice: 0, defaultPurchasePrice: 0 };
+    const price = getPrice(unit);
+    const qty = parseFloat(value);
 
-    const selectedUnit = unit || (product.units && product.units[0]) || { name: "Piece", defaultSalePrice: 0, defaultPurchasePrice: 0 };
+    setAddedProducts(prev => {
+      const existingIndex = prev.findIndex(p => p.productId === product.id && p.unitName === unit.name);
+      const newPrev = [...prev];
 
-    setAddedProducts(prev => [...prev, {
-      productId: product.id,
-      name: product.name,
-      brand: product.brand,
-      unitName: selectedUnit.name,
-      quantity: 1,
-      price: getPrice(selectedUnit),
-      total: getPrice(selectedUnit)
-    }]);
+      if (existingIndex >= 0) {
+        if (isNaN(qty) || qty <= 0) {
+          newPrev.splice(existingIndex, 1);
+        } else {
+          newPrev[existingIndex].quantity = qty;
+          newPrev[existingIndex].total = qty * price;
+        }
+      } else if (!isNaN(qty) && qty > 0) {
+        newPrev.push({
+          productId: product.id, name: product.name, brand: product.brand, unitName: unit.name,
+          quantity: qty, price: price, total: qty * price
+        });
+      }
+      return newPrev;
+    });
+    if (!isNaN(qty) && qty > 0) ProductService.trackUsage(product.id);
+  };
 
-    ProductService.trackUsage(product.id);
-    setSelectedProductForUnit(null);
+  // 👇 MULTI-UNIT MODAL HANDLERS
+  const openMultiUnitModal = (product) => {
+    setMultiUnitProduct(product);
+    const existing = addedProducts.filter(p => p.productId === product.id);
+    const initialQtys = {};
+    product.units.forEach(u => {
+      const found = existing.find(ep => ep.unitName === u.name);
+      initialQtys[u.id] = found ? found.quantity : 0;
+    });
+    setTempQuantities(initialQtys);
+  };
+
+  const updateModalQty = (unitId, delta) => {
+    setTempQuantities(prev => ({
+      ...prev,
+      [unitId]: Math.max(0, (prev[unitId] || 0) + delta)
+    }));
+  };
+
+  // 👇 NEW: Handler for typing fractional quantities in the multi-unit modal
+  const updateModalQtyInput = (unitId, value) => {
+    const qty = parseFloat(value);
+    setTempQuantities(prev => ({
+      ...prev,
+      [unitId]: isNaN(qty) ? 0 : Math.max(0, qty)
+    }));
+  };
+
+  const confirmMultiUnitQuantities = () => {
+    if (!multiUnitProduct) return;
+    
+    setAddedProducts(prev => {
+      let newProducts = prev.filter(p => p.productId !== multiUnitProduct.id);
+      
+      multiUnitProduct.units.forEach(unit => {
+        const qty = tempQuantities[unit.id] || 0;
+        if (qty > 0) {
+          const price = getPrice(unit);
+          newProducts.push({
+            productId: multiUnitProduct.id,
+            name: multiUnitProduct.name,
+            brand: multiUnitProduct.brand,
+            unitName: unit.name,
+            quantity: qty,
+            price: price,
+            total: qty * price
+          });
+        }
+      });
+      return newProducts;
+    });
+
+    const totalAdded = Object.values(tempQuantities).reduce((sum, q) => sum + q, 0);
+    if (totalAdded > 0) ProductService.trackUsage(multiUnitProduct.id);
+
+    setMultiUnitProduct(null);
   };
 
   const handleDone = () => {
-    if (addedProducts.length > 0) {
-      onProductsSelected(addedProducts);
-    }
+    if (addedProducts.length > 0) onProductsSelected(addedProducts);
     onClose();
   };
 
   useEffect(() => {
     if (!isOpen) {
-      setSearchQuery("");
-      setSelectedCategory("All");
-      setActiveTab("all");
-      setSelectedProductForUnit(null);
-      setAddedProducts([]);
+      setSearchQuery(""); setSelectedCategory("All"); setActiveTab("all");
+      setMultiUnitProduct(null); setAddedProducts([]);
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
+  const totalItemsCount = addedProducts.reduce((sum, p) => sum + p.quantity, 0);
+
   return (
     <div className="fixed inset-0 z-[100] bg-white dark:bg-gray-950 flex flex-col overflow-hidden">
+      {/* HEADER */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
         <div className="flex items-center justify-between p-4">
           <button onClick={onClose} className="p-2 -ml-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition active:scale-95">
@@ -118,11 +200,11 @@ export const ProductPickerModal = ({
           <h1 className="font-bold text-xl text-gray-900 dark:text-white">
             {priceType === "purchase" ? "Add Purchase Items" : "Add Products"}
           </h1>
-          {addedProducts.length > 0 ? (
+          {totalItemsCount > 0 ? (
             <div className={`px-3 py-1.5 rounded-full text-sm font-bold ${
               priceType === "purchase" ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400" : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
             }`}>
-              {addedProducts.length} added
+              {totalItemsCount} items
             </div>
           ) : (
             <div className="w-10"></div>
@@ -133,13 +215,11 @@ export const ProductPickerModal = ({
           <div className="relative">
             <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${priceType === "purchase" ? "text-indigo-400" : "text-green-400"}`} size={20} />
             <input
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
+              value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search products, brands, categories..."
               className={`w-full pl-12 pr-10 py-3.5 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-2 ${
                 priceType === "purchase" ? "focus:ring-indigo-500 focus:border-indigo-500" : "focus:ring-green-500 focus:border-green-500"
-              } dark:text-white text-base`}
-              autoFocus
+              } dark:text-white text-base`} autoFocus
             />
             {searchQuery && (
               <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-gray-200 dark:bg-gray-700 rounded-full">
@@ -170,6 +250,7 @@ export const ProductPickerModal = ({
         </div>
       </div>
 
+      {/* SCROLLABLE PRODUCT GRID */}
       <div className="flex-1 overflow-y-auto p-4">
         {filteredProducts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
@@ -177,19 +258,10 @@ export const ProductPickerModal = ({
             <p className="text-gray-500 dark:text-gray-400 text-base font-medium">
               {searchQuery ? `No products found for "${searchQuery}"` : "No products in catalog"}
             </p>
-            <p className="text-gray-400 dark:text-gray-500 text-sm mt-2 max-w-xs">
-              {searchQuery ? "You can quickly create this product and add it to your invoice." : "Create your first product to get started."}
-            </p>
-            
             {searchQuery && onRequestCreateProduct && (
-              <button
-                onClick={() => onRequestCreateProduct(searchQuery)}
-                className={`mt-6 w-full max-w-xs font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg text-base ${
-                  priceType === "purchase"
-                    ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-                    : "bg-green-600 hover:bg-green-700 text-white" // 👈 EXPLICITLY GREEN FOR SALES
-                }`}
-              >
+              <button onClick={() => onRequestCreateProduct(searchQuery)} className={`mt-6 w-full max-w-xs font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg text-base ${
+                priceType === "purchase" ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"
+              }`}>
                 <Plus size={20} /> Create "{searchQuery}"
               </button>
             )}
@@ -198,16 +270,20 @@ export const ProductPickerModal = ({
           <div className="grid grid-cols-2 gap-3">
             {filteredProducts.map(product => {
               const emoji = ProductService.getCategoryEmoji(product.category);
-              const isAdded = addedProducts.some(p => p.productId === product.id);
+              const totalQty = addedProducts.filter(p => p.productId === product.id).reduce((sum, item) => sum + item.quantity, 0);
+              const isMultiUnit = product.units && product.units.length > 1;
 
               return (
-                <div key={product.id} className={`bg-white dark:bg-gray-800 rounded-2xl border-2 p-3 transition-all ${isAdded ? (priceType === "purchase" ? "border-indigo-500 dark:border-indigo-400 shadow-md" : "border-green-500 dark:border-green-400 shadow-md") : "border-gray-200 dark:border-gray-700"}`}>
+                <div key={product.id} className={`bg-white dark:bg-gray-800 rounded-2xl border-2 p-3 transition-all ${
+                  totalQty > 0 ? (priceType === "purchase" ? "border-indigo-500 dark:border-indigo-400 shadow-md" : "border-green-500 dark:border-green-400 shadow-md") : "border-gray-200 dark:border-gray-700"
+                }`}>
                   <div className="text-center mb-2">
                     <div className="text-5xl mb-1">{emoji}</div>
                     <p className="font-bold text-gray-900 dark:text-white text-sm truncate">{product.name}</p>
                     {product.category && <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{product.category}</p>}
                     {product.brand && <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate italic">{product.brand}</p>}
                   </div>
+                  
                   <div className="space-y-1 mb-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-2">
                     {product.units && product.units.slice(0, 2).map(unit => (
                       <div key={unit.id} className="flex justify-between text-xs">
@@ -216,12 +292,58 @@ export const ProductPickerModal = ({
                       </div>
                     ))}
                     {product.units && product.units.length > 2 && (
-                      <p className="text-[10px] text-gray-500 dark:text-gray-400 text-center pt-1 border-t border-gray-200 dark:border-gray-700">+{product.units.length - 2} more units</p>
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400 text-center pt-1 border-t border-gray-200 dark:border-gray-700">+{product.units.length - 2} more</p>
                     )}
                   </div>
-                  <button onClick={() => handleAddProduct(product)} className={`w-full py-2.5 rounded-xl font-bold text-sm transition active:scale-95 flex items-center justify-center gap-1 ${isAdded ? (priceType === "purchase" ? "bg-indigo-500 text-white" : "bg-green-500 text-white") : (priceType === "purchase" ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-green-600 hover:bg-green-700 text-white")}`}>
-                    {isAdded ? <><Check size={16} /> Added</> : <><Plus size={16} /> Add</>}
-                  </button>
+
+                  {/* 👇 SMART CONTROLS */}
+                  {!isMultiUnit ? (
+                    totalQty === 0 ? (
+                      <button 
+                        onClick={() => handleSingleUnitAdd(product, 1)}
+                        className={`w-full py-2.5 rounded-xl font-bold text-sm transition active:scale-95 flex items-center justify-center gap-1 ${
+                          priceType === "purchase" ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"
+                        }`}
+                      >
+                        <Plus size={16} /> Add
+                      </button>
+                    ) : (
+                      <div className={`flex items-center justify-between rounded-xl p-1 border ${
+                        priceType === "purchase" ? "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800" : "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+                      }`}>
+                        <button onClick={() => handleSingleUnitAdd(product, -1)} className="w-9 h-9 flex items-center justify-center rounded-lg bg-white dark:bg-gray-800 shadow-sm text-gray-700 dark:text-gray-300 font-bold text-lg active:scale-90 transition">
+                          <Minus size={18} />
+                        </button>
+                        
+                        {/* 👇 EDITABLE INPUT FOR FRACTIONS */}
+                        <input 
+                          type="number" 
+                          step="0.1" 
+                          inputMode="decimal"
+                          value={totalQty} 
+                          onChange={(e) => handleSingleUnitSetQty(product, e.target.value)}
+                          className={`w-12 text-center font-bold text-base bg-transparent outline-none ${noSpinnerClass} ${
+                            priceType === "purchase" ? "text-indigo-700 dark:text-indigo-300" : "text-green-700 dark:text-green-300"
+                          }`}
+                        />
+
+                        <button onClick={() => handleSingleUnitAdd(product, 1)} className="w-9 h-9 flex items-center justify-center rounded-lg bg-white dark:bg-gray-800 shadow-sm text-gray-700 dark:text-gray-300 font-bold text-lg active:scale-90 transition">
+                          <Plus size={18} />
+                        </button>
+                      </div>
+                    )
+                  ) : (
+                    <button 
+                      onClick={() => openMultiUnitModal(product)}
+                      className={`w-full py-2.5 rounded-xl font-bold text-sm transition active:scale-95 flex items-center justify-center gap-1 ${
+                        totalQty > 0 
+                          ? (priceType === "purchase" ? "bg-indigo-500 text-white" : "bg-green-500 text-white")
+                          : (priceType === "purchase" ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-green-600 hover:bg-green-700 text-white")
+                      }`}
+                    >
+                      {totalQty > 0 ? <><Check size={16} /> {totalQty} added</> : <><Plus size={16} /> Add Units</>}
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -229,29 +351,85 @@ export const ProductPickerModal = ({
         )}
       </div>
 
-      {addedProducts.length > 0 && (
+      {/* FIXED DONE BUTTON */}
+      {totalItemsCount > 0 && (
         <div className="bg-white dark:bg-gray-900 border-t-2 border-gray-200 dark:border-gray-800 p-4 flex-shrink-0 shadow-2xl">
-          <button onClick={handleDone} className={`w-full font-bold py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg text-lg ${priceType === "purchase" ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"}`}>
-            <Check size={24} /> Done ({addedProducts.length} {addedProducts.length === 1 ? "Product" : "Products"})
+          <button onClick={handleDone} className={`w-full font-bold py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg text-lg ${
+            priceType === "purchase" ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"
+          }`}>
+            <Check size={24} /> Done ({totalItemsCount} items)
           </button>
         </div>
       )}
 
-      {selectedProductForUnit && (
+      {/* 👇 MULTI-UNIT QUANTITY MODAL */}
+      {multiUnitProduct && (
         <div className="fixed inset-0 bg-black/60 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl p-5">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-lg text-gray-900 dark:text-white">Choose Unit</h3>
-              <button onClick={() => setSelectedProductForUnit(null)} className="p-1.5 bg-gray-100 dark:bg-gray-800 rounded-full"><X size={18} className="text-gray-600 dark:text-gray-300" /></button>
+          <div className="bg-white dark:bg-gray-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[85vh] flex flex-col">
+            <div className="sticky top-0 bg-white dark:bg-gray-900 p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center z-10">
+              <div>
+                <h3 className="font-bold text-lg text-gray-900 dark:text-white">{multiUnitProduct.name}</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Select quantities for each unit</p>
+              </div>
+              <button onClick={() => setMultiUnitProduct(null)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
+                <X size={18} className="text-gray-600 dark:text-gray-300" />
+              </button>
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{selectedProductForUnit.name}</p>
-            <div className="space-y-2">
-              {selectedProductForUnit.units.map(unit => (
-                <button key={unit.id} onClick={() => handleAddProduct(selectedProductForUnit, unit)} className={`w-full flex items-center justify-between p-3 rounded-xl border-2 transition text-left active:scale-[0.98] ${priceType === "purchase" ? "border-gray-200 dark:border-gray-700 hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20" : "border-gray-200 dark:border-gray-700 hover:border-green-500 dark:hover:border-green-400 hover:bg-green-50 dark:hover:bg-green-900/20"}`}>
-                  <span className="font-semibold text-gray-900 dark:text-white">{unit.name}</span>
-                  <span className={`font-bold ${priceType === "purchase" ? "text-indigo-600 dark:text-indigo-400" : "text-green-600 dark:text-green-400"}`}>{formatCurrency(getPrice(unit), currency)}</span>
-                </button>
-              ))}
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {multiUnitProduct.units.map(unit => {
+                const currentQty = tempQuantities[unit.id] || 0;
+                return (
+                  <div key={unit.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+                    <div>
+                      <p className="font-bold text-gray-900 dark:text-white text-sm">{unit.name}</p>
+                      <p className={`text-xs font-semibold ${priceType === "purchase" ? "text-indigo-600 dark:text-indigo-400" : "text-green-600 dark:text-green-400"}`}>
+                        {formatCurrency(getPrice(unit), currency)}
+                      </p>
+                    </div>
+                    <div className={`flex items-center gap-2 rounded-lg p-1 border ${
+                      priceType === "purchase" ? "bg-white dark:bg-gray-900 border-indigo-200 dark:border-indigo-800" : "bg-white dark:bg-gray-900 border-green-200 dark:border-green-800"
+                    }`}>
+                      <button 
+                        onClick={() => updateModalQty(unit.id, -1)}
+                        disabled={currentQty === 0}
+                        className="w-8 h-8 flex items-center justify-center rounded-md bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold disabled:opacity-30 active:scale-90 transition"
+                      >
+                        <Minus size={16} />
+                      </button>
+                      
+                      {/* 👇 EDITABLE INPUT FOR FRACTIONS IN MODAL */}
+                      <input 
+                        type="number" 
+                        step="0.1" 
+                        inputMode="decimal"
+                        value={currentQty || ""} 
+                        onChange={(e) => updateModalQtyInput(unit.id, e.target.value)}
+                        placeholder="0"
+                        className={`w-12 text-center font-bold text-base bg-transparent outline-none ${noSpinnerClass} text-gray-900 dark:text-white`}
+                      />
+
+                      <button 
+                        onClick={() => updateModalQty(unit.id, 1)}
+                        className="w-8 h-8 flex items-center justify-center rounded-md bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold active:scale-90 transition"
+                      >
+                        <Plus size={16} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="sticky bottom-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 p-4">
+              <button 
+                onClick={confirmMultiUnitQuantities}
+                className={`w-full font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg ${
+                  priceType === "purchase" ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"
+                }`}
+              >
+                <Check size={20} /> Add to Invoice
+              </button>
             </div>
           </div>
         </div>
