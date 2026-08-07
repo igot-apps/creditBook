@@ -13,6 +13,7 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { FollowUpsPage } from "./pages/FollowUpsPage";
+import { MorePage } from "./pages/MorePage";
 
 // Supplier Pages
 import { SuppliersPage } from "./pages/SuppliersPage";
@@ -40,8 +41,7 @@ const AppRouter = () => {
       case "record": return <RecordPage key={pageKey} />;
       case "profile": return <ProfilePage key={pageKey} />;
       case "reports": return <ReportsPage key={pageKey} />;
-      case "settings": return <SettingsPage key={pageKey} />;
-      case "followups": return <FollowUpsPage key={pageKey} />;
+      case "settings": return <MorePage key={pageKey} />; // 👈 Renders the new More Menu      case "followups": return <FollowUpsPage key={pageKey} />;
       
       // Supplier Routes
       case "suppliers": return <SuppliersPage key={pageKey} />;

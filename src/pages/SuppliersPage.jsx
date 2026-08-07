@@ -1,161 +1,323 @@
 import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Truck } from "lucide-react";
+import { Search, Plus, Truck, Phone, MessageCircle, DollarSign, ShoppingCart, X, Clock, AlertCircle, Star, ChevronRight } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
-import { SupplierService } from "../services/SupplierService";
+import { openWhatsApp, openDialer } from "../utils/communication";
+import { SupplierService } from "../services/SupplierService"; // 👈 Added for direct fetching
+import { AddCustomerModal } from "../components/AddCustomerModal"; // 👈 Change this if your modal has a different name
 import { TopBar } from "../components/TopBar";
 
 export const SuppliersPage = () => {
-  const { currentStore, showToast, setSelectedSupplier, setView } = useStore();
+  const { 
+    currentStore, 
+    setSelectedSupplier, setView, setPrefillTransaction 
+  } = useStore();
+  
   const [suppliers, setSuppliers] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [isAdding, setIsAdding] = useState(false);
-  const [newSupplier, setNewSupplier] = useState({ name: "", phone: "" });
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [actionSupplier, setActionSupplier] = useState(null);
 
   const currency = currentStore?.currency || "GH₵";
 
-  const loadSuppliers = async () => {
-    if (!currentStore?.id) return;
-    const loaded = await SupplierService.getAll(currentStore.id);
-    setSuppliers(loaded);
-  };
-
-  // FIXED: Changed useState to useEffect
+  // Fetch suppliers directly to avoid missing store functions
   useEffect(() => {
-    loadSuppliers();
-  }, []);
+    if (currentStore?.id) {
+      SupplierService.getAll(currentStore.id).then(setSuppliers);
+    }
+  }, [currentStore?.id]);
 
+  // 1. SMART SEARCH
   const filteredSuppliers = useMemo(() => {
+    if (!Array.isArray(suppliers)) return [];
     if (!searchQuery.trim()) return suppliers;
+    
     const q = searchQuery.toLowerCase();
-    return suppliers.filter(s => s.name.toLowerCase().includes(q) || s.phone.includes(q));
+    return suppliers.filter(s => 
+      s.name.toLowerCase().includes(q) || 
+      (s.phone && s.phone.includes(q)) ||
+      (s.lastSupplied && s.lastSupplied.toLowerCase().includes(q))
+    );
   }, [suppliers, searchQuery]);
 
-  const handleAddSupplier = async () => {
-    if (!newSupplier.name.trim()) {
-      showToast("Supplier name is required!");
-      return;
-    }
-    try {
-      await SupplierService.addSupplier(currentStore.id, newSupplier.name, newSupplier.phone);
-      showToast("✅ Supplier added!");
-      setNewSupplier({ name: "", phone: "" });
-      setIsAdding(false);
-      await loadSuppliers();
-    } catch (error) {
-      showToast("❌ Failed to add supplier.");
-    }
+  // 2. SECTIONING LOGIC
+  const sections = useMemo(() => {
+    const favorites = [];
+    const needAttention = [];
+    const recentlyActive = [];
+    const others = [];
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    filteredSuppliers.forEach(s => {
+      if (searchQuery.trim()) {
+        others.push(s);
+        return;
+      }
+
+      const lastActiveDate = s.lastActivity ? new Date(s.lastActivity) : null;
+      const isRecent = lastActiveDate && lastActiveDate >= thirtyDaysAgo;
+
+      if (s.isFavourite || s.isPinned) {
+        favorites.push(s);
+      } else if (s.balance > 0) {
+        needAttention.push(s);
+      } else if (isRecent) {
+        recentlyActive.push(s);
+      } else {
+        others.push(s);
+      }
+    });
+
+    needAttention.sort((a, b) => b.balance - a.balance);
+    recentlyActive.sort((a, b) => new Date(b.lastActivity) - new Date(a.lastActivity));
+    others.sort((a, b) => a.name.localeCompare(b.name));
+
+    return { favorites, needAttention, recentlyActive, others };
+  }, [filteredSuppliers, searchQuery]);
+
+  // 3. QUICK ACTIONS
+  const handleRecordPurchase = (supplier) => {
+    setActionSupplier(null);
+    setSelectedSupplier(supplier);
+    setPrefillTransaction({ 
+      supplierId: supplier.id, 
+      name: supplier.name, 
+      phone: supplier.phone, 
+      type: "purchase",
+      items: "", 
+      amount: "", 
+      paid: "" 
+    });
+    setView("recordSupplierPurchase");
   };
 
-  const handleSelectSupplier = (supplier) => {
+  const handleMakePayment = (supplier) => {
+    setActionSupplier(null);
+    setSelectedSupplier(supplier);
+    setPrefillTransaction({ 
+      supplierId: supplier.id, 
+      name: supplier.name, 
+      phone: supplier.phone, // 👈 Fixed typo here
+      type: "payment",
+      items: "Payment", 
+      amount: "0", 
+      paid: "" 
+    });
+    setView("recordSupplierPurchase");
+  };
+
+  const handleViewProfile = (supplier) => {
+    setActionSupplier(null);
     setSelectedSupplier(supplier);
     setView("supplierProfile");
   };
 
+  const generateMessage = (s) => 
+    `Hello ${s.name}, this is ${currentStore?.name || "Store"}. I will send your ${formatCurrency(s.balance, currency)} by the end of the week. Thank you!`;
+
+  const getDaysOverdue = (lastActivity) => {
+    if (!lastActivity) return null;
+    const days = Math.floor((new Date() - new Date(lastActivity)) / (1000 * 60 * 60 * 24));
+    return days > 7 ? days : null;
+  };
+
+  const renderSupplierCard = (supplier) => {
+    const daysOverdue = getDaysOverdue(supplier.lastActivity);
+    
+    return (
+      <button 
+        key={supplier.id} 
+        onClick={() => handleViewProfile(supplier)}
+        className="w-full bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 text-left active:scale-[0.98] transition relative overflow-hidden"
+      >
+        <div className="flex items-start gap-3">
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 ${
+            supplier.balance > 0 ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400"
+          }`}>
+            {supplier.name.charAt(0)}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="font-bold text-gray-900 dark:text-white truncate">{supplier.name}</p>
+              {(supplier.isFavourite || supplier.isPinned) && <Star size={12} className="text-yellow-500 fill-yellow-500 flex-shrink-0" />}
+            </div>
+            
+            <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5 flex items-center gap-1">
+              <Phone size={10} /> {supplier.phone || "No phone"}
+            </p>
+
+            {(supplier.lastActivity || supplier.lastSupplied) && (
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 flex items-center gap-1">
+                <Clock size={10} /> 
+                {supplier.lastSupplied ? `Last supplied: ${supplier.lastSupplied}` : "No recent activity"}
+              </p>
+            )}
+          </div>
+
+          <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
+            {supplier.balance > 0 ? (
+              <>
+                <p className="text-sm font-bold text-orange-600 dark:text-orange-400">
+                  {formatCurrency(supplier.balance, currency)}
+                </p>
+                {daysOverdue && (
+                  <span className="text-[9px] font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded-md flex items-center gap-1">
+                    <AlertCircle size={8} /> {daysOverdue} days
+                  </span>
+                )}
+              </>
+            ) : supplier.balance < 0 ? (
+              <p className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                Credit {formatCurrency(Math.abs(supplier.balance), currency)}
+              </p>
+            ) : (
+              <p className="text-[10px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-lg">
+                Paid Up
+              </p>
+            )}
+          </div>
+        </div>
+      </button>
+    );
+  };
+
+  const renderSection = (title, icon, data) => {
+    if (searchQuery.trim() && title !== "Search Results") return null;
+    if (data.length === 0) return null;
+
+    return (
+      <div className="mt-6 first:mt-0">
+        <h3 className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1 flex items-center gap-1.5">
+          {icon} {title} <span className="text-gray-400 dark:text-gray-600 font-normal">({data.length})</span>
+        </h3>
+        <div className="space-y-3">
+          {data.map(renderSupplierCard)}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      <TopBar title="Suppliers" subtitle="People I owe" />
+      <TopBar title="Suppliers" />
       
-      <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
-        <div className="relative">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+      <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto">
+        
+        {/* Search & Add Button */}
+        <div className="flex gap-2 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input 
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search suppliers..."
-              className="w-full pl-10 pr-12 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+              placeholder="Search name, phone, or product..."
+              className="w-full pl-9 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm"
             />
-            <button 
-              onClick={() => setIsAdding(true)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-indigo-600 text-white rounded-lg shadow-sm active:scale-95 transition"
-              title="Add new supplier"
-            >
-              <Plus size={18} />
-            </button>
           </div>
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-xl flex items-center gap-1.5 font-bold text-sm active:scale-95 transition shadow-md"
+          >
+            <Plus size={18} /> <span className="hidden sm:inline">Add</span>
+          </button>
         </div>
 
-        <div className="space-y-3">
-          {filteredSuppliers.length === 0 && !searchQuery.trim() ? (
-            <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700">
-              <Truck className="mx-auto text-gray-300 dark:text-gray-600 mb-3" size={48} />
-              <p className="text-gray-500 dark:text-gray-400 font-medium">No suppliers yet</p>
-              <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Tap the + button to add a supplier you buy from</p>
-            </div>
-          ) : filteredSuppliers.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-gray-400 dark:text-gray-500 text-sm">No suppliers match your search.</p>
+        {/* Sections */}
+        <div className="pb-8">
+          {filteredSuppliers.length === 0 ? (
+            <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 mt-4">
+              <p className="text-gray-500 dark:text-gray-400 font-medium">
+                {searchQuery ? "No suppliers found" : "No suppliers yet"}
+              </p>
             </div>
           ) : (
-            filteredSuppliers.map(supplier => (
-              <button 
-                key={supplier.id} 
-                onClick={() => handleSelectSupplier(supplier)}
-                className="w-full bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center gap-3 text-left active:scale-[0.98] transition"
-              >
-                <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full flex items-center justify-center font-bold flex-shrink-0">
-                  {supplier.name.charAt(0)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-gray-900 dark:text-white truncate">{supplier.name}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{supplier.phone || "No phone number"}</p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  {supplier.balance > 0 ? (
-                    <>
-                      <p className="text-xs font-bold text-orange-600 dark:text-orange-400 uppercase">I Owe</p>
-                      <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{formatCurrency(supplier.balance, currency)}</p>
-                    </>
-                  ) : supplier.balance < 0 ? (
-                    <>
-                      <p className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase">Credit</p>
-                      <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{formatCurrency(Math.abs(supplier.balance), currency)}</p>
-                    </>
-                  ) : (
-                    <p className="text-xs font-bold text-green-600 dark:text-green-400 uppercase">Paid</p>
-                  )}
-                </div>
-              </button>
-            ))
+            <>
+              {renderSection("Search Results", null, filteredSuppliers)}
+              {!searchQuery && renderSection("⭐ Favorites", <Star size={12} />, sections.favorites)}
+              {!searchQuery && renderSection("🔴 Need Attention", <AlertCircle size={12} />, sections.needAttention)}
+              {!searchQuery && renderSection("🕒 Recently Active", <Clock size={12} />, sections.recentlyActive)}
+              {!searchQuery && renderSection("👥 All Suppliers", null, sections.others)}
+            </>
           )}
         </div>
       </div>
 
-      {isAdding && (
-        <div className="fixed inset-0 bg-black/60 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl p-6">
+      {/* Add Modal (Update the component name here if needed) */}
+      <AddCustomerModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+      />
+
+      {/* 👇 ACTION BOTTOM SHEET */}
+      {actionSupplier && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={() => setActionSupplier(null)}>
+          <div 
+            className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-t-3xl p-6 pb-8 shadow-2xl animate-in slide-in-from-bottom-10"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <Truck size={20} className="text-indigo-600" />
-                Add New Supplier
-              </h3>
-              <button onClick={() => setIsAdding(false)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600 dark:text-gray-300"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">{actionSupplier.name}</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {actionSupplier.balance > 0 ? `I owe ${formatCurrency(actionSupplier.balance, currency)}` : "All Paid Up"}
+                </p>
+              </div>
+              <button onClick={() => setActionSupplier(null)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
+                <X size={20} className="text-gray-600 dark:text-gray-300" />
               </button>
             </div>
-            <div className="space-y-4">
-              <input 
-                placeholder="Supplier Name (e.g., Coca-Cola Distributor)" 
-                value={newSupplier.name} 
-                onChange={e => setNewSupplier({...newSupplier, name: e.target.value})} 
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white" 
-                autoFocus
-              />
-              <input 
-                type="tel"
-                placeholder="Phone Number" 
-                value={newSupplier.phone} 
-                onChange={e => setNewSupplier({...newSupplier, phone: e.target.value})} 
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white" 
-              />
+
+            <div className="grid grid-cols-2 gap-3">
               <button 
-                onClick={handleAddSupplier}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
+                onClick={() => handleRecordPurchase(actionSupplier)}
+                className="flex flex-col items-center gap-3 p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl active:scale-95 transition"
               >
-                Add Supplier
+                <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center">
+                  <ShoppingCart size={24} />
+                </div>
+                <span className="font-bold text-gray-900 dark:text-white text-sm">Record Purchase</span>
+              </button>
+
+              <button 
+                onClick={() => handleMakePayment(actionSupplier)}
+                className="flex flex-col items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl active:scale-95 transition"
+              >
+                <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center">
+                  <DollarSign size={24} />
+                </div>
+                <span className="font-bold text-gray-900 dark:text-white text-sm">Make Payment</span>
+              </button>
+
+              <button 
+                onClick={() => { setActionSupplier(null); openDialer(actionSupplier.phone); }}
+                className="flex flex-col items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl active:scale-95 transition"
+              >
+                <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full flex items-center justify-center">
+                  <Phone size={24} />
+                </div>
+                <span className="font-bold text-gray-900 dark:text-white text-sm">Call</span>
+              </button>
+
+              <button 
+                onClick={() => { setActionSupplier(null); openWhatsApp(actionSupplier.phone, generateMessage(actionSupplier)); }}
+                className="flex flex-col items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl active:scale-95 transition"
+              >
+                <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full flex items-center justify-center">
+                  <MessageCircle size={24} />
+                </div>
+                <span className="font-bold text-gray-900 dark:text-white text-sm">WhatsApp</span>
               </button>
             </div>
+            
+            <button 
+              onClick={() => handleViewProfile(actionSupplier)}
+              className="w-full mt-4 py-3 text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition flex items-center justify-center gap-1"
+            >
+              View Full Profile <ChevronRight size={16} />
+            </button>
           </div>
         </div>
       )}
