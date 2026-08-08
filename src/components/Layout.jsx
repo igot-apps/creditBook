@@ -1,12 +1,8 @@
-import { useState, useEffect } from "react";
 import { 
   Home, Users, Truck, Package, Bell, BarChart3, Settings, 
-  Moon, Sun, Info, X, TrendingUp, TrendingDown, ChevronRight, Database, HelpCircle 
+  Moon, Sun, X, ChevronRight, Database, HelpCircle, User, Mail 
 } from "lucide-react";
 import useStore from "../store/useStore";
-import { formatCurrency } from "../utils/helpers";
-import { CustomerService } from "../services/CustomerService";
-import { SupplierService } from "../services/SupplierService";
 
 export const Layout = ({ children }) => {
   const {
@@ -21,22 +17,6 @@ export const Layout = ({ children }) => {
     refreshPage
   } = useStore();
 
-  const [metrics, setMetrics] = useState({ customerDebt: 0, supplierDebt: 0 });
-
-  // Fetch live metrics for the sidebar card
-  useEffect(() => {
-    if (currentStore?.id) {
-      Promise.all([
-        CustomerService.getAll(currentStore.id),
-        SupplierService.getAll(currentStore.id)
-      ]).then(([customers, suppliers]) => {
-        const cDebt = customers.reduce((sum, c) => sum + (c.balance > 0 ? c.balance : 0), 0);
-        const sDebt = suppliers.reduce((sum, s) => sum + (s.balance > 0 ? s.balance : 0), 0);
-        setMetrics({ customerDebt: cDebt, supplierDebt: sDebt });
-      }).catch(err => console.error("Failed to load sidebar metrics", err));
-    }
-  }, [currentStore?.id]);
-
   const navigateTo = (targetView) => {
     setSelectedCustomer(null);
     if (view === targetView) {
@@ -47,15 +27,13 @@ export const Layout = ({ children }) => {
     setIsMenuOpen(false);
   };
 
-  const currency = currentStore?.currency || "GH₵";
-
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-950">
       
-      {/* 1. CLEAN HEADER with Live Metrics */}
+      {/* 1. HEADER: Business Info Only */}
       <div className="bg-white dark:bg-gray-900 p-5 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
         <div className="flex justify-between items-start mb-4">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
             <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center text-xl font-bold flex-shrink-0">
               {currentStore?.name?.charAt(0) || "S"}
             </div>
@@ -67,32 +45,26 @@ export const Layout = ({ children }) => {
           {/* Close button for mobile only */}
           <button 
             onClick={() => setIsMenuOpen(false)} 
-            className="lg:hidden p-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+            className="lg:hidden p-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition ml-2"
           >
             <X size={18} className="text-gray-600 dark:text-gray-300" />
           </button>
         </div>
 
-        {/* Live Metrics - Styled exactly like Home Page cards */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="bg-green-50 dark:bg-green-900/10 p-2.5 rounded-xl border border-green-100 dark:border-green-900/30">
-            <div className="flex items-center gap-1.5 mb-1">
-              <TrendingUp size={12} className="text-green-600 dark:text-green-400" />
-              <span className="text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase">Owed to Me</span>
+        {/* Business Info Section (Clean & Compact) */}
+        <div className="space-y-2">
+          {currentStore?.ownerName && (
+            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+              <User size={14} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+              <span className="truncate">{currentStore.ownerName}</span>
             </div>
-            <p className="text-sm font-bold text-gray-900 dark:text-white truncate">
-              {formatCurrency(metrics.customerDebt, currency)}
-            </p>
-          </div>
-          <div className="bg-orange-50 dark:bg-orange-900/10 p-2.5 rounded-xl border border-orange-100 dark:border-orange-900/30">
-            <div className="flex items-center gap-1.5 mb-1">
-              <TrendingDown size={12} className="text-orange-600 dark:text-orange-400" />
-              <span className="text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase">I Owe</span>
+          )}
+          {currentStore?.email && (
+            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+              <Mail size={14} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+              <span className="truncate">{currentStore.email}</span>
             </div>
-            <p className="text-sm font-bold text-gray-900 dark:text-white truncate">
-              {formatCurrency(metrics.supplierDebt, currency)}
-            </p>
-          </div>
+          )}
         </div>
       </div>
 
@@ -177,8 +149,11 @@ export const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex">
-      {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex lg:flex-col lg:w-72 bg-gray-50 dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 fixed h-screen z-30">
+      {/* 👇 Desktop Sidebar — Added top padding to sit below TopBar */}
+      <aside 
+        className="hidden lg:flex lg:flex-col lg:w-72 bg-gray-50 dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 fixed h-screen z-40"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }}
+      >
         <SidebarContent />
       </aside>
 
