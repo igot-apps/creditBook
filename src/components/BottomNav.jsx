@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Home, Users, Truck, Plus, X, ShoppingCart, Wallet, ArrowDownCircle, ArrowUpCircle, Menu } from "lucide-react";
+import { Home, Users, Truck, Plus, X, ShoppingCart, Banknote, ArrowDownCircle, ArrowUpCircle, Menu } from "lucide-react";
 import useStore from "../store/useStore";
 
 export const BottomNav = () => {
@@ -9,9 +9,9 @@ export const BottomNav = () => {
   const navItems = [
     { id: "home", label: "Home", icon: Home },
     { id: "customers", label: "Customers", icon: Users },
-    { id: "fab", label: "Record", icon: Plus, isFab: true }, // Special FAB item
+    { id: "fab", label: "Record", icon: Plus, isFab: true },
     { id: "suppliers", label: "Suppliers", icon: Truck },
-    { id: "settings", label: "More", icon: Menu }, // "More" replaces Settings/Products
+    { id: "settings", label: "More", icon: Menu },
   ];
 
   const handleNavClick = (item) => {
@@ -27,14 +27,8 @@ export const BottomNav = () => {
     setShowFabMenu(false);
     if (action === "sale") setView("record");
     if (action === "purchase") setView("recordSupplierPurchase");
-    if (action === "customerPayment") {
-      // We can create a dedicated payment view later, or prefill record with payment type
-      setView("record"); 
-      // Note: You can pass prefillTransaction via useStore here if needed
-    }
-    if (action === "supplierPayment") {
-      setView("recordSupplierPurchase");
-    }
+    if (action === "customerPayment") setView("record");
+    if (action === "supplierPayment") setView("recordSupplierPurchase");
   };
 
   return (
@@ -74,21 +68,22 @@ export const BottomNav = () => {
         </div>
       </div>
 
-      {/* 👇 FAB Bottom Sheet Menu */}
+      {/* 👇 FAB Bottom Sheet Menu with New Plain-English Labels */}
       {showFabMenu && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowFabMenu(false)}>
           <div 
             className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-t-3xl p-6 pb-8 shadow-2xl animate-in slide-in-from-bottom-10"
-            onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">What do you want to record?</h3>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">What do you want to do?</h3>
               <button onClick={() => setShowFabMenu(false)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
                 <X size={20} className="text-gray-600 dark:text-gray-300" />
               </button>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
+              {/* 👇 SELL TO CUSTOMER */}
               <button 
                 onClick={() => handleFabAction("sale")}
                 className="flex flex-col items-center gap-3 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-2xl active:scale-95 transition"
@@ -96,9 +91,13 @@ export const BottomNav = () => {
                 <div className="w-12 h-12 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center">
                   <ShoppingCart size={24} />
                 </div>
-                <span className="font-bold text-gray-900 dark:text-white">Record Sale</span>
+                <div className="text-center">
+                  <span className="font-bold text-gray-900 dark:text-white text-sm block">Sell to Customer</span>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">Record a sale</span>
+                </div>
               </button>
 
+              {/* 👇 BUY FROM SUPPLIER */}
               <button 
                 onClick={() => handleFabAction("purchase")}
                 className="flex flex-col items-center gap-3 p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl active:scale-95 transition"
@@ -106,9 +105,13 @@ export const BottomNav = () => {
                 <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center">
                   <Truck size={24} />
                 </div>
-                <span className="font-bold text-gray-900 dark:text-white">Record Purchase</span>
+                <div className="text-center">
+                  <span className="font-bold text-gray-900 dark:text-white text-sm block">Buy from Supplier</span>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">Record a purchase</span>
+                </div>
               </button>
 
+              {/* 👇 RECEIVE PAYMENT */}
               <button 
                 onClick={() => handleFabAction("customerPayment")}
                 className="flex flex-col items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl active:scale-95 transition"
@@ -116,9 +119,13 @@ export const BottomNav = () => {
                 <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center">
                   <ArrowDownCircle size={24} />
                 </div>
-                <span className="font-bold text-gray-900 dark:text-white">Customer Payment</span>
+                <div className="text-center">
+                  <span className="font-bold text-gray-900 dark:text-white text-sm block">Receive Payment</span>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">From a customer</span>
+                </div>
               </button>
 
+              {/* 👇 PAY SUPPLIER */}
               <button 
                 onClick={() => handleFabAction("supplierPayment")}
                 className="flex flex-col items-center gap-3 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-2xl active:scale-95 transition"
@@ -126,7 +133,10 @@ export const BottomNav = () => {
                 <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 rounded-full flex items-center justify-center">
                   <ArrowUpCircle size={24} />
                 </div>
-                <span className="font-bold text-gray-900 dark:text-white">Supplier Payment</span>
+                <div className="text-center">
+                  <span className="font-bold text-gray-900 dark:text-white text-sm block">Pay Supplier</span>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">Settle a debt</span>
+                </div>
               </button>
             </div>
           </div>
