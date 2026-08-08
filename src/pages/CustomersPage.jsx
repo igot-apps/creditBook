@@ -3,7 +3,7 @@ import { Search, Plus, Phone, MessageCircle, DollarSign, ShoppingCart, X, Clock,
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openSMS, openWhatsApp, openDialer } from "../utils/communication";
-import { AddCustomerModal } from "../components/AddCustomerModal";
+import { AddCustomerModal } from "../components/customer/AddCustomerModal";
 import { TopBar } from "../components/TopBar";
 
 export const CustomersPage = () => {

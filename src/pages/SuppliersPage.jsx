@@ -4,7 +4,7 @@ import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { openWhatsApp, openDialer } from "../utils/communication";
 import { SupplierService } from "../services/SupplierService"; // 👈 Added for direct fetching
-import { AddCustomerModal } from "../components/AddCustomerModal"; // 👈 Change this if your modal has a different name
+import { AddCustomerModal } from "../components/customer/AddCustomerModal"; // 👈 Change this if your modal has a different name
 import { TopBar } from "../components/TopBar";
 
 export const SuppliersPage = () => {

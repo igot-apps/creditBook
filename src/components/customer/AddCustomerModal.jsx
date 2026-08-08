@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { X, UserPlus } from "lucide-react";
-import useStore from "../store/useStore";
-import { ContactService } from "../services/ContactService";
+import useStore from "../../store/useStore";
+import { ContactService } from "../../services/ContactService";
 
 export const AddCustomerModal = ({ isOpen, onClose }) => {
   const { currentStore, showToast, refreshCustomers } = useStore();
