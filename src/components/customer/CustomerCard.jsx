@@ -1,5 +1,5 @@
-import useStore from "../store/useStore";
-import { formatCurrency } from "../utils/helpers";
+import useStore from "../../store/useStore";
+import { formatCurrency } from "../../utils/helpers";
 import { Phone } from "lucide-react";
 
 export const CustomerCard = ({ customer }) => {

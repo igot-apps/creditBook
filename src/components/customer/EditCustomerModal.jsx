@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { X, Save, User, Phone, MapPin, FileText, Contact } from "lucide-react";
-import useStore from "../store/useStore";
-import { CustomerService } from "../services/CustomerService";
-import { CustomerRepository } from "../repositories/CustomerRepository";
-import { isValidPhone } from "../utils/helpers";
+import useStore from "../../store/useStore";
+import { CustomerService } from "../../services/CustomerService";
+import { CustomerRepository } from "../../repositories/CustomerRepository";
+import { isValidPhone } from "../../utils/helpers";
 
 export const EditCustomerModal = ({ customer, onClose }) => {
   const { currentStore, refreshCustomers, setSelectedCustomer, showToast } = useStore();

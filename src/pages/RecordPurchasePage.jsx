@@ -16,14 +16,15 @@ export const RecordPurchasePage = () => {
   const { 
     currentStore, setView, prefillTransaction, setPrefillTransaction, showToast, 
     autoDraft, saveDraft, clearAutoDraft,
-    fixTransaction, setFixTransaction, lastScrollPosition, setLastScrollPosition
+    fixTransaction, setFixTransaction, lastScrollPosition, setLastScrollPosition,
+    setSelectedSupplier: setStoreSelectedSupplier // 👈 Aliased to avoid conflict with local state
   } = useStore();
   const currency = currentStore?.currency || "GH₵";
 
   const [mode, setMode] = useState("search");
   const [transactionType, setTransactionType] = useState("purchase");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedSupplier, setSelectedSupplier] = useState(null);
+  const [selectedSupplier, setSelectedSupplier] = useState(null); // Local state
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
   const [invoiceItems, setInvoiceItems] = useState([]);
@@ -37,7 +38,7 @@ export const RecordPurchasePage = () => {
   const [isFixing, setIsFixing] = useState(false);
   const [fixingOldId, setFixingOldId] = useState(null);
   const [originalAmount, setOriginalAmount] = useState(0);
-  const [fixReason, setFixReason] = useState(""); // 👈 NEW: Holds the reason for the fix
+  const [fixReason, setFixReason] = useState(""); 
 
   const [undoData, setUndoData] = useState(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
@@ -54,9 +55,12 @@ export const RecordPurchasePage = () => {
       const supplier = (Array.isArray(suppliers) ? suppliers : []).find(s => s.id === prefillTransaction.supplierId) || {
         id: prefillTransaction.supplierId, name: prefillTransaction.name || "Unknown Supplier", phone: prefillTransaction.phone || ""
       };
-      setSelectedSupplier(supplier); setMode("existing"); setTransactionType(prefillTransaction.type || "purchase");
+      setSelectedSupplier(supplier); 
+      setMode("existing"); 
+      setTransactionType(prefillTransaction.type || "purchase");
       if (prefillTransaction.paid !== undefined) setAmountPaid(prefillTransaction.paid.toString());
-      setPrefillTransaction(null); clearAutoDraft();
+      setPrefillTransaction(null); 
+      clearAutoDraft();
     }
   }, [prefillTransaction, suppliers, setPrefillTransaction, clearAutoDraft]);
 
@@ -71,15 +75,13 @@ export const RecordPurchasePage = () => {
       setNote(fixTransaction.note || '');
       setAmountPaid(fixTransaction.paid?.toString() || '');
       setOriginalAmount(parseFloat(fixTransaction.amount) || 0);
-      setFixReason(fixTransaction.fixReason || ""); // 👈 NEW: Capture the reason from the modal
+      setFixReason(fixTransaction.fixReason || ""); 
       
       setMode("existing");
       setIsFixing(true);
       setFixingOldId(fixTransaction.id);
       
-      // 👇 LOCK THE RECEIPT
       TransactionService.update(fixTransaction.id, { status: 'being_corrected' });
-      
       setFixTransaction(null);
     }
   }, [fixTransaction, suppliers, setFixTransaction]);
@@ -88,15 +90,26 @@ export const RecordPurchasePage = () => {
     if (fixingOldId) {
       await TransactionService.update(fixingOldId, { status: 'active' });
     }
-    setIsFixing(false); setFixingOldId(null); setFixReason("");
-    setMode("search"); setSelectedSupplier(null); setAmountPaid(""); setInvoiceItems([]); setNote(""); clearAutoDraft();
+    setIsFixing(false); 
+    setFixingOldId(null); 
+    setFixReason("");
+    setMode("search"); 
+    setSelectedSupplier(null); 
+    setAmountPaid(""); 
+    setInvoiceItems([]); 
+    setNote(""); 
+    clearAutoDraft();
   };
 
   useEffect(() => {
     if (autoDraft && autoDraft.draftType === 'purchase' && suppliers.length > 0 && !selectedSupplier && !prefillTransaction && !isFixing) {
       const draftSupplier = suppliers.find(s => s.id === autoDraft.supplierId) || { id: autoDraft.supplierId, name: autoDraft.supplierName || 'Unknown Supplier', phone: autoDraft.supplierPhone || '' };
-      setSelectedSupplier(draftSupplier); setTransactionType(autoDraft.transactionType || "purchase");
-      setInvoiceItems(autoDraft.invoiceItems || []); setNote(autoDraft.note || ''); setAmountPaid(autoDraft.amountPaid || ''); setMode("existing");
+      setSelectedSupplier(draftSupplier); 
+      setTransactionType(autoDraft.transactionType || "purchase");
+      setInvoiceItems(autoDraft.invoiceItems || []); 
+      setNote(autoDraft.note || ''); 
+      setAmountPaid(autoDraft.amountPaid || ''); 
+      setMode("existing");
     }
   }, [autoDraft, suppliers, selectedSupplier, prefillTransaction, isFixing]);
 
@@ -115,20 +128,31 @@ export const RecordPurchasePage = () => {
     return suppliers.filter(s => s.name.toLowerCase().includes(q) || (s.phone && s.phone.includes(q)));
   }, [suppliers, searchQuery]);
 
-  const handleSelectSupplier = (supplier) => { setSelectedSupplier(supplier); setMode("existing"); setSearchQuery(""); };
+  const handleSelectSupplier = (supplier) => { 
+    setSelectedSupplier(supplier); 
+    setMode("existing"); 
+    setSearchQuery(""); 
+  };
+
   const handleCreateSupplier = () => {
     const name = searchQuery.trim();
     if (name) {
       SupplierService.addSupplier(currentStore.id, name, "").then(id => {
         const newSupplier = { id, name, phone: "", balance: 0 };
-        setSelectedSupplier(newSupplier); setMode("existing"); setSearchQuery("");
+        setSelectedSupplier(newSupplier); 
+        setMode("existing"); 
+        setSearchQuery("");
         showToast("✅ Supplier created!");
         SupplierService.getAll(currentStore.id).then(setSuppliers);
       }).catch(() => showToast("❌ Failed to create supplier."));
     }
   };
 
-  const handleProductsSelected = (selectedProducts) => { setInvoiceItems(prev => [...prev, ...selectedProducts]); setShowProductPicker(false); };
+  const handleProductsSelected = (selectedProducts) => { 
+    setInvoiceItems(prev => [...prev, ...selectedProducts]); 
+    setShowProductPicker(false); 
+  };
+
   const handleSaveProduct = async (productData) => {
     try {
       const newId = await ProductService.create(currentStore.id, productData);
@@ -141,7 +165,10 @@ export const RecordPurchasePage = () => {
       }
       showToast("✅ Product template created and added!");
       setNewProductName("");
-    } catch (error) { console.error(error); showToast("❌ Failed to create product."); }
+    } catch (error) { 
+      console.error(error); 
+      showToast("❌ Failed to create product."); 
+    }
   };
 
   const updateItem = (index, field, value) => {
@@ -149,14 +176,19 @@ export const RecordPurchasePage = () => {
     if (field !== 'name' && field !== 'unitName') updated[index][field] = value === "" ? "" : (parseFloat(value) || 0);
     else updated[index][field] = value;
     if (field === 'quantity' || field === 'price') {
-      const qty = parseFloat(updated[index].quantity) || 0; const price = parseFloat(updated[index].price) || 0;
+      const qty = parseFloat(updated[index].quantity) || 0; 
+      const price = parseFloat(updated[index].price) || 0;
       updated[index].total = qty * price;
     }
     setInvoiceItems(updated);
   };
 
   const removeItem = (index) => setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
-  const totalAmount = invoiceItems.reduce((sum, item) => { const qty = parseFloat(item.quantity) || 0; const price = parseFloat(item.price) || 0; return sum + (qty * price); }, 0);
+  const totalAmount = invoiceItems.reduce((sum, item) => { 
+    const qty = parseFloat(item.quantity) || 0; 
+    const price = parseFloat(item.price) || 0; 
+    return sum + (qty * price); 
+  }, 0);
 
   const handleUndoFix = async () => {
     if (!undoData) return;
@@ -164,17 +196,33 @@ export const RecordPurchasePage = () => {
       await db.transactions.delete(undoData.newId);
       await TransactionService.update(undoData.oldId, { status: 'active', cancelReason: null, replacedByTransactionId: null });
       await SupplierService.updateBalance(undoData.supplierId);
-      setShowUndoToast(false); setUndoData(null);
+      setShowUndoToast(false); 
+      setUndoData(null);
       showToast("✅ Correction undone.");
-      setView("suppliers");
-    } catch (error) { console.error(error); showToast("❌ Failed to undo."); }
+      
+      // 👇 UPDATED: Navigate to supplier profile instead of list
+      const supplierToRestore = suppliers.find(s => s.id === undoData.supplierId);
+      if (supplierToRestore) {
+        setStoreSelectedSupplier(supplierToRestore);
+        setView("supplierProfile");
+      } else {
+        setView("suppliers");
+      }
+    } catch (error) { 
+      console.error(error); 
+      showToast("❌ Failed to undo."); 
+    }
   };
 
   const handleSavePurchase = async () => {
     if (!selectedSupplier) return;
     const finalPaid = parseFloat(amountPaid) || 0;
     const finalTotal = transactionType === "payment" ? 0 : totalAmount;
-    if (finalTotal === 0 && finalPaid === 0 && !note.trim() && invoiceItems.length === 0) { showToast("️ Please add items, a payment amount, or a note."); return; }
+    
+    if (finalTotal === 0 && finalPaid === 0 && !note.trim() && invoiceItems.length === 0) { 
+      showToast("⚠️ Please add items, a payment amount, or a note."); 
+      return; 
+    }
 
     try {
       const extraData = { 
@@ -184,7 +232,7 @@ export const RecordPurchasePage = () => {
 
       if (isFixing && fixingOldId) {
         extraData.correctsTransactionId = fixingOldId;
-        extraData.fixReason = fixReason; // 👈 NEW: Pass the reason to the database
+        extraData.fixReason = fixReason; 
         
         const newId = await TransactionService.create(
           currentStore.id, selectedSupplier.id, transactionType === "payment" ? "payment" : "purchase",
@@ -202,15 +250,25 @@ export const RecordPurchasePage = () => {
         setShowUndoToast(true);
         setTimeout(() => { setShowUndoToast(false); setUndoData(null); }, 10000);
         
-        setIsFixing(false); setFixingOldId(null); setFixReason("");
+        setIsFixing(false); 
+        setFixingOldId(null); 
+        setFixReason("");
       } else {
         await TransactionService.create(currentStore.id, selectedSupplier.id, transactionType === "payment" ? "payment" : "purchase", invoiceItems, finalTotal, finalPaid, note, extraData);
         await clearAutoDraft();
         showToast("✅ Transaction recorded!");
       }
+      
       setLastScrollPosition(window.scrollY);
-      setView("suppliers");
-    } catch (error) { console.error(error); showToast("❌ Failed to record transaction."); }
+      
+      // 👇 UPDATED: Set supplier in global store and navigate to their profile
+      setStoreSelectedSupplier(selectedSupplier);
+      setView("supplierProfile");
+      
+    } catch (error) { 
+      console.error(error); 
+      showToast("❌ Failed to record transaction."); 
+    }
   };
 
   const currentTotal = transactionType === "payment" ? 0 : totalAmount;
@@ -274,7 +332,7 @@ export const RecordPurchasePage = () => {
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedSupplier.name}</p>
               </div>
               {!isFixing && (
-                <button onClick={handleAbortFix} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
+                <button onClick={() => { setMode("search"); setSelectedSupplier(null); setInvoiceItems([]); setNote(""); setAmountPaid(""); clearAutoDraft(); }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
               )}
             </div>
           </div>
