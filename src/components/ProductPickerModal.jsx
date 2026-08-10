@@ -5,22 +5,20 @@ import { formatCurrency } from "../utils/helpers";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
-export const ProductPickerModal = ({ 
-  isOpen, 
-  onClose, 
-  products, 
-  currentStore, 
+export const ProductPickerModal = ({
+  isOpen,
+  onClose,
+  products,
+  currentStore,
   onProductsSelected,
   priceType = "sale",
-  onRequestCreateProduct 
+  onRequestCreateProduct
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [activeTab, setActiveTab] = useState("all");
-  
   const [multiUnitProduct, setMultiUnitProduct] = useState(null);
   const [tempQuantities, setTempQuantities] = useState({});
-
   const [addedProducts, setAddedProducts] = useState([]);
   const [categories, setCategories] = useState([]);
 
@@ -32,10 +30,9 @@ export const ProductPickerModal = ({
     }
   }, [currentStore?.id]);
 
-  // 👇 HELPER: Get only units visible for the current workflow
   const getVisibleUnits = (product) => {
     if (!product.units) return [];
-    return product.units.filter(u => 
+    return product.units.filter(u =>
       priceType === "purchase" ? u.visibleInPurchases !== false : u.visibleInSales !== false
     );
   };
@@ -43,17 +40,14 @@ export const ProductPickerModal = ({
   const filteredProducts = useMemo(() => {
     if (!Array.isArray(products)) return [];
     let result = [...products];
-
-    // 👇 NEW: Filter by product-level AND unit-level visibility
+    
     result = result.filter(p => {
       const productVisible = priceType === "sale" 
         ? p.visibility?.sales !== false 
         : p.visibility?.purchases !== false;
-        
       const hasVisibleUnit = p.units && p.units.some(u => 
         priceType === "sale" ? u.visibleInSales !== false : u.visibleInPurchases !== false
       );
-      
       return productVisible && hasVisibleUnit;
     });
 
@@ -80,7 +74,7 @@ export const ProductPickerModal = ({
 
   const getPrice = (unit) => priceType === "purchase" ? (unit.defaultPurchasePrice || 0) : (unit.defaultSalePrice || 0);
 
-  // 👇 SINGLE UNIT HANDLERS (Updated to use first VISIBLE unit)
+  // 👇 FIXED: Immutable state update to prevent React Strict Mode double-invocation bug
   const handleSingleUnitAdd = (product, delta) => {
     const visibleUnits = getVisibleUnits(product);
     const unit = visibleUnits[0] || { name: "Piece", defaultSalePrice: 0, defaultPurchasePrice: 0 };
@@ -88,27 +82,36 @@ export const ProductPickerModal = ({
 
     setAddedProducts(prev => {
       const existingIndex = prev.findIndex(p => p.productId === product.id && p.unitName === unit.name);
-      const newPrev = [...prev];
-
+      
       if (existingIndex >= 0) {
-        const newQty = newPrev[existingIndex].quantity + delta;
+        const newQty = prev[existingIndex].quantity + delta;
         if (newQty <= 0) {
-          newPrev.splice(existingIndex, 1);
+          // Return a new array without this item
+          return prev.filter((_, i) => i !== existingIndex);
         } else {
-          newPrev[existingIndex].quantity = newQty;
-          newPrev[existingIndex].total = newQty * price;
+          // Create a BRAND NEW object to avoid mutating the original state
+          const newItem = { 
+            ...prev[existingIndex], 
+            quantity: newQty, 
+            total: newQty * price 
+          };
+          const newPrev = [...prev];
+          newPrev[existingIndex] = newItem;
+          return newPrev;
         }
       } else if (delta > 0) {
-        newPrev.push({
+        return [...prev, {
           productId: product.id, name: product.name, brand: product.brand, unitName: unit.name,
           quantity: 1, price: price, total: price
-        });
+        }];
       }
-      return newPrev;
+      return prev;
     });
+    
     if (delta > 0) ProductService.trackUsage(product.id);
   };
 
+  // 👇 FIXED: Immutable state update for manual input
   const handleSingleUnitSetQty = (product, value) => {
     const visibleUnits = getVisibleUnits(product);
     const unit = visibleUnits[0] || { name: "Piece", defaultSalePrice: 0, defaultPurchasePrice: 0 };
@@ -117,36 +120,42 @@ export const ProductPickerModal = ({
 
     setAddedProducts(prev => {
       const existingIndex = prev.findIndex(p => p.productId === product.id && p.unitName === unit.name);
-      const newPrev = [...prev];
-
+      
       if (existingIndex >= 0) {
         if (isNaN(qty) || qty <= 0) {
-          newPrev.splice(existingIndex, 1);
+          return prev.filter((_, i) => i !== existingIndex);
         } else {
-          newPrev[existingIndex].quantity = qty;
-          newPrev[existingIndex].total = qty * price;
+          const newItem = { 
+            ...prev[existingIndex], 
+            quantity: qty, 
+            total: qty * price 
+          };
+          const newPrev = [...prev];
+          newPrev[existingIndex] = newItem;
+          return newPrev;
         }
       } else if (!isNaN(qty) && qty > 0) {
-        newPrev.push({
+        return [...prev, {
           productId: product.id, name: product.name, brand: product.brand, unitName: unit.name,
           quantity: qty, price: price, total: qty * price
-        });
+        }];
       }
-      return newPrev;
+      return prev;
     });
+    
     if (!isNaN(qty) && qty > 0) ProductService.trackUsage(product.id);
   };
 
-  // 👇 MULTI-UNIT MODAL HANDLERS
   const openMultiUnitModal = (product) => {
     setMultiUnitProduct(product);
     const existing = addedProducts.filter(p => p.productId === product.id);
     const initialQtys = {};
-    // Only initialize quantities for visible units
+    
     getVisibleUnits(product).forEach(u => {
       const found = existing.find(ep => ep.unitName === u.name);
       initialQtys[u.id] = found ? found.quantity : 0;
     });
+    
     setTempQuantities(initialQtys);
   };
 
@@ -171,7 +180,6 @@ export const ProductPickerModal = ({
     setAddedProducts(prev => {
       let newProducts = prev.filter(p => p.productId !== multiUnitProduct.id);
       
-      // Only process visible units
       getVisibleUnits(multiUnitProduct).forEach(unit => {
         const qty = tempQuantities[unit.id] || 0;
         if (qty > 0) {
@@ -187,12 +195,12 @@ export const ProductPickerModal = ({
           });
         }
       });
+      
       return newProducts;
     });
-
+    
     const totalAdded = Object.values(tempQuantities).reduce((sum, q) => sum + q, 0);
     if (totalAdded > 0) ProductService.trackUsage(multiUnitProduct.id);
-
     setMultiUnitProduct(null);
   };
 
@@ -214,7 +222,6 @@ export const ProductPickerModal = ({
 
   return (
     <div className="fixed inset-0 z-[100] bg-white dark:bg-gray-950 flex flex-col overflow-hidden">
-      {/* HEADER */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
         <div className="flex items-center justify-between p-4">
           <button onClick={onClose} className="p-2 -ml-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition active:scale-95">
@@ -224,16 +231,14 @@ export const ProductPickerModal = ({
             {priceType === "purchase" ? "Add Purchase Items" : "Add Products"}
           </h1>
           {totalItemsCount > 0 ? (
-            <div className={`px-3 py-1.5 rounded-full text-sm font-bold ${
-              priceType === "purchase" ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400" : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-            }`}>
+            <div className={`px-3 py-1.5 rounded-full text-sm font-bold ${priceType === "purchase" ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400" : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"}`}>
               {totalItemsCount} items
             </div>
           ) : (
             <div className="w-10"></div>
           )}
         </div>
-
+        
         <div className="px-4 pb-3">
           <div className="relative">
             <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${priceType === "purchase" ? "text-indigo-400" : "text-green-400"}`} size={20} />
@@ -251,7 +256,7 @@ export const ProductPickerModal = ({
             )}
           </div>
         </div>
-
+        
         <div className="px-4 pb-2 overflow-x-auto">
           <div className="flex gap-2 min-w-max">
             <button onClick={() => setActiveTab("all")} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${activeTab === "all" ? (priceType === "purchase" ? "bg-indigo-600 text-white" : "bg-green-600 text-white") : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"}`}>All</button>
@@ -260,7 +265,7 @@ export const ProductPickerModal = ({
             <button onClick={() => setActiveTab("most-used")} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${activeTab === "most-used" ? "bg-purple-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"}`}>Most Used</button>
           </div>
         </div>
-
+        
         <div className="px-4 pb-3 overflow-x-auto">
           <div className="flex gap-2 min-w-max">
             <button onClick={() => setSelectedCategory("All")} className={`px-3 py-1 rounded-full text-xs font-semibold transition ${selectedCategory === "All" ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"}`}>All</button>
@@ -273,7 +278,6 @@ export const ProductPickerModal = ({
         </div>
       </div>
 
-      {/* SCROLLABLE PRODUCT GRID */}
       <div className="flex-1 overflow-y-auto p-4">
         {filteredProducts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
@@ -307,8 +311,7 @@ export const ProductPickerModal = ({
                     {product.category && <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{product.category}</p>}
                     {product.brand && <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate italic">{product.brand}</p>}
                   </div>
-                  
-                  {/* 👇 UPDATED: Only show visible units */}
+
                   <div className="space-y-1 mb-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-2">
                     {visibleUnits.slice(0, 2).map(unit => (
                       <div key={unit.id} className="flex justify-between text-xs">
@@ -321,7 +324,6 @@ export const ProductPickerModal = ({
                     )}
                   </div>
 
-                  {/*  SMART CONTROLS */}
                   {!isMultiUnit ? (
                     totalQty === 0 ? (
                       <button 
@@ -339,7 +341,6 @@ export const ProductPickerModal = ({
                         <button onClick={() => handleSingleUnitAdd(product, -1)} className="w-9 h-9 flex items-center justify-center rounded-lg bg-white dark:bg-gray-800 shadow-sm text-gray-700 dark:text-gray-300 font-bold text-lg active:scale-90 transition">
                           <Minus size={18} />
                         </button>
-                        
                         <input 
                           type="number" 
                           step="0.1" 
@@ -350,7 +351,6 @@ export const ProductPickerModal = ({
                             priceType === "purchase" ? "text-indigo-700 dark:text-indigo-300" : "text-green-700 dark:text-green-300"
                           }`}
                         />
-
                         <button onClick={() => handleSingleUnitAdd(product, 1)} className="w-9 h-9 flex items-center justify-center rounded-lg bg-white dark:bg-gray-800 shadow-sm text-gray-700 dark:text-gray-300 font-bold text-lg active:scale-90 transition">
                           <Plus size={18} />
                         </button>
@@ -375,7 +375,6 @@ export const ProductPickerModal = ({
         )}
       </div>
 
-      {/* FIXED DONE BUTTON */}
       {totalItemsCount > 0 && (
         <div className="bg-white dark:bg-gray-900 border-t-2 border-gray-200 dark:border-gray-800 p-4 flex-shrink-0 shadow-2xl">
           <button onClick={handleDone} className={`w-full font-bold py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg text-lg ${
@@ -386,7 +385,6 @@ export const ProductPickerModal = ({
         </div>
       )}
 
-      {/* 👇 MULTI-UNIT QUANTITY MODAL */}
       {multiUnitProduct && (
         <div className="fixed inset-0 bg-black/60 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[85vh] flex flex-col">
@@ -401,7 +399,6 @@ export const ProductPickerModal = ({
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {/* 👇 UPDATED: Only show visible units in modal */}
               {getVisibleUnits(multiUnitProduct).map(unit => {
                 const currentQty = tempQuantities[unit.id] || 0;
                 return (
@@ -422,7 +419,6 @@ export const ProductPickerModal = ({
                       >
                         <Minus size={16} />
                       </button>
-                      
                       <input 
                         type="number" 
                         step="0.1" 
@@ -432,7 +428,6 @@ export const ProductPickerModal = ({
                         placeholder="0"
                         className={`w-12 text-center font-bold text-base bg-transparent outline-none ${noSpinnerClass} text-gray-900 dark:text-white`}
                       />
-
                       <button 
                         onClick={() => updateModalQty(unit.id, 1)}
                         className="w-8 h-8 flex items-center justify-center rounded-md bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold active:scale-90 transition"
@@ -444,7 +439,7 @@ export const ProductPickerModal = ({
                 );
               })}
             </div>
-
+            
             <div className="sticky bottom-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 p-4">
               <button 
                 onClick={confirmMultiUnitQuantities}

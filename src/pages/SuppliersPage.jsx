@@ -4,54 +4,84 @@ import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { openWhatsApp, openDialer } from "../utils/communication";
 import { SupplierService } from "../services/SupplierService";
-// 👇 UPDATED: Import the new Supplier-specific modal
-import { AddSupplierModal } from "../components/supplier/AddSupplierModal"; 
+import { TransactionService } from "../services/TransactionService";
+import { AddSupplierModal } from "../components/supplier/AddSupplierModal";
 import { TopBar } from "../components/TopBar";
 
 export const SuppliersPage = () => {
-  const { 
-    currentStore, 
-    setSelectedSupplier, setView, setPrefillTransaction 
+  const {
+    currentStore,
+    setSelectedSupplier, setView, setPrefillTransaction
   } = useStore();
   
-  const [suppliers, setSuppliers] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [actionSupplier, setActionSupplier] = useState(null);
-
+  
+  // 👇 NEW: Local state to hold suppliers with their mathematically true balances
+  const [suppliersData, setSuppliersData] = useState([]);
+  
   const currency = currentStore?.currency || "GH₵";
 
-  //  NEW: Extracted fetch function so we can refresh the list after adding
-  const fetchSuppliers = () => {
-    if (currentStore?.id) {
-      SupplierService.getAll(currentStore.id).then(setSuppliers);
-    }
-  };
-
+  // 1. Load Data & Calculate True Balances (Single Source of Truth)
   useEffect(() => {
-    fetchSuppliers();
+    const loadData = async () => {
+      if (!currentStore?.id) return;
+      try {
+        const [suppliers, transactions] = await Promise.all([
+          SupplierService.getAll(currentStore.id),
+          TransactionService.getAll(currentStore.id)
+        ]);
+
+        const trueBalances = {};
+        suppliers.forEach(s => { trueBalances[s.id] = 0; });
+
+        transactions.forEach(tx => {
+          const isActive = tx.status === 'active' || !tx.status;
+          if (!isActive) return;
+
+          if (!trueBalances[tx.contactId]) trueBalances[tx.contactId] = 0;
+
+          if (tx.type === 'purchase') {
+            trueBalances[tx.contactId] += (parseFloat(tx.amount) || 0);
+            trueBalances[tx.contactId] -= (parseFloat(tx.paid) || 0);
+          } else if (tx.type === 'supplier_payment') {
+            trueBalances[tx.contactId] -= (parseFloat(tx.paid) || 0);
+          }
+        });
+
+        const suppliersWithTrueBalance = suppliers.map(s => ({
+          ...s,
+          trueBalance: trueBalances[s.id] || 0
+        }));
+
+        setSuppliersData(suppliersWithTrueBalance);
+      } catch (error) {
+        console.error("Failed to load suppliers data", error);
+      }
+    };
+    loadData();
   }, [currentStore?.id]);
 
-  // 1. SMART SEARCH
+  // 2. SMART SEARCH
   const filteredSuppliers = useMemo(() => {
-    if (!Array.isArray(suppliers)) return [];
-    if (!searchQuery.trim()) return suppliers;
-    
+    if (!Array.isArray(suppliersData)) return [];
+    if (!searchQuery.trim()) return suppliersData;
     const q = searchQuery.toLowerCase();
-    return suppliers.filter(s => 
+    return suppliersData.filter(s => 
       s.name.toLowerCase().includes(q) || 
       (s.phone && s.phone.includes(q)) ||
       (s.lastSupplied && s.lastSupplied.toLowerCase().includes(q))
     );
-  }, [suppliers, searchQuery]);
+  }, [suppliersData, searchQuery]);
 
-  // 2. SECTIONING LOGIC
+  // 3. SECTIONING LOGIC
   const sections = useMemo(() => {
     const favorites = [];
     const needAttention = [];
     const recentlyActive = [];
     const others = [];
-
+    
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -60,13 +90,12 @@ export const SuppliersPage = () => {
         others.push(s);
         return;
       }
-
       const lastActiveDate = s.lastActivity ? new Date(s.lastActivity) : null;
       const isRecent = lastActiveDate && lastActiveDate >= thirtyDaysAgo;
 
       if (s.isFavourite || s.isPinned) {
         favorites.push(s);
-      } else if (s.balance > 0) {
+      } else if (s.trueBalance > 0) { // 👈 Use trueBalance
         needAttention.push(s);
       } else if (isRecent) {
         recentlyActive.push(s);
@@ -75,25 +104,25 @@ export const SuppliersPage = () => {
       }
     });
 
-    needAttention.sort((a, b) => b.balance - a.balance);
+    needAttention.sort((a, b) => b.trueBalance - a.trueBalance); // 👈 Sort by trueBalance
     recentlyActive.sort((a, b) => new Date(b.lastActivity) - new Date(a.lastActivity));
     others.sort((a, b) => a.name.localeCompare(b.name));
 
     return { favorites, needAttention, recentlyActive, others };
   }, [filteredSuppliers, searchQuery]);
 
-  // 3. QUICK ACTIONS
+  // 4. QUICK ACTIONS
   const handleRecordPurchase = (supplier) => {
     setActionSupplier(null);
     setSelectedSupplier(supplier);
-    setPrefillTransaction({ 
-      supplierId: supplier.id, 
-      name: supplier.name, 
-      phone: supplier.phone, 
+    setPrefillTransaction({
+      supplierId: supplier.id,
+      name: supplier.name,
+      phone: supplier.phone,
       type: "purchase",
-      items: "", 
-      amount: "", 
-      paid: "" 
+      items: "",
+      amount: "",
+      paid: ""
     });
     setView("recordSupplierPurchase");
   };
@@ -101,16 +130,16 @@ export const SuppliersPage = () => {
   const handleMakePayment = (supplier) => {
     setActionSupplier(null);
     setSelectedSupplier(supplier);
-    setPrefillTransaction({ 
-      supplierId: supplier.id, 
-      name: supplier.name, 
-      phone: supplier.phone, 
+    setPrefillTransaction({
+      supplierId: supplier.id,
+      name: supplier.name,
+      phone: supplier.phone,
       type: "payment",
-      items: "Payment", 
-      amount: "0", 
-      paid: "" 
+      items: "Payment",
+      amount: "0",
+      paid: ""
     });
-    setView("recordSupplierPurchase");
+    setView("recordSupplierPayment"); // 👈 Updated to use the new dedicated payment page
   };
 
   const handleViewProfile = (supplier) => {
@@ -119,8 +148,8 @@ export const SuppliersPage = () => {
     setView("supplierProfile");
   };
 
-  const generateMessage = (s) => 
-    `Hello ${s.name}, this is ${currentStore?.name || "Store"}. I will send your ${formatCurrency(s.balance, currency)} by the end of the week. Thank you!`;
+  const generateMessage = (s) =>
+    `Hello ${s.name}, this is ${currentStore?.name || "Store"}. I will send your ${formatCurrency(s.trueBalance, currency)} by the end of the week. Thank you!`;
 
   const getDaysOverdue = (lastActivity) => {
     if (!lastActivity) return null;
@@ -130,7 +159,9 @@ export const SuppliersPage = () => {
 
   const renderSupplierCard = (supplier) => {
     const daysOverdue = getDaysOverdue(supplier.lastActivity);
-    
+    // Fallback to supplier.balance just in case, but trueBalance is primary
+    const balance = supplier.trueBalance !== undefined ? supplier.trueBalance : supplier.balance;
+
     return (
       <button 
         key={supplier.id} 
@@ -139,21 +170,18 @@ export const SuppliersPage = () => {
       >
         <div className="flex items-start gap-3">
           <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 ${
-            supplier.balance > 0 ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400"
+            balance > 0 ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400"
           }`}>
             {supplier.name.charAt(0)}
           </div>
-
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <p className="font-bold text-gray-900 dark:text-white truncate">{supplier.name}</p>
               {(supplier.isFavourite || supplier.isPinned) && <Star size={12} className="text-yellow-500 fill-yellow-500 flex-shrink-0" />}
             </div>
-            
             <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5 flex items-center gap-1">
               <Phone size={10} /> {supplier.phone || "No phone"}
             </p>
-
             {(supplier.lastActivity || supplier.lastSupplied) && (
               <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 flex items-center gap-1">
                 <Clock size={10} /> 
@@ -161,12 +189,11 @@ export const SuppliersPage = () => {
               </p>
             )}
           </div>
-
           <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
-            {supplier.balance > 0 ? (
+            {balance > 0 ? (
               <>
                 <p className="text-sm font-bold text-orange-600 dark:text-orange-400">
-                  {formatCurrency(supplier.balance, currency)}
+                  {formatCurrency(balance, currency)}
                 </p>
                 {daysOverdue && (
                   <span className="text-[9px] font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded-md flex items-center gap-1">
@@ -174,9 +201,9 @@ export const SuppliersPage = () => {
                   </span>
                 )}
               </>
-            ) : supplier.balance < 0 ? (
+            ) : balance < 0 ? (
               <p className="text-sm font-bold text-blue-600 dark:text-blue-400">
-                Credit {formatCurrency(Math.abs(supplier.balance), currency)}
+                Credit {formatCurrency(Math.abs(balance), currency)}
               </p>
             ) : (
               <p className="text-[10px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-lg">
@@ -192,7 +219,6 @@ export const SuppliersPage = () => {
   const renderSection = (title, icon, data) => {
     if (searchQuery.trim() && title !== "Search Results") return null;
     if (data.length === 0) return null;
-
     return (
       <div className="mt-6 first:mt-0">
         <h3 className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1 flex items-center gap-1.5">
@@ -208,7 +234,6 @@ export const SuppliersPage = () => {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <TopBar title="Suppliers" />
-      
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto">
         
         {/* Search & Add Button */}
@@ -250,14 +275,37 @@ export const SuppliersPage = () => {
         </div>
       </div>
 
-      {/* 👇 UPDATED: Using the new AddSupplierModal with onSaved callback */}
+      {/* Add Supplier Modal */}
       <AddSupplierModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
-        onSaved={fetchSuppliers} 
+        onSaved={() => {
+          // Re-fetch data to update the list immediately after adding
+          if (currentStore?.id) {
+            SupplierService.getAll(currentStore.id).then(suppliers => {
+              // We also need to re-calculate balances, so just re-run the loadData logic
+              TransactionService.getAll(currentStore.id).then(transactions => {
+                const trueBalances = {};
+                suppliers.forEach(s => { trueBalances[s.id] = 0; });
+                transactions.forEach(tx => {
+                  const isActive = tx.status === 'active' || !tx.status;
+                  if (!isActive) return;
+                  if (!trueBalances[tx.contactId]) trueBalances[tx.contactId] = 0;
+                  if (tx.type === 'purchase') {
+                    trueBalances[tx.contactId] += (parseFloat(tx.amount) || 0);
+                    trueBalances[tx.contactId] -= (parseFloat(tx.paid) || 0);
+                  } else if (tx.type === 'supplier_payment') {
+                    trueBalances[tx.contactId] -= (parseFloat(tx.paid) || 0);
+                  }
+                });
+                setSuppliersData(suppliers.map(s => ({ ...s, trueBalance: trueBalances[s.id] || 0 })));
+              });
+            });
+          }
+        }} 
       />
 
-      {/*  ACTION BOTTOM SHEET */}
+      {/* ACTION BOTTOM SHEET */}
       {actionSupplier && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={() => setActionSupplier(null)}>
           <div 
@@ -268,14 +316,13 @@ export const SuppliersPage = () => {
               <div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white">{actionSupplier.name}</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {actionSupplier.balance > 0 ? `I owe ${formatCurrency(actionSupplier.balance, currency)}` : "All Paid Up"}
+                  {actionSupplier.trueBalance > 0 ? `I owe ${formatCurrency(actionSupplier.trueBalance, currency)}` : "All Paid Up"}
                 </p>
               </div>
               <button onClick={() => setActionSupplier(null)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
                 <X size={20} className="text-gray-600 dark:text-gray-300" />
               </button>
             </div>
-
             <div className="grid grid-cols-2 gap-3">
               <button 
                 onClick={() => handleRecordPurchase(actionSupplier)}
@@ -286,7 +333,6 @@ export const SuppliersPage = () => {
                 </div>
                 <span className="font-bold text-gray-900 dark:text-white text-sm">Record Purchase</span>
               </button>
-
               <button 
                 onClick={() => handleMakePayment(actionSupplier)}
                 className="flex flex-col items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl active:scale-95 transition"
@@ -296,7 +342,6 @@ export const SuppliersPage = () => {
                 </div>
                 <span className="font-bold text-gray-900 dark:text-white text-sm">Make Payment</span>
               </button>
-
               <button 
                 onClick={() => { setActionSupplier(null); openDialer(actionSupplier.phone); }}
                 className="flex flex-col items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl active:scale-95 transition"
@@ -306,7 +351,6 @@ export const SuppliersPage = () => {
                 </div>
                 <span className="font-bold text-gray-900 dark:text-white text-sm">Call</span>
               </button>
-
               <button 
                 onClick={() => { setActionSupplier(null); openWhatsApp(actionSupplier.phone, generateMessage(actionSupplier)); }}
                 className="flex flex-col items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl active:scale-95 transition"
@@ -317,7 +361,6 @@ export const SuppliersPage = () => {
                 <span className="font-bold text-gray-900 dark:text-white text-sm">WhatsApp</span>
               </button>
             </div>
-            
             <button 
               onClick={() => handleViewProfile(actionSupplier)}
               className="w-full mt-4 py-3 text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition flex items-center justify-center gap-1"

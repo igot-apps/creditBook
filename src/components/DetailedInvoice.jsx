@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Plus, X, Tag, ChevronUp, ChevronDown, Package } from "lucide-react";
 import { ProductService } from "../services/ProductService";
 import { formatCurrency } from "../utils/helpers";
@@ -19,24 +19,31 @@ export const DetailedInvoice = ({
 
   // Time Lock Ref to prevent double-execution
   const lastActionTime = useRef(0);
+  const currency = currentStore?.currency || "GH";
 
-  const currency = currentStore?.currency || "GH₵";
-
-  const totalInvoiceAmount = invoiceItems.reduce((sum, item) => {
-    const qty = parseFloat(item.quantity) || 0;
-    const price = parseFloat(item.price) || 0;
-    return sum + (qty * price);
-  }, 0);
+  // Calculate totals dynamically
+  const totalInvoiceAmount = useMemo(() => {
+    return invoiceItems.reduce((sum, item) => {
+      const qty = parseFloat(item.quantity) || 0;
+      const price = parseFloat(item.price) || 0;
+      return sum + (qty * price);
+    }, 0);
+  }, [invoiceItems]);
 
   const discountAmount = parseFloat(discount) || 0;
   const finalTotal = Math.max(0, totalInvoiceAmount - discountAmount);
 
+  // Sync final total back to parent transaction state
   useEffect(() => {
-    setTx(prev => ({ ...prev, amount: finalTotal.toString() }));
+    setTx(prev => {
+      if (prev.amount === finalTotal.toString()) return prev;
+      return { ...prev, amount: finalTotal.toString() };
+    });
   }, [finalTotal, setTx]);
 
-  // 👇 UPDATED: Overwrites existing quantity with the picker's quantity
-  const handleProductsSelected = (selectedProducts) => {
+  //  BULLETPROOF: Handles products coming from the picker
+  const handleProductsSelected = useCallback((selectedProducts) => {
+    // Time lock to prevent double-firing from mobile touch events or React Strict Mode
     const now = Date.now();
     if (now - lastActionTime.current < 300) return;
     lastActionTime.current = now;
@@ -44,7 +51,7 @@ export const DetailedInvoice = ({
     setInvoiceItems(prev => {
       const itemMap = new Map();
       
-      // 1. Index existing items
+      // 1. Index existing items by a unique key (productId + unitName)
       prev.forEach(item => {
         const key = `${item.productId || 'custom'}-${item.unitName}`;
         itemMap.set(key, {
@@ -54,7 +61,7 @@ export const DetailedInvoice = ({
         });
       });
 
-      // 2. Merge selected products
+      // 2. Merge selected products from the picker
       selectedProducts.forEach(newItem => {
         const key = `${newItem.productId || 'custom'}-${newItem.unitName}`;
         
@@ -63,11 +70,12 @@ export const DetailedInvoice = ({
         const cleanPrice = parseFloat(newItem.price) || 0;
 
         if (itemMap.has(key)) {
+          // Item exists - OVERWRITE the existing quantity with the new one from the picker
           const existing = itemMap.get(key);
-          // 👇 OVERWRITE the existing quantity with the new one from the picker
           existing.quantity = incomingQty; 
           existing.total = existing.quantity * existing.price;
         } else {
+          // New item - add it cleanly
           itemMap.set(key, {
             productId: newItem.productId,
             name: newItem.name,
@@ -82,10 +90,12 @@ export const DetailedInvoice = ({
 
       return Array.from(itemMap.values());
     });
+    
     setShowProductPicker(false);
-  };
+  }, [setInvoiceItems]);
 
-  const handleSaveProduct = async (productData) => {
+  // 👇 BULLETPROOF: Handles creating a new product on the fly
+  const handleSaveProduct = useCallback(async (productData) => {
     const now = Date.now();
     if (now - lastActionTime.current < 300) return;
     lastActionTime.current = now;
@@ -103,7 +113,11 @@ export const DetailedInvoice = ({
           const itemMap = new Map();
           prev.forEach(item => {
             const key = `${item.productId || 'custom'}-${item.unitName}`;
-            itemMap.set(key, { ...item, quantity: parseFloat(item.quantity) || 0, price: parseFloat(item.price) || 0 });
+            itemMap.set(key, { 
+              ...item, 
+              quantity: parseFloat(item.quantity) || 0, 
+              price: parseFloat(item.price) || 0 
+            });
           });
 
           const key = `${newId}-${unit.name}`;
@@ -115,8 +129,13 @@ export const DetailedInvoice = ({
             existing.total = existing.quantity * existing.price;
           } else {
             itemMap.set(key, {
-              productId: newId, name: createdProduct.name, brand: createdProduct.brand, unitName: unit.name,
-              quantity: 1, price: cleanPrice, total: cleanPrice
+              productId: newId, 
+              name: createdProduct.name, 
+              brand: createdProduct.brand, 
+              unitName: unit.name,
+              quantity: 1, 
+              price: cleanPrice, 
+              total: cleanPrice
             });
           }
           return Array.from(itemMap.values());
@@ -130,24 +149,34 @@ export const DetailedInvoice = ({
       console.error(error);
       showToast("❌ Failed to create product.");
     }
-  };
+  }, [currentStore.id, setProducts, setInvoiceItems, showToast]);
 
-  const updateItem = (index, field, value) => {
-    const updated = [...invoiceItems];
-    if (field !== 'name' && field !== 'unitName') {
-      updated[index][field] = value === "" ? "" : (parseFloat(value) || 0);
-    } else {
-      updated[index][field] = value;
-    }
-    if (field === 'quantity' || field === 'price') {
-      const qty = parseFloat(updated[index].quantity) || 0;
-      const price = parseFloat(updated[index].price) || 0;
-      updated[index].total = qty * price;
-    }
-    setInvoiceItems(updated);
-  };
+  // 👇 BULLETPROOF: Updates individual item quantity/price directly in the invoice
+  const updateItem = useCallback((index, field, value) => {
+    setInvoiceItems(prev => {
+      const updated = [...prev];
+      const item = { ...updated[index] };
+      
+      if (field !== 'name' && field !== 'unitName') {
+        item[field] = value === "" ? "" : (parseFloat(value) || 0);
+      } else {
+        item[field] = value;
+      }
+      
+      if (field === 'quantity' || field === 'price') {
+        const qty = parseFloat(item.quantity) || 0;
+        const price = parseFloat(item.price) || 0;
+        item.total = qty * price;
+      }
+      
+      updated[index] = item;
+      return updated;
+    });
+  }, [setInvoiceItems]);
 
-  const removeItem = (index) => setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
+  const removeItem = useCallback((index) => {
+    setInvoiceItems(prev => prev.filter((_, i) => i !== index));
+  }, [setInvoiceItems]);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col max-h-[85vh]">
