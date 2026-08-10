@@ -267,4 +267,4 @@ export const HomePage = () => {
       <UniversalSearchModal isOpen={showSearch} onClose={() => setShowSearch(false)} />
     </div>
   );
-};
+};   
