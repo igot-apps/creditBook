@@ -14,14 +14,14 @@ export const RecordSalePage = () => {
     currentStore, setView, prefillTransaction, setPrefillTransaction, showToast,
     autoDraft, saveDraft, clearAutoDraft,
     fixTransaction, setFixTransaction, lastScrollPosition, setLastScrollPosition,
-    setSelectedCustomer: setStoreSelectedCustomer // 👈 Aliased to avoid conflict with local state
+    setSelectedCustomer: setStoreSelectedCustomer //  Aliased to avoid conflict
   } = useStore();
 
   const currency = currentStore?.currency || "GH₵";
 
   const [mode, setMode] = useState("search");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCustomer, setSelectedCustomer] = useState(null); // Local state
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
   const [invoiceItems, setInvoiceItems] = useState([]);
@@ -45,11 +45,9 @@ export const RecordSalePage = () => {
       const customer = (Array.isArray(customers) ? customers : []).find(c => c.id === prefillTransaction.customerId) || {
         id: prefillTransaction.customerId, name: prefillTransaction.name || "Unknown Customer", phone: prefillTransaction.phone || ""
       };
-      setSelectedCustomer(customer); 
-      setMode("existing");
+      setSelectedCustomer(customer); setMode("existing");
       if (prefillTransaction.paid !== undefined) setTx(prev => ({ ...prev, paid: prefillTransaction.paid.toString() }));
-      setPrefillTransaction(null); 
-      clearAutoDraft();
+      setPrefillTransaction(null); clearAutoDraft();
     }
   }, [prefillTransaction, customers, setPrefillTransaction, clearAutoDraft]);
 
@@ -63,9 +61,7 @@ export const RecordSalePage = () => {
       setTx({ amount: fixTransaction.amount?.toString() || "0", paid: fixTransaction.paid?.toString() || "", discount: fixTransaction.discount?.toString() || "", note: fixTransaction.note || "" });
       setOriginalAmount(parseFloat(fixTransaction.amount) || 0);
       setFixReason(fixTransaction.fixReason || "");
-      setMode("existing"); 
-      setIsFixing(true); 
-      setFixingOldId(fixTransaction.id);
+      setMode("existing"); setIsFixing(true); setFixingOldId(fixTransaction.id);
       TransactionService.update(fixTransaction.id, { status: 'being_corrected' });
       setFixTransaction(null);
     }
@@ -75,12 +71,8 @@ export const RecordSalePage = () => {
     if (fixingOldId) {
       await TransactionService.update(fixingOldId, { status: 'active' });
     }
-    setIsFixing(false); 
-    setFixingOldId(null); 
-    setFixReason("");
-    setMode("search"); 
-    setSelectedCustomer(null); 
-    setInvoiceItems([]);
+    setIsFixing(false); setFixingOldId(null); setFixReason("");
+    setMode("search"); setSelectedCustomer(null); setInvoiceItems([]);
     setTx({ amount: "0", paid: "", discount: "", note: "" });
     clearAutoDraft();
   };
@@ -110,23 +102,17 @@ export const RecordSalePage = () => {
     return customers.filter(c => c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)));
   }, [customers, searchQuery]);
 
-  const handleSelectCustomer = (customer) => { 
-    setSelectedCustomer(customer); 
-    setMode("existing"); 
-    setSearchQuery(""); 
-  };
+  const handleSelectCustomer = (customer) => { setSelectedCustomer(customer); setMode("existing"); setSearchQuery(""); };
 
   const handleCreateCustomer = () => {
     const name = searchQuery.trim();
     if (name) {
       CustomerService.addCustomer(currentStore.id, name, "").then(id => {
         const newCustomer = { id, name, phone: "", balance: 0 };
-        setSelectedCustomer(newCustomer); 
-        setMode("existing"); 
-        setSearchQuery("");
+        setSelectedCustomer(newCustomer); setMode("existing"); setSearchQuery("");
         showToast("✅ Customer created!");
         CustomerService.getAll(currentStore.id).then(setCustomers);
-      }).catch(() => showToast("❌ Failed to create customer."));
+      }).catch(() => showToast(" Failed to create customer."));
     }
   };
 
@@ -136,11 +122,10 @@ export const RecordSalePage = () => {
       await db.transactions.delete(undoData.newId);
       await TransactionService.update(undoData.oldId, { status: 'active', cancelReason: null, replacedByTransactionId: null });
       await CustomerService.updateBalance(undoData.customerId);
-      setShowUndoToast(false); 
-      setUndoData(null);
+      setShowUndoToast(false); setUndoData(null);
       showToast("✅ Correction undone.");
       
-      // 👇 UPDATED: Navigate to customer profile instead of list
+      // 👇 UPDATED: Navigate to customer profile
       const customerToRestore = customers.find(c => c.id === undoData.customerId);
       if (customerToRestore) {
         setStoreSelectedCustomer(customerToRestore);
@@ -148,10 +133,7 @@ export const RecordSalePage = () => {
       } else {
         setView("customers");
       }
-    } catch (error) { 
-      console.error(error); 
-      showToast("❌ Failed to undo."); 
-    }
+    } catch (error) { console.error(error); showToast("❌ Failed to undo."); }
   };
 
   const handleSaveInvoice = async () => {
@@ -160,8 +142,7 @@ export const RecordSalePage = () => {
     const finalPaid = parseFloat(tx.paid) || 0;
 
     if (finalAmount === 0 && finalPaid === 0 && !tx.note.trim() && invoiceItems.length === 0) {
-      showToast("⚠️ Please add items, a payment amount, or a note."); 
-      return;
+      showToast("⚠️ Please add items, a payment amount, or a note."); return;
     }
 
     try {
@@ -183,9 +164,7 @@ export const RecordSalePage = () => {
         setUndoData({ newId, oldId: fixingOldId, customerId: selectedCustomer.id });
         setShowUndoToast(true);
         setTimeout(() => { setShowUndoToast(false); setUndoData(null); }, 10000);
-        setIsFixing(false); 
-        setFixingOldId(null); 
-        setFixReason("");
+        setIsFixing(false); setFixingOldId(null); setFixReason("");
       } else {
         await TransactionService.create(currentStore.id, selectedCustomer.id, 'sale', invoiceItems, finalAmount, finalPaid, tx.note, extraData);
         await clearAutoDraft();
@@ -198,10 +177,7 @@ export const RecordSalePage = () => {
       setStoreSelectedCustomer(selectedCustomer);
       setView("profile");
       
-    } catch (error) { 
-      console.error(error); 
-      showToast("❌ Failed to record sale."); 
-    }
+    } catch (error) { console.error(error); showToast("❌ Failed to record sale."); }
   };
 
   const currentTotal = parseFloat(tx.amount) || 0;

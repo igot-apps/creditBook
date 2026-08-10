@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Plus, X, Tag, ChevronUp, ChevronDown, Package } from "lucide-react";
 import { ProductService } from "../services/ProductService";
 import { formatCurrency } from "../utils/helpers";
@@ -17,6 +17,9 @@ export const DetailedInvoice = ({
   const [discount, setDiscount] = useState(tx.discount || "");
   const [showSummary, setShowSummary] = useState(true);
 
+  // Time Lock Ref to prevent double-execution
+  const lastActionTime = useRef(0);
+
   const currency = currentStore?.currency || "GH₵";
 
   const totalInvoiceAmount = invoiceItems.reduce((sum, item) => {
@@ -32,41 +35,101 @@ export const DetailedInvoice = ({
     setTx(prev => ({ ...prev, amount: finalTotal.toString() }));
   }, [finalTotal, setTx]);
 
+  // 👇 UPDATED: Overwrites existing quantity with the picker's quantity
   const handleProductsSelected = (selectedProducts) => {
-    setInvoiceItems(prev => [...prev, ...selectedProducts]);
+    const now = Date.now();
+    if (now - lastActionTime.current < 300) return;
+    lastActionTime.current = now;
+
+    setInvoiceItems(prev => {
+      const itemMap = new Map();
+      
+      // 1. Index existing items
+      prev.forEach(item => {
+        const key = `${item.productId || 'custom'}-${item.unitName}`;
+        itemMap.set(key, {
+          ...item,
+          quantity: parseFloat(item.quantity) || 0,
+          price: parseFloat(item.price) || 0
+        });
+      });
+
+      // 2. Merge selected products
+      selectedProducts.forEach(newItem => {
+        const key = `${newItem.productId || 'custom'}-${newItem.unitName}`;
+        
+        // Get quantity from picker, default to 1 if missing/invalid
+        const incomingQty = parseFloat(newItem.quantity) > 0 ? parseFloat(newItem.quantity) : 1;
+        const cleanPrice = parseFloat(newItem.price) || 0;
+
+        if (itemMap.has(key)) {
+          const existing = itemMap.get(key);
+          // 👇 OVERWRITE the existing quantity with the new one from the picker
+          existing.quantity = incomingQty; 
+          existing.total = existing.quantity * existing.price;
+        } else {
+          itemMap.set(key, {
+            productId: newItem.productId,
+            name: newItem.name,
+            brand: newItem.brand || "",
+            unitName: newItem.unitName,
+            quantity: incomingQty,
+            price: cleanPrice,
+            total: incomingQty * cleanPrice
+          });
+        }
+      });
+
+      return Array.from(itemMap.values());
+    });
     setShowProductPicker(false);
   };
 
   const handleSaveProduct = async (productData) => {
+    const now = Date.now();
+    if (now - lastActionTime.current < 300) return;
+    lastActionTime.current = now;
+
     try {
       const newId = await ProductService.create(currentStore.id, productData);
       const updatedProducts = await ProductService.getAll(currentStore.id);
       setProducts(updatedProducts);
       const createdProduct = updatedProducts.find(p => p.id === newId);
+      
       if (createdProduct && createdProduct.units && createdProduct.units.length > 0) {
-        addUnitToInvoice(createdProduct, createdProduct.units[0]);
+        const unit = createdProduct.units[0];
+        
+        setInvoiceItems(prev => {
+          const itemMap = new Map();
+          prev.forEach(item => {
+            const key = `${item.productId || 'custom'}-${item.unitName}`;
+            itemMap.set(key, { ...item, quantity: parseFloat(item.quantity) || 0, price: parseFloat(item.price) || 0 });
+          });
+
+          const key = `${newId}-${unit.name}`;
+          const cleanPrice = parseFloat(unit.defaultSalePrice) || 0;
+
+          if (itemMap.has(key)) {
+            const existing = itemMap.get(key);
+            existing.quantity += 1;
+            existing.total = existing.quantity * existing.price;
+          } else {
+            itemMap.set(key, {
+              productId: newId, name: createdProduct.name, brand: createdProduct.brand, unitName: unit.name,
+              quantity: 1, price: cleanPrice, total: cleanPrice
+            });
+          }
+          return Array.from(itemMap.values());
+        });
+        
+        ProductService.trackUsage(createdProduct.id);
+        showToast("✅ Product template created and added!");
       }
-      showToast("✅ Product template created and added!");
+      setNewProductName("");
     } catch (error) {
       console.error(error);
-      showToast(" Failed to create product.");
+      showToast("❌ Failed to create product.");
     }
-  };
-
-  const addUnitToInvoice = (product, unit) => {
-    const existingIndex = invoiceItems.findIndex(i => i.productId === product.id && i.unitName === unit.name);
-    if (existingIndex >= 0) {
-      const updated = [...invoiceItems];
-      updated[existingIndex].quantity = (updated[existingIndex].quantity || 1) + 1;
-      updated[existingIndex].total = updated[existingIndex].quantity * updated[existingIndex].price;
-      setInvoiceItems(updated);
-    } else {
-      setInvoiceItems([...invoiceItems, {
-        productId: product.id, name: product.name, brand: product.brand, unitName: unit.name,
-        quantity: 1, price: unit.defaultSalePrice || 0, total: unit.defaultSalePrice || 0
-      }]);
-    }
-    ProductService.trackUsage(product.id);
   };
 
   const updateItem = (index, field, value) => {
@@ -166,7 +229,6 @@ export const DetailedInvoice = ({
         products={products}
         currentStore={currentStore}
         onProductsSelected={handleProductsSelected}
-        // 👇 FIX: Close the picker BEFORE opening the Add Product modal
         onRequestCreateProduct={(name) => { 
           setShowProductPicker(false); 
           setNewProductName(name); 

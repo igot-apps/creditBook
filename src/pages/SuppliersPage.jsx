@@ -3,8 +3,9 @@ import { Search, Plus, Truck, Phone, MessageCircle, DollarSign, ShoppingCart, X,
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { openWhatsApp, openDialer } from "../utils/communication";
-import { SupplierService } from "../services/SupplierService"; // 👈 Added for direct fetching
-import { AddCustomerModal } from "../components/customer/AddCustomerModal"; // 👈 Change this if your modal has a different name
+import { SupplierService } from "../services/SupplierService";
+// 👇 UPDATED: Import the new Supplier-specific modal
+import { AddSupplierModal } from "../components/supplier/AddSupplierModal"; 
 import { TopBar } from "../components/TopBar";
 
 export const SuppliersPage = () => {
@@ -20,11 +21,15 @@ export const SuppliersPage = () => {
 
   const currency = currentStore?.currency || "GH₵";
 
-  // Fetch suppliers directly to avoid missing store functions
-  useEffect(() => {
+  //  NEW: Extracted fetch function so we can refresh the list after adding
+  const fetchSuppliers = () => {
     if (currentStore?.id) {
       SupplierService.getAll(currentStore.id).then(setSuppliers);
     }
+  };
+
+  useEffect(() => {
+    fetchSuppliers();
   }, [currentStore?.id]);
 
   // 1. SMART SEARCH
@@ -99,7 +104,7 @@ export const SuppliersPage = () => {
     setPrefillTransaction({ 
       supplierId: supplier.id, 
       name: supplier.name, 
-      phone: supplier.phone, // 👈 Fixed typo here
+      phone: supplier.phone, 
       type: "payment",
       items: "Payment", 
       amount: "0", 
@@ -245,13 +250,14 @@ export const SuppliersPage = () => {
         </div>
       </div>
 
-      {/* Add Modal (Update the component name here if needed) */}
-      <AddCustomerModal 
+      {/* 👇 UPDATED: Using the new AddSupplierModal with onSaved callback */}
+      <AddSupplierModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
+        onSaved={fetchSuppliers} 
       />
 
-      {/* 👇 ACTION BOTTOM SHEET */}
+      {/*  ACTION BOTTOM SHEET */}
       {actionSupplier && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={() => setActionSupplier(null)}>
           <div 
