@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Phone, MessageCircle, Edit3, Ban, Clock, AlertTriangle, FileText, X, Check, ArrowRight, ArrowLeft, ChevronDown, ChevronUp, Plus, Banknote, Truck } from "lucide-react";
+import { Phone, MessageCircle, Edit3, Ban, Clock, AlertTriangle, FileText, X, Check, ArrowRight, ArrowLeft, ChevronDown, ChevronUp, Plus, Truck, Banknote, Smartphone, CreditCard } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openWhatsApp, openDialer } from "../utils/communication";
@@ -30,21 +30,22 @@ const SupplierHeader = ({ supplier, daysSinceLastActive }) => (
   </div>
 );
 
-const BalanceCard = ({ supplier, lastPayment, currency }) => (
+// UPDATED: Accepts 'balance' directly for Single Source of Truth
+const BalanceCard = ({ balance, lastPayment, currency }) => (
   <div className={`p-5 rounded-2xl shadow-sm border ${
-    supplier.balance > 0 ? "bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800" : 
-    supplier.balance < 0 ? "bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800" : 
+    balance > 0 ? "bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800" : 
+    balance < 0 ? "bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800" : 
     "bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800"
   }`}>
     <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
-      {supplier.balance > 0 ? "Amount I Owe" : supplier.balance < 0 ? "Supplier Credit" : "All Paid Up"}
+      {balance > 0 ? "Outstanding Debt" : balance < 0 ? "Supplier Credit" : "All Paid Up"}
     </p>
     <p className={`text-3xl font-bold ${
-      supplier.balance > 0 ? "text-orange-600 dark:text-orange-400" : 
-      supplier.balance < 0 ? "text-blue-600 dark:text-blue-400" : 
+      balance > 0 ? "text-orange-600 dark:text-orange-400" : 
+      balance < 0 ? "text-blue-600 dark:text-blue-400" : 
       "text-green-600 dark:text-green-400"
     }`}>
-      {formatCurrency(Math.abs(supplier.balance), currency)}
+      {formatCurrency(Math.abs(balance), currency)}
     </p>
     
     {lastPayment && (
@@ -61,7 +62,7 @@ const BalanceCard = ({ supplier, lastPayment, currency }) => (
 const QuickActions = ({ onPurchase, onPayment, onCall, onWhatsApp }) => (
   <div className="grid grid-cols-4 gap-2">
     <button onClick={onPurchase} className="bg-indigo-600 text-white p-3 rounded-xl flex flex-col items-center gap-1.5 active:scale-95 transition shadow-md">
-      <Truck size={20} /> <span className="text-[10px] font-bold">Purchase</span>
+      <Plus size={20} /> <span className="text-[10px] font-bold">Purchase</span>
     </button>
     <button onClick={onPayment} className="bg-blue-600 text-white p-3 rounded-xl flex flex-col items-center gap-1.5 active:scale-95 transition shadow-md">
       <Banknote size={20} /> <span className="text-[10px] font-bold">Payment</span>
@@ -75,18 +76,18 @@ const QuickActions = ({ onPurchase, onPayment, onCall, onWhatsApp }) => (
   </div>
 );
 
-const OutstandingInvoices = ({ invoices, onView, currency }) => {
-  if (invoices.length === 0) return null;
+const OutstandingPurchases = ({ purchases, onView, currency }) => {
+  if (purchases.length === 0) return null;
   return (
     <div>
       <h3 className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1 flex items-center gap-1">
-        <AlertTriangle size={12} className="text-orange-500" /> Unpaid Purchases ({invoices.length})
+        <AlertTriangle size={12} className="text-orange-500" /> Unpaid Purchases ({purchases.length})
       </h3>
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden divide-y divide-gray-100 dark:divide-gray-700">
-        {invoices.map(tx => (
+        {purchases.map(tx => (
           <button key={tx.id} onClick={() => onView(tx)} className="w-full flex items-center justify-between p-3 active:bg-gray-50 dark:active:bg-gray-700/50 transition text-left">
             <div>
-              <p className="font-semibold text-sm text-gray-900 dark:text-white">{formatCurrency(tx.amount - tx.paid, currency)} unpaid</p>
+              <p className="font-semibold text-sm text-gray-900 dark:text-white">{formatCurrency(tx.trueOutstanding, currency)} unpaid</p>
               <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDate(tx.date || tx.createdAt).split(',')[0]}</p>
             </div>
             <ArrowRight size={16} className="text-gray-400" />
@@ -103,8 +104,7 @@ const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setVi
   const getTimelineIcon = (tx) => {
     if (tx.status === 'being_corrected') return <Edit3 size={16} className="text-yellow-600" />;
     if (tx.status === 'cancelled') return <Ban size={16} className="text-red-500" />;
-    if (tx.amount > 0 && tx.paid === 0) return <FileText size={16} className="text-orange-500" />;
-    if (tx.amount === 0 && tx.paid > 0) return <Check size={16} className="text-green-500" />;
+    if (tx.type === 'supplier_payment') return <Check size={16} className="text-green-500" />;
     return <FileText size={16} className="text-indigo-500" />;
   };
 
@@ -115,7 +115,7 @@ const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setVi
       </div>
       <div className="p-4 space-y-3">
         {visibleHistory.length === 0 ? (
-          <p className="text-center text-gray-400 py-6 text-sm">No purchase history yet</p>
+          <p className="text-center text-gray-400 py-6 text-sm">No transaction history yet</p>
         ) : (
           visibleHistory.slice(0, 10).map((tx) => {
             const isBeingCorrected = tx.status === 'being_corrected';
@@ -131,19 +131,19 @@ const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setVi
                 }`}>
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
-                      <div className={`p-1 rounded-full ${isInvalid ? (isCancelled ? 'bg-red-100 dark:bg-red-900/40' : 'bg-yellow-100 dark:bg-yellow-900/40') : 'bg-indigo-100 dark:bg-indigo-900/30'}`}>
+                      <div className={`p-1 rounded-full ${isInvalid ? (isCancelled ? 'bg-red-100 dark:bg-red-900/40' : 'bg-yellow-100 dark:bg-yellow-900/40') : (tx.type === 'supplier_payment' ? 'bg-green-100 dark:bg-green-900/30' : 'bg-indigo-100 dark:bg-indigo-900/30')}`}>
                         {getTimelineIcon(tx)}
                       </div>
                       <div>
                         <p className={`font-bold text-sm ${isInvalid ? 'text-gray-500 line-through' : 'text-gray-900 dark:text-white'}`}>
-                          {tx.type === 'payment' ? 'Payment' : 'Purchase'}
+                          {tx.type === 'supplier_payment' ? 'Payment' : 'Purchase'}
                         </p>
                         <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDate(tx.date || tx.createdAt).split(',')[0]}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className={`text-sm font-bold ${isInvalid ? 'text-gray-400' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(tx.amount, currency)}</p>
-                      {tx.paid > 0 && !isInvalid && <p className="text-[10px] text-green-600 dark:text-green-400">Paid: {formatCurrency(tx.paid, currency)}</p>}
+                      <p className={`text-sm font-bold ${isInvalid ? 'text-gray-400' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(tx.amount || tx.paid, currency)}</p>
+                      {tx.type === 'purchase' && tx.paid > 0 && !isInvalid && <p className="text-[10px] text-indigo-600 dark:text-indigo-400">Paid: {formatCurrency(tx.paid, currency)}</p>}
                     </div>
                   </div>
                   
@@ -200,13 +200,30 @@ const MoreInformation = ({ totalPurchases, totalPayments, historyLength, created
 // MODALS
 // ==========================================
 
-const ReceiptModal = ({ tx, onClose, onViewTx, onFix, onCancel, currency }) => {
+const ReceiptModal = ({ tx, onClose, onViewTx, onFix, onCancel, currency, activePayments }) => {
   if (!tx) return null;
+
+  const subsequentPayments = useMemo(() => {
+    if (tx.type !== 'purchase' || !activePayments) return [];
+    return activePayments
+      .filter(p => p.allocations?.some(a => a.transactionId === tx.id))
+      .map(p => {
+        const alloc = p.allocations.find(a => a.transactionId === tx.id);
+        return { id: p.id, date: p.createdAt || p.date, amount: alloc.amount, method: p.paymentMethod || 'Cash', note: p.note };
+      });
+  }, [tx, activePayments]);
+
+  const totalAllocated = subsequentPayments.reduce((sum, p) => sum + p.amount, 0);
+  const trueOutstanding = Math.max(0, (parseFloat(tx.amount) || 0) - (parseFloat(tx.paid) || 0) - totalAllocated);
+
   return (
     <div className="fixed inset-0 bg-black/60 z-[90] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm">
       <div className="bg-white dark:bg-gray-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white dark:bg-gray-900 p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center z-10">
-          <h3 className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2"><FileText size={20} className="text-indigo-600" /> Purchase Receipt</h3>
+          <h3 className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2">
+            <FileText size={20} className={tx.type === 'supplier_payment' ? "text-blue-600" : "text-indigo-600"} /> 
+            {tx.type === 'supplier_payment' ? "Payment Receipt" : "Purchase Receipt"}
+          </h3>
           <button onClick={onClose} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full"><X size={18} className="text-gray-600 dark:text-gray-300" /></button>
         </div>
         <div className="p-5 space-y-4">
@@ -216,7 +233,9 @@ const ReceiptModal = ({ tx, onClose, onViewTx, onFix, onCancel, currency }) => {
             ) : tx.status === 'cancelled' ? (
               <span className="px-4 py-1.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1"><Ban size={12} /> Cancelled</span>
             ) : (
-              <span className="px-4 py-1.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full text-xs font-bold uppercase tracking-wider">Completed</span>
+              <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1 ${
+                tx.type === 'supplier_payment' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
+              }`}>Completed</span>
             )}
             <div className="flex justify-between items-center w-full mt-2 px-2">
               {tx.correctsTransactionId && (
@@ -232,7 +251,8 @@ const ReceiptModal = ({ tx, onClose, onViewTx, onFix, onCancel, currency }) => {
             </div>
           </div>
 
-          {tx.items && tx.items.length > 0 && (
+          {/* ITEMS SECTION (Only for Purchases) */}
+          {tx.type === 'purchase' && tx.items && tx.items.length > 0 && (
             <div className="space-y-3">
               <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider px-1">Items ({tx.items.length})</p>
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -257,35 +277,52 @@ const ReceiptModal = ({ tx, onClose, onViewTx, onFix, onCancel, currency }) => {
             </div>
           )}
 
+          {/* PAYMENT DETAILS SECTION */}
           <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl space-y-3">
             <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Date</span><span className="font-semibold text-gray-900 dark:text-white">{formatDate(tx.date || tx.createdAt)}</span></div>
-            <div className="flex justify-between text-sm items-start gap-2">
-              <span className="text-gray-500 dark:text-gray-400 flex-shrink-0">Transaction ID</span>
-              <span className="font-mono text-xs font-semibold text-gray-900 dark:text-white break-all text-right">{tx.id}</span>
-            </div>
-            {tx.note && <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Note</span><span className="font-semibold text-gray-900 dark:text-white text-right max-w-[60%] truncate">{tx.note}</span></div>}
-            {tx.fixReason && (
-              <div className="p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-xl">
-                <p className="text-[10px] font-bold text-blue-500 uppercase flex items-center gap-1 mb-1"><Edit3 size={10} /> Reason for Fix</p>
-                <p className="text-sm text-gray-700 dark:text-gray-300 italic">{tx.fixReason}</p>
-              </div>
+            
+            {tx.type === 'supplier_payment' && (
+              <>
+                <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Method</span><span className="font-semibold text-gray-900 dark:text-white capitalize flex items-center gap-1">
+                  {tx.paymentMethod === 'momo' ? <Smartphone size={14} /> : tx.paymentMethod === 'bank' ? <CreditCard size={14} /> : <Banknote size={14} />}
+                  {tx.paymentMethod || 'Cash'}
+                </span></div>
+                {tx.reference && <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Reference</span><span className="font-mono text-xs font-semibold text-gray-900 dark:text-white break-all text-right">{tx.reference}</span></div>}
+              </>
             )}
-            <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-2"></div>
-            <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Total Purchase</span><span className={`font-bold ${tx.status !== 'active' ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(tx.amount, currency)}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Amount Paid</span><span className={`font-bold ${tx.status !== 'active' ? 'line-through text-gray-400' : 'text-green-600 dark:text-green-400'}`}>{formatCurrency(tx.paid, currency)}</span></div>
-          </div>
 
-          {tx.status === 'cancelled' && tx.cancelReason && (
-            <div className="p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-xl">
-              <p className="text-[10px] font-bold text-red-500 uppercase flex items-center gap-1 mb-1"><AlertTriangle size={10} /> Reason for Cancellation</p>
-              <p className="text-sm text-gray-700 dark:text-gray-300 italic">{tx.cancelReason}</p>
-            </div>
-          )}
+            <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-2"></div>
+            
+            {tx.type === 'supplier_payment' ? (
+              <div className="flex justify-between text-lg font-bold"><span className="text-gray-700 dark:text-gray-300">Amount Paid</span><span className="text-green-600 dark:text-green-400">{formatCurrency(tx.paid, currency)}</span></div>
+            ) : (
+              <>
+                <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Total Purchase</span><span className={`font-bold ${tx.status !== 'active' ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(tx.amount, currency)}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Paid Upfront</span><span className={`font-bold ${tx.status !== 'active' ? 'line-through text-gray-400' : 'text-indigo-600 dark:text-indigo-400'}`}>{formatCurrency(tx.paid, currency)}</span></div>
+                
+                {subsequentPayments.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700/50">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase mb-2">Subsequent Payments</p>
+                    {subsequentPayments.map(p => (
+                      <div key={p.id} className="flex justify-between text-xs mb-1.5">
+                        <span className="text-gray-500 dark:text-gray-400">{formatDate(p.date).split(',')[0]} ({p.method})</span>
+                        <span className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(p.amount, currency)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-2"></div>
+                <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Total Paid</span><span className="font-bold text-green-600 dark:text-green-400">{formatCurrency((parseFloat(tx.paid)||0) + totalAllocated, currency)}</span></div>
+                <div className="flex justify-between text-sm mt-1"><span className="text-gray-500 dark:text-gray-400 font-bold">Outstanding</span><span className={`font-bold ${trueOutstanding > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-green-600 dark:text-green-400'}`}>{formatCurrency(trueOutstanding, currency)}</span></div>
+              </>
+            )}
+          </div>
 
           {tx.status === 'active' && (
             <div className="pt-2 space-y-2">
-              <button onClick={() => onFix(tx)} className="w-full bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"><Edit3 size={18} /> Fix Purchase</button>
-              <button onClick={() => onCancel(tx)} className="w-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"><Ban size={18} /> Cancel Purchase</button>
+              <button onClick={() => onFix(tx)} className="w-full bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"><Edit3 size={18} /> Fix {tx.type === 'supplier_payment' ? 'Payment' : 'Purchase'}</button>
+              <button onClick={() => onCancel(tx)} className="w-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"><Ban size={18} /> Cancel {tx.type === 'supplier_payment' ? 'Payment' : 'Purchase'}</button>
             </div>
           )}
         </div>
@@ -303,18 +340,7 @@ const FixReasonModal = ({ isOpen, onClose, onConfirm, fixReason, setFixReason })
           <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full"><Edit3 size={20} className="text-blue-600 dark:text-blue-400" /></div>
           <h3 className="font-bold text-xl text-gray-900 dark:text-white">Reason for Fix</h3>
         </div>
-        <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">
-          Why are you correcting this purchase?
-          <span className="text-gray-400 text-xs block mt-1">(Optional, but helpful for records)</span>
-        </p>
-        <textarea 
-          value={fixReason} 
-          onChange={(e) => setFixReason(e.target.value)} 
-          placeholder="e.g., Supplier charged wrong price..." 
-          className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 dark:text-white mb-4 text-sm" 
-          rows="3" 
-          autoFocus 
-        />
+        <textarea value={fixReason} onChange={(e) => setFixReason(e.target.value)} placeholder="e.g., Recorded wrong amount..." className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 dark:text-white mb-4 text-sm" rows="3" autoFocus />
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Cancel</button>
           <button onClick={onConfirm} className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-xl active:scale-95 transition">Continue</button>
@@ -324,18 +350,16 @@ const FixReasonModal = ({ isOpen, onClose, onConfirm, fixReason, setFixReason })
   );
 };
 
-const CancelModal = ({ isOpen, onClose, onConfirm, cancelReason, setCancelReason, amount, currency }) => {
+const CancelModal = ({ isOpen, onClose, onConfirm, cancelReason, setCancelReason, amount, currency, type }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
       <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full"><AlertTriangle size={20} className="text-red-600 dark:text-red-400" /></div>
-          <h3 className="font-bold text-xl text-gray-900 dark:text-white">Cancel Purchase?</h3>
+          <h3 className="font-bold text-xl text-gray-900 dark:text-white">Cancel {type === 'supplier_payment' ? 'Payment' : 'Transaction'}?</h3>
         </div>
-        <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">This will cancel the <span className="font-bold text-orange-600">{formatCurrency(amount, currency)}</span> purchase and remove it from the balance.</p>
-        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 block">Reason *</label>
-        <textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="e.g., Recorded wrong amount..." className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-red-500 dark:text-white mb-4 text-sm" rows="3" autoFocus />
+        <textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Reason..." className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-red-500 dark:text-white mb-4 text-sm" rows="3" autoFocus />
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Go Back</button>
           <button onClick={onConfirm} disabled={!cancelReason.trim()} className="flex-1 bg-red-600 text-white font-bold py-3 rounded-xl disabled:opacity-50 active:scale-95 transition">Yes, Cancel</button>
@@ -359,8 +383,6 @@ export const SupplierProfilePage = () => {
   const [supplierData, setSupplierData] = useState(selectedSupplier);
   const [history, setHistory] = useState([]);
   const [expandedOldTx, setExpandedOldTx] = useState(null);
-  
-  // Fix Modal State
   const [showFixModal, setShowFixModal] = useState(false);
   const [fixReason, setFixReason] = useState("");
   const [txToFix, setTxToFix] = useState(null);
@@ -372,34 +394,53 @@ export const SupplierProfilePage = () => {
     }
   }, [selectedSupplier?.id]);
 
-  useEffect(() => {
-    if (lastScrollPosition > 0) {
-      window.scrollTo(0, lastScrollPosition);
-      setLastScrollPosition(0);
-    }
-  }, [lastScrollPosition, setLastScrollPosition]);
-
   if (!supplierData) return null;
 
-  // Data Calculations
-  const lastPayment = useMemo(() => 
-    history.find(tx => tx.paid > 0 && (tx.status === 'active' || !tx.status)), 
+  // ==========================================
+  // SINGLE SOURCE OF TRUTH CALCULATION
+  // ==========================================
+  const activePayments = useMemo(() =>
+    history.filter(tx => tx.type === 'supplier_payment' && (tx.status === 'active' || !tx.status)),
   [history]);
 
-  const outstandingInvoices = useMemo(() => 
-    history.filter(tx => 
-      tx.amount > tx.paid && 
-      (tx.status === 'active' || !tx.status) // Strictly only active purchases
-    ), 
-  [history]);
+  const getTrueOutstanding = (purchase) => {
+    const allocated = activePayments.reduce((sum, p) => {
+      if (p.allocations) {
+        const alloc = p.allocations.find(a => a.transactionId === purchase.id);
+        return sum + (alloc ? alloc.amount : 0);
+      }
+      return sum;
+    }, 0);
+    return Math.max(0, (parseFloat(purchase.amount) || 0) - (parseFloat(purchase.paid) || 0) - allocated);
+  };
 
-  const totalPurchases = history.reduce((sum, t) => 
-    sum + (t.amount > 0 && (t.status === 'active' || !t.status) ? t.amount : 0), 0
-  );
+  const lastPayment = useMemo(() => history.find(tx => tx.paid > 0 && (tx.status === 'active' || !tx.status)), [history]);
   
-  const totalPayments = history.reduce((sum, t) => 
-    sum + (t.paid > 0 && (t.status === 'active' || !t.status) ? t.paid : 0), 0
-  );
+  const outstandingPurchases = useMemo(() => 
+    history
+      .filter(tx => tx.type === 'purchase' && getTrueOutstanding(tx) > 0 && (tx.status === 'active' || !tx.status))
+      .map(tx => ({ ...tx, trueOutstanding: getTrueOutstanding(tx) })),
+  [history, activePayments]);
+
+  // Calculate true balance from transactions
+  const trueBalance = useMemo(() => {
+    const totalPurchases = history
+      .filter(t => t.type === 'purchase' && (t.status === 'active' || !t.status))
+      .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+      
+    const totalUpfront = history
+      .filter(t => t.type === 'purchase' && (t.status === 'active' || !t.status))
+      .reduce((sum, t) => sum + (parseFloat(t.paid) || 0), 0);
+      
+    const totalPayments = history
+      .filter(t => t.type === 'supplier_payment' && (t.status === 'active' || !t.status))
+      .reduce((sum, t) => sum + (parseFloat(t.paid) || 0), 0);
+      
+    return totalPurchases - totalUpfront - totalPayments;
+  }, [history]);
+
+  const totalPurchases = history.reduce((sum, t) => sum + (t.amount > 0 && t.type === 'purchase' && (t.status === 'active' || !t.status) ? t.amount : 0), 0);
+  const totalPayments = history.reduce((sum, t) => sum + (t.paid > 0 && (t.status === 'active' || !t.status) ? t.paid : 0), 0);
 
   const daysSinceLastActive = useMemo(() => {
     if (!supplierData.lastActivity) return null;
@@ -409,31 +450,13 @@ export const SupplierProfilePage = () => {
     return `${days} days ago`;
   }, [supplierData.lastActivity]);
 
-  // Actions
   const handleRecordPurchase = () => {
-    setPrefillTransaction({ 
-      supplierId: supplierData.id, 
-      name: supplierData.name, 
-      phone: supplierData.phone, 
-      type: "purchase",
-      items: "", 
-      amount: "", 
-      paid: "" 
-    });
+    setPrefillTransaction({ supplierId: supplierData.id, name: supplierData.name, phone: supplierData.phone, type: "purchase", amount: "", paid: "0" });
     setView("recordSupplierPurchase");
   };
 
   const handleMakePayment = () => {
-    setPrefillTransaction({ 
-      supplierId: supplierData.id, 
-      name: supplierData.name, 
-      phone: supplierData.phone, 
-      type: "payment",
-      items: "Payment", 
-      amount: "0", 
-      paid: "" 
-    });
-    setView("recordSupplierPurchase");
+    setView("recordSupplierPayment");
   };
 
   const handleFixTransaction = (tx) => {
@@ -445,7 +468,7 @@ export const SupplierProfilePage = () => {
   const confirmFix = () => {
     setFixTransaction({ ...txToFix, fixReason: fixReason });
     setShowFixModal(false);
-    setView("recordSupplierPurchase");
+    setView('recordSupplierPurchase'); 
   };
 
   const handleCancelTransaction = (tx) => {
@@ -463,7 +486,7 @@ export const SupplierProfilePage = () => {
       const updatedHistory = await TransactionService.getHistory(supplierData.id);
       setHistory(updatedHistory);
       setViewingTransaction(null);
-      showToast("✅ Purchase cancelled!");
+      showToast("✅ Transaction cancelled!");
     } catch (error) { showToast("❌ Failed to cancel."); }
     setCancelReason("");
   };
@@ -477,7 +500,7 @@ export const SupplierProfilePage = () => {
     }
   };
 
-  const generateMessage = (s) => `Hello ${s.name}, this is ${currentStore?.name || "Store"}. I will send your ${formatCurrency(s.balance, currency)} by the end of the week. Thank you!`;
+  const generateMessage = (s) => `Hello ${s.name}, this is ${currentStore?.name || "Store"}. I will send your outstanding balance of ${formatCurrency(trueBalance, currency)} by the end of the week. Thank you!`;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
@@ -485,7 +508,7 @@ export const SupplierProfilePage = () => {
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
         
         <SupplierHeader supplier={supplierData} daysSinceLastActive={daysSinceLastActive} />
-        <BalanceCard supplier={supplierData} lastPayment={lastPayment} currency={currency} />
+        <BalanceCard balance={trueBalance} lastPayment={lastPayment} currency={currency} />
         
         <QuickActions 
           onPurchase={handleRecordPurchase} 
@@ -494,16 +517,23 @@ export const SupplierProfilePage = () => {
           onWhatsApp={() => openWhatsApp(supplierData.phone, generateMessage(supplierData))} 
         />
         
-        <OutstandingInvoices invoices={outstandingInvoices} onView={setViewingTransaction} currency={currency} />
+        <OutstandingPurchases purchases={outstandingPurchases} onView={setViewingTransaction} currency={currency} />
         <TransactionHistory history={history} onView={setViewingTransaction} onToggleOld={toggleOldReceipt} expandedOldTx={expandedOldTx} setViewingTransaction={setViewingTransaction} currency={currency} />
         <MoreInformation totalPurchases={totalPurchases} totalPayments={totalPayments} historyLength={history.filter(tx => !tx.replacedByTransactionId).length} createdAt={supplierData.createdAt} currency={currency} />
 
       </div>
 
-      {/* Modals */}
-      <ReceiptModal tx={viewingTransaction} onClose={() => setViewingTransaction(null)} onViewTx={setViewingTransaction} onFix={handleFixTransaction} onCancel={handleCancelTransaction} currency={currency} />
+      <ReceiptModal 
+        tx={viewingTransaction} 
+        onClose={() => setViewingTransaction(null)} 
+        onViewTx={setViewingTransaction} 
+        onFix={handleFixTransaction} 
+        onCancel={handleCancelTransaction} 
+        currency={currency} 
+        activePayments={activePayments} 
+      />
       <FixReasonModal isOpen={showFixModal} onClose={() => setShowFixModal(false)} onConfirm={confirmFix} fixReason={fixReason} setFixReason={setFixReason} />
-      <CancelModal isOpen={showCancelModal} onClose={() => setShowCancelModal(false)} onConfirm={executeCancelTransaction} cancelReason={cancelReason} setCancelReason={setCancelReason} amount={viewingTransaction?.amount} currency={currency} />
+      <CancelModal isOpen={showCancelModal} onClose={() => setShowCancelModal(false)} onConfirm={executeCancelTransaction} cancelReason={cancelReason} setCancelReason={setCancelReason} amount={viewingTransaction?.amount || viewingTransaction?.paid} currency={currency} type={viewingTransaction?.type} />
     </div>
   );
 };

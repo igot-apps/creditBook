@@ -14,7 +14,7 @@ export const RecordSalePage = () => {
     currentStore, setView, prefillTransaction, setPrefillTransaction, showToast,
     autoDraft, saveDraft, clearAutoDraft,
     fixTransaction, setFixTransaction, lastScrollPosition, setLastScrollPosition,
-    setSelectedCustomer: setStoreSelectedCustomer //  Aliased to avoid conflict
+    setSelectedCustomer: setStoreSelectedCustomer // 👈 ADDED: To set customer in global store
   } = useStore();
 
   const currency = currentStore?.currency || "GH₵";
@@ -112,7 +112,7 @@ export const RecordSalePage = () => {
         setSelectedCustomer(newCustomer); setMode("existing"); setSearchQuery("");
         showToast("✅ Customer created!");
         CustomerService.getAll(currentStore.id).then(setCustomers);
-      }).catch(() => showToast(" Failed to create customer."));
+      }).catch(() => showToast("❌ Failed to create customer."));
     }
   };
 
@@ -125,7 +125,7 @@ export const RecordSalePage = () => {
       setShowUndoToast(false); setUndoData(null);
       showToast("✅ Correction undone.");
       
-      // 👇 UPDATED: Navigate to customer profile
+      // 👇 UPDATED: Navigate to customer profile instead of list
       const customerToRestore = customers.find(c => c.id === undoData.customerId);
       if (customerToRestore) {
         setStoreSelectedCustomer(customerToRestore);
@@ -166,7 +166,9 @@ export const RecordSalePage = () => {
         setTimeout(() => { setShowUndoToast(false); setUndoData(null); }, 10000);
         setIsFixing(false); setFixingOldId(null); setFixReason("");
       } else {
+        // 👇 NEW SALE: Create transaction AND update balance
         await TransactionService.create(currentStore.id, selectedCustomer.id, 'sale', invoiceItems, finalAmount, finalPaid, tx.note, extraData);
+        await CustomerService.updateBalance(selectedCustomer.id); // 👈 THIS WAS MISSING!
         await clearAutoDraft();
         showToast("✅ Sale recorded!");
       }

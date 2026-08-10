@@ -5,11 +5,15 @@ import { Toast } from "./components/Toast";
 import { Layout } from "./components/Layout";
 
 import { HomePage } from "./pages/HomePage";
-import { CustomersPage } from "./pages/CustomersPage";
-import { CustomerProfilePage } from "./pages/CustomerProfilePage"; // 👈 Renamed
-import { RecordSalePage } from "./pages/RecordSalePage"; // 👈 Renamed
-import { CustomerFollowUpsPage } from "./pages/CustomerFollowUpsPage"; // 👈 Renamed
 
+// Customer Pages
+import { CustomersPage } from "./pages/CustomersPage";
+import { CustomerProfilePage } from "./pages/CustomerProfilePage";
+import { RecordSalePage } from "./pages/RecordSalePage";
+import { RecordPaymentPage } from "./pages/RecordPaymentPage";
+import { CustomerFollowUpsPage } from "./pages/CustomerFollowUpsPage";
+
+// Product & Utility Pages
 import { ProductsPage } from "./pages/ProductsPage";
 import { VisibilityManagerPage } from "./pages/VisibilityManagerPage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -19,6 +23,7 @@ import { MorePage } from "./pages/MorePage";
 import { SuppliersPage } from "./pages/SuppliersPage";
 import { SupplierProfilePage } from "./pages/SupplierProfilePage";
 import { RecordPurchasePage } from "./pages/RecordPurchasePage";
+import { RecordSupplierPaymentPage } from "./pages/RecordSupplierPaymentPage";
 
 const AppRouter = () => {
   const { view, initializeApp, theme, pageKey } = useStore();
@@ -28,32 +33,52 @@ const AppRouter = () => {
   }, []);
 
   useEffect(() => {
-    if (theme === "dark") document.documentElement.classList.add("dark");
-    else document.documentElement.classList.remove("dark");
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
   }, [theme]);
 
   const renderPage = () => {
     switch (view) {
-      case "home": return <HomePage key={pageKey} />;
+      case "home":
+        return <HomePage key={pageKey} />;
       
       // Customer Routes
-      case "customers": return <CustomersPage key={pageKey} />;
-      case "profile": return <CustomerProfilePage key={pageKey} />; // 👈 Updated
-      case "record": return <RecordSalePage key={pageKey} />; // 👈 Updated
-      case "followups": return <CustomerFollowUpsPage key={pageKey} />; // 👈 Updated
+      case "customers":
+        return <CustomersPage key={pageKey} />;
+      case "profile":
+        return <CustomerProfilePage key={pageKey} />;
+      case "record":
+        return <RecordSalePage key={pageKey} />;
+      case "recordPayment":
+        return <RecordPaymentPage key={pageKey} />;
+      case "followups":
+        return <CustomerFollowUpsPage key={pageKey} />;
       
       // Product & Utility Routes
-      case "products": return <ProductsPage key={pageKey} />;
-      case "visibilityManager": return <VisibilityManagerPage key={pageKey} />;
-      case "reports": return <ReportsPage key={pageKey} />;
-      case "settings": return <MorePage key={pageKey} />;
+      case "products":
+        return <ProductsPage key={pageKey} />;
+      case "visibilityManager":
+        return <VisibilityManagerPage key={pageKey} />;
+      case "reports":
+        return <ReportsPage key={pageKey} />;
+      case "settings":
+        return <MorePage key={pageKey} />;
       
       // Supplier Routes
-      case "suppliers": return <SuppliersPage key={pageKey} />;
-      case "supplierProfile": return <SupplierProfilePage key={pageKey} />;
-      case "recordSupplierPurchase": return <RecordPurchasePage key={pageKey} />;
+      case "suppliers":
+        return <SuppliersPage key={pageKey} />;
+      case "supplierProfile":
+        return <SupplierProfilePage key={pageKey} />;
+      case "recordSupplierPurchase":
+        return <RecordPurchasePage key={pageKey} />;
+      case "recordSupplierPayment":
+        return <RecordSupplierPaymentPage key={pageKey} />;
       
-      default: return <HomePage key={pageKey} />;
+      default:
+        return <HomePage key={pageKey} />;
     }
   };
 
