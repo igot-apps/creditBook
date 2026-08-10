@@ -421,4 +421,4 @@ export const RecordPurchasePage = () => {
       )}
     </div>
   );
-};
+};   
