@@ -62,3 +62,13 @@ db.version(4).stores({
   // 👇 NEW: Added indexes for status, replacedByTransactionId, correctsTransactionId
   transactions: '++id, storeId, contactId, type, status, replacedByTransactionId, correctsTransactionId, createdAt'
 });
+
+// Version 5: Add Suspended Transactions table
+db.version(5).stores({
+  stores: '++id, name',
+  contacts: '++id, storeId, type, name, phone, createdAt',
+  products: '++id, storeId, name, category, brand, isFavourite, usageCount, lastUsedAt, createdAt',
+  transactions: '++id, storeId, contactId, type, status, replacedByTransactionId, correctsTransactionId, createdAt',
+  // 👇 NEW: Dedicated table for suspended sales/purchases
+  suspendedTransactions: '++id, storeId, contactId, type, createdAt'
+});

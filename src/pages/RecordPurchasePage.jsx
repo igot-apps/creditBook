@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Search, Plus, Truck, Package, Check, X, RotateCcw } from "lucide-react";
+import { Search, Plus, Truck, Package, Check, X, RotateCcw, Pause } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { SupplierService } from "../services/SupplierService";
 import { ProductService } from "../services/ProductService";
 import { TransactionService } from "../services/TransactionService";
+import { SuspendedTransactionService } from "../services/SuspendedTransactionService";
 import { ProductPickerModal } from "../components/ProductPickerModal";
 import { AddProductModal } from "../components/AddProductModal";
 import { TopBar } from "../components/TopBar";
@@ -17,7 +18,9 @@ export const RecordPurchasePage = () => {
     currentStore, setView, prefillTransaction, setPrefillTransaction, showToast, 
     autoDraft, saveDraft, clearAutoDraft,
     fixTransaction, setFixTransaction, lastScrollPosition, setLastScrollPosition,
-    setSelectedSupplier: setStoreSelectedSupplier
+    setSelectedSupplier: setStoreSelectedSupplier,
+    //  NEW: Suspended Transaction Hooks
+    resumedSuspendedId, clearResumedSuspended, suspendTransaction, deleteSuspendedTransaction, checkDuplicateSuspended
   } = useStore();
   const currency = currentStore?.currency || "GH₵";
 
@@ -45,12 +48,51 @@ export const RecordPurchasePage = () => {
   const [undoData, setUndoData] = useState(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
 
+  // 👇 NEW: Track if we are currently editing a suspended purchase
+  const [suspendedId, setSuspendedId] = useState(null);
+
   useEffect(() => {
     if (currentStore?.id) {
       SupplierService.getAll(currentStore.id).then(res => setSuppliers(Array.isArray(res) ? res : [])).catch(() => setSuppliers([]));
       ProductService.getAll(currentStore.id).then(res => setProducts(Array.isArray(res) ? res : [])).catch(() => setProducts([]));
     }
   }, [currentStore?.id]);
+
+  // 👇 NEW: Load Suspended Purchase if resumed from Home Page
+  useEffect(() => {
+    if (resumedSuspendedId) {
+      SuspendedTransactionService.getSuspendedTransactions(currentStore.id).then(all => {
+        const susp = all.find(s => s.id === resumedSuspendedId);
+        if (susp) {
+          setSelectedSupplier({ id: susp.contactId, name: susp.contactName, phone: susp.contactPhone });
+          setInvoiceItems(susp.items || []);
+          setTransactionType(susp.type === 'payment' ? 'payment' : 'purchase');
+          setAmountPaid((susp.paid || 0).toString());
+          setNote(susp.note || "");
+          setSuspendedId(susp.id);
+          setMode("existing");
+          showToast("⏸️ Resumed suspended purchase");
+        }
+        clearResumedSuspended();
+      });
+    }
+  }, [resumedSuspendedId, currentStore?.id, clearResumedSuspended, showToast]);
+
+  // 👇 NEW: Duplicate Protection (Auto-resume if supplier already has a suspended purchase)
+  useEffect(() => {
+    if (selectedSupplier && mode === 'existing' && !isFixing && transactionType === 'purchase') {
+      checkDuplicateSuspended(currentStore.id, selectedSupplier.id, 'purchase').then(susp => {
+        if (susp && susp.id !== suspendedId) {
+          showToast(`⏸️ Resuming suspended purchase for ${selectedSupplier.name}`);
+          setSelectedSupplier({ id: susp.contactId, name: susp.contactName, phone: susp.contactPhone });
+          setInvoiceItems(susp.items || []);
+          setAmountPaid((susp.paid || 0).toString());
+          setNote(susp.note || "");
+          setSuspendedId(susp.id);
+        }
+      });
+    }
+  }, [selectedSupplier, mode, isFixing, transactionType, currentStore?.id, suspendedId, checkDuplicateSuspended, showToast]);
 
   useEffect(() => {
     if (prefillTransaction && prefillTransaction.supplierId) {
@@ -92,15 +134,26 @@ export const RecordPurchasePage = () => {
     if (fixingOldId) {
       await TransactionService.update(fixingOldId, { status: 'active' });
     }
-    setIsFixing(false); setFixingOldId(null); setFixReason("");
-    setMode("search"); setSelectedSupplier(null); setAmountPaid(""); setInvoiceItems([]); setNote(""); clearAutoDraft();
+    setIsFixing(false); 
+    setFixingOldId(null); 
+    setFixReason("");
+    setMode("search"); 
+    setSelectedSupplier(null); 
+    setAmountPaid(""); 
+    setInvoiceItems([]); 
+    setNote(""); 
+    clearAutoDraft();
   };
 
   useEffect(() => {
     if (autoDraft && autoDraft.draftType === 'purchase' && suppliers.length > 0 && !selectedSupplier && !prefillTransaction && !isFixing) {
       const draftSupplier = suppliers.find(s => s.id === autoDraft.supplierId) || { id: autoDraft.supplierId, name: autoDraft.supplierName || 'Unknown Supplier', phone: autoDraft.supplierPhone || '' };
-      setSelectedSupplier(draftSupplier); setTransactionType(autoDraft.transactionType || "purchase");
-      setInvoiceItems(autoDraft.invoiceItems || []); setNote(autoDraft.note || ''); setAmountPaid(autoDraft.amountPaid || ''); setMode("existing");
+      setSelectedSupplier(draftSupplier); 
+      setTransactionType(autoDraft.transactionType || "purchase");
+      setInvoiceItems(autoDraft.invoiceItems || []); 
+      setNote(autoDraft.note || ''); 
+      setAmountPaid(autoDraft.amountPaid || ''); 
+      setMode("existing");
     }
   }, [autoDraft, suppliers, selectedSupplier, prefillTransaction, isFixing]);
 
@@ -120,6 +173,7 @@ export const RecordPurchasePage = () => {
   }, [suppliers, searchQuery]);
 
   const handleSelectSupplier = (supplier) => { setSelectedSupplier(supplier); setMode("existing"); setSearchQuery(""); };
+  
   const handleCreateSupplier = () => {
     const name = searchQuery.trim();
     if (name) {
@@ -128,11 +182,10 @@ export const RecordPurchasePage = () => {
         setSelectedSupplier(newSupplier); setMode("existing"); setSearchQuery("");
         showToast("✅ Supplier created!");
         SupplierService.getAll(currentStore.id).then(setSuppliers);
-      }).catch(() => showToast("❌ Failed to create supplier."));
+      }).catch(() => showToast(" Failed to create supplier."));
     }
   };
 
-  // 👇 UPDATED: Overwrites existing quantity with the picker's quantity
   const handleProductsSelected = (selectedProducts) => {
     const now = Date.now();
     if (now - lastActionTime.current < 300) return;
@@ -140,7 +193,6 @@ export const RecordPurchasePage = () => {
 
     setInvoiceItems(prev => {
       const itemMap = new Map();
-      
       prev.forEach(item => {
         const key = `${item.productId || 'custom'}-${item.unitName}`;
         itemMap.set(key, { ...item, quantity: parseFloat(item.quantity) || 0, price: parseFloat(item.price) || 0 });
@@ -148,14 +200,11 @@ export const RecordPurchasePage = () => {
 
       selectedProducts.forEach(newItem => {
         const key = `${newItem.productId || 'custom'}-${newItem.unitName}`;
-        
-        // Get quantity from picker, default to 1 if missing/invalid
         const incomingQty = parseFloat(newItem.quantity) > 0 ? parseFloat(newItem.quantity) : 1;
         const cleanPrice = parseFloat(newItem.price) || 0;
 
         if (itemMap.has(key)) {
           const existing = itemMap.get(key);
-          // 👇 OVERWRITE the existing quantity with the new one from the picker
           existing.quantity = incomingQty; 
           existing.total = existing.quantity * existing.price;
         } else {
@@ -241,6 +290,37 @@ export const RecordPurchasePage = () => {
     }, 0);
   }, [invoiceItems]);
 
+  // 👇 NEW: Suspend Purchase Handler
+  const handleSuspendPurchase = async () => {
+    if (!selectedSupplier) { showToast("⚠️ Select a supplier first"); return; }
+    if (invoiceItems.length === 0 && !note.trim() && parseFloat(amountPaid) === 0) {
+      showToast("⚠️ Add items before suspending"); return;
+    }
+
+    try {
+      const data = {
+        id: suspendedId, // If exists, it updates the record instead of creating a new one
+        storeId: currentStore.id,
+        type: 'purchase',
+        contactId: selectedSupplier.id,
+        contactName: selectedSupplier.name,
+        contactPhone: selectedSupplier.phone,
+        items: invoiceItems,
+        amount: totalAmount,
+        paid: parseFloat(amountPaid) || 0,
+        note: note
+      };
+      
+      const newId = await suspendTransaction(data);
+      setSuspendedId(newId);
+      showToast("️ Purchase suspended");
+      setView("home"); // Return to home to see the "Continue Working" card
+    } catch (error) {
+      console.error(error);
+      showToast("❌ Failed to suspend purchase");
+    }
+  };
+
   const handleUndoFix = async () => {
     if (!undoData) return;
     try {
@@ -275,16 +355,37 @@ export const RecordPurchasePage = () => {
       if (isFixing && fixingOldId) {
         extraData.correctsTransactionId = fixingOldId;
         extraData.fixReason = fixReason; 
-        const newId = await TransactionService.create(currentStore.id, selectedSupplier.id, transactionType === "payment" ? "payment" : "purchase", invoiceItems, finalTotal, finalPaid, note, extraData);
-        await TransactionService.update(fixingOldId, { replacedByTransactionId: newId, status: 'cancelled', cancelReason: `Replaced by ${transactionType === "payment" ? "Payment" : "Purchase"} ${newId}` });
+        
+        const newId = await TransactionService.create(
+          currentStore.id, selectedSupplier.id, transactionType === "payment" ? "payment" : "purchase",
+          invoiceItems, finalTotal, finalPaid, note, extraData
+        );
+        
+        await TransactionService.update(fixingOldId, { 
+          replacedByTransactionId: newId,
+          status: 'cancelled',
+          cancelReason: `Replaced by ${transactionType === "payment" ? "Payment" : "Purchase"} ${newId}`
+        });
         await SupplierService.updateBalance(selectedSupplier.id);
+        
         setUndoData({ newId, oldId: fixingOldId, supplierId: selectedSupplier.id });
         setShowUndoToast(true);
         setTimeout(() => { setShowUndoToast(false); setUndoData(null); }, 10000);
-        setIsFixing(false); setFixingOldId(null); setFixReason("");
+        
+        setIsFixing(false); 
+        setFixingOldId(null); 
+        setFixReason("");
       } else {
         await TransactionService.create(currentStore.id, selectedSupplier.id, transactionType === "payment" ? "payment" : "purchase", invoiceItems, finalTotal, finalPaid, note, extraData);
+        await SupplierService.updateBalance(selectedSupplier.id);
         await clearAutoDraft();
+
+        // 👇 NEW: Delete suspended record if it exists
+        if (suspendedId) {
+          await deleteSuspendedTransaction(suspendedId, currentStore.id);
+          setSuspendedId(null);
+        }
+        
         showToast("✅ Transaction recorded!");
       }
       
@@ -292,7 +393,10 @@ export const RecordPurchasePage = () => {
       setStoreSelectedSupplier(selectedSupplier);
       setView("supplierProfile");
       
-    } catch (error) { console.error(error); showToast("❌ Failed to record transaction."); }
+    } catch (error) { 
+      console.error(error); 
+      showToast("❌ Failed to record transaction."); 
+    }
   };
 
   const currentTotal = transactionType === "payment" ? 0 : totalAmount;
@@ -400,7 +504,38 @@ export const RecordPurchasePage = () => {
                 <input type="number" inputMode="decimal" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="0.00" className={`w-full text-xl font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`} autoFocus={transactionType === "payment"} />
               </div>
               <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Add a note (optional)..." className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm resize-none" rows="2" />
-              <button onClick={handleSavePurchase} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"><Check size={24} /> {isFixing ? "Save Corrected Transaction" : (transactionType === "purchase" && totalAmount > 0 ? "Save Purchase" : "Save Payment")}</button>
+              
+              {/*  UPDATED: Dual Action Buttons for Purchases */}
+              {mode === "existing" && !isFixing && transactionType === "purchase" && (
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button 
+                    onClick={handleSuspendPurchase} 
+                    className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-sm"
+                  >
+                    <Pause size={20} /> Suspend
+                  </button>
+                  <button 
+                    onClick={handleSavePurchase} 
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
+                  >
+                    <Check size={24} /> Save Purchase
+                  </button>
+                </div>
+              )}
+
+              {/* Standalone Payment Save Button */}
+              {mode === "existing" && !isFixing && transactionType === "payment" && (
+                <button onClick={handleSavePurchase} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg">
+                  <Check size={24} /> Save Payment
+                </button>
+              )}
+
+              {/* Fix Save Button */}
+              {mode === "existing" && isFixing && (
+                <button onClick={handleSavePurchase} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg">
+                  <Check size={24} /> Save Corrected Transaction
+                </button>
+              )}
             </div>
           </>
         )}
@@ -421,4 +556,4 @@ export const RecordPurchasePage = () => {
       )}
     </div>
   );
-};   
+};
