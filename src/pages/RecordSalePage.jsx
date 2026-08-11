@@ -16,12 +16,10 @@ export const RecordSalePage = () => {
     autoDraft, saveDraft, clearAutoDraft,
     fixTransaction, setFixTransaction, lastScrollPosition, setLastScrollPosition,
     setSelectedCustomer: setStoreSelectedCustomer,
-    // 👇 NEW: Suspended Transaction Hooks
     resumedSuspendedId, clearResumedSuspended, suspendTransaction, deleteSuspendedTransaction, checkDuplicateSuspended
   } = useStore();
 
   const currency = currentStore?.currency || "GH₵";
-
   const [mode, setMode] = useState("search");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -35,8 +33,6 @@ export const RecordSalePage = () => {
   const [fixReason, setFixReason] = useState("");
   const [undoData, setUndoData] = useState(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
-  
-  // 👇 NEW: Track if we are currently editing a suspended sale
   const [suspendedId, setSuspendedId] = useState(null);
 
   useEffect(() => {
@@ -46,7 +42,7 @@ export const RecordSalePage = () => {
     }
   }, [currentStore?.id]);
 
-  // 👇 NEW: Load Suspended Sale if resumed from Home Page
+  // Load Suspended Sale if resumed from Home Page
   useEffect(() => {
     if (resumedSuspendedId) {
       SuspendedTransactionService.getSuspendedTransactions(currentStore.id).then(all => {
@@ -54,22 +50,22 @@ export const RecordSalePage = () => {
         if (susp) {
           setSelectedCustomer({ id: susp.contactId, name: susp.contactName, phone: susp.contactPhone });
           setInvoiceItems(susp.items || []);
-          setTx({ 
-            amount: (susp.amount || 0).toString(), 
-            paid: (susp.paid || 0).toString(), 
-            discount: (susp.discount || 0).toString(), 
-            note: susp.note || "" 
+          setTx({
+            amount: (susp.amount || 0).toString(),
+            paid: (susp.paid || 0).toString(),
+            discount: (susp.discount || 0).toString(),
+            note: susp.note || ""
           });
           setSuspendedId(susp.id);
           setMode("existing");
-          showToast("️ Resumed suspended sale");
+          showToast("⏸️ Resumed suspended sale");
         }
         clearResumedSuspended();
       });
     }
   }, [resumedSuspendedId, currentStore?.id, clearResumedSuspended, showToast]);
 
-  // 👇 NEW: Duplicate Protection (Auto-resume if customer already has a suspended sale)
+  // Duplicate Protection
   useEffect(() => {
     if (selectedCustomer && mode === 'existing' && !isFixing) {
       checkDuplicateSuspended(currentStore.id, selectedCustomer.id, 'sale').then(susp => {
@@ -77,11 +73,11 @@ export const RecordSalePage = () => {
           showToast(`⏸️ Resuming suspended sale for ${selectedCustomer.name}`);
           setSelectedCustomer({ id: susp.contactId, name: susp.contactName, phone: susp.contactPhone });
           setInvoiceItems(susp.items || []);
-          setTx({ 
-            amount: (susp.amount || 0).toString(), 
-            paid: (susp.paid || 0).toString(), 
-            discount: (susp.discount || 0).toString(), 
-            note: susp.note || "" 
+          setTx({
+            amount: (susp.amount || 0).toString(),
+            paid: (susp.paid || 0).toString(),
+            discount: (susp.discount || 0).toString(),
+            note: susp.note || ""
           });
           setSuspendedId(susp.id);
         }
@@ -150,6 +146,7 @@ export const RecordSalePage = () => {
   }, [customers, searchQuery]);
 
   const handleSelectCustomer = (customer) => { setSelectedCustomer(customer); setMode("existing"); setSearchQuery(""); };
+  
   const handleCreateCustomer = () => {
     const name = searchQuery.trim();
     if (name) {
@@ -162,16 +159,15 @@ export const RecordSalePage = () => {
     }
   };
 
-  // 👇 NEW: Suspend Sale Handler
+  // Suspend Sale Handler
   const handleSuspendSale = async () => {
     if (!selectedCustomer) { showToast("⚠️ Select a customer first"); return; }
     if (invoiceItems.length === 0 && !tx.note.trim() && parseFloat(tx.amount) === 0) {
       showToast("⚠️ Add items before suspending"); return;
     }
-
     try {
       const data = {
-        id: suspendedId, // If exists, it updates the record instead of creating a new one
+        id: suspendedId,
         storeId: currentStore.id,
         type: 'sale',
         contactId: selectedCustomer.id,
@@ -183,11 +179,10 @@ export const RecordSalePage = () => {
         discount: parseFloat(tx.discount) || 0,
         note: tx.note
       };
-      
       const newId = await suspendTransaction(data);
       setSuspendedId(newId);
-      showToast("⏸️ Sale suspended");
-      setView("home"); // Return to home to see the "Continue Working" card
+      showToast("️ Sale suspended");
+      setView("home");
     } catch (error) {
       console.error(error);
       showToast("❌ Failed to suspend sale");
@@ -212,14 +207,11 @@ export const RecordSalePage = () => {
     if (!selectedCustomer) return;
     const finalAmount = parseFloat(tx.amount) || 0;
     const finalPaid = parseFloat(tx.paid) || 0;
-
     if (finalAmount === 0 && finalPaid === 0 && !tx.note.trim() && invoiceItems.length === 0) {
       showToast("⚠️ Please add items, a payment amount, or a note."); return;
     }
-
     try {
       const extraData = { contactName: selectedCustomer.name, contactPhone: selectedCustomer.phone };
-
       if (isFixing && fixingOldId) {
         extraData.correctsTransactionId = fixingOldId;
         extraData.fixReason = fixReason;
@@ -234,16 +226,12 @@ export const RecordSalePage = () => {
         await TransactionService.create(currentStore.id, selectedCustomer.id, 'sale', invoiceItems, finalAmount, finalPaid, tx.note, extraData);
         await CustomerService.updateBalance(selectedCustomer.id);
         await clearAutoDraft();
-        
-        // 👇 NEW: Delete suspended record if it exists
         if (suspendedId) {
           await deleteSuspendedTransaction(suspendedId, currentStore.id);
           setSuspendedId(null);
         }
-        
         showToast("✅ Sale recorded!");
       }
-
       setLastScrollPosition(window.scrollY);
       setStoreSelectedCustomer(selectedCustomer);
       setView("profile");
@@ -305,14 +293,31 @@ export const RecordSalePage = () => {
                 <p className="text-xs text-green-600 dark:text-green-400 uppercase font-bold">{isFixing ? "Correcting sale for" : "Selling to"}</p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedCustomer.name}</p>
               </div>
+              {/* 👇 WORKING CHANGE BUTTON */}
               {!isFixing && (
-                <button onClick={() => { setMode("search"); setSelectedCustomer(null); setInvoiceItems([]); setTx({ amount: "0", paid: "", discount: "", note: "" }); clearAutoDraft(); }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">Change</button>
+                <button 
+                  onClick={() => { 
+                    // 1. Instantly clear the auto-draft from memory so the background effect doesn't fight us
+                    useStore.setState({ autoDraft: null });
+
+                    // 2. Reset the UI state
+                    setMode("search"); 
+                    setSelectedCustomer(null); 
+                    setInvoiceItems([]); 
+                    setTx({ amount: "0", paid: "", discount: "", note: "" }); 
+                    
+                    // 3. Delete the draft from the database in the background
+                    clearAutoDraft(); 
+                  }} 
+                  className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
+                >
+                  Change
+                </button>
               )}
             </div>
           </div>
         )}
 
-        {/* 👇 THE DETAILED INVOICE COMPONENT (Items & Summary) */}
         {mode === "existing" && (
           <DetailedInvoice tx={tx} setTx={setTx} invoiceItems={invoiceItems} setInvoiceItems={setInvoiceItems} products={products} setProducts={setProducts} currentStore={currentStore} showToast={showToast} />
         )}
@@ -324,17 +329,14 @@ export const RecordSalePage = () => {
           </div>
         )}
 
-        {/* 👇 ACTION BUTTONS: Suspend & Save */}
         {mode === "existing" && !isFixing && (
           <div className="grid grid-cols-2 gap-3 pt-2">
-            {/* Suspend Sale Button */}
             <button 
               onClick={handleSuspendSale} 
               className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-sm"
             >
               <Pause size={20} /> Suspend Sale
             </button>
-            {/* Save Sale Button */}
             <button 
               onClick={handleSaveInvoice} 
               className="bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"

@@ -7,19 +7,26 @@ import { SupplierService } from "../services/SupplierService";
 import { TransactionService } from "../services/TransactionService";
 import { AccountShareService } from "../services/AccountShareService";
 import { ShareAccountModal } from "../components/ShareAccountModal";
+import { AddSupplierModal } from "../components/supplier/AddSupplierModal"; // 👈 NEW: Import Edit Modal
 import { TopBar } from "../components/TopBar";
 
 // ==========================================
 // SUB-COMPONENTS
 // ==========================================
 
-const SupplierHeader = ({ supplier, daysSinceLastActive }) => (
+// 👇 UPDATED: Added onEdit prop and Edit button
+const SupplierHeader = ({ supplier, daysSinceLastActive, onEdit }) => (
   <div className="flex items-center gap-4">
     <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full flex items-center justify-center text-2xl font-bold flex-shrink-0">
       {supplier.name.charAt(0)}
     </div>
     <div className="flex-1 min-w-0">
-      <h2 className="text-xl font-bold text-gray-900 dark:text-white truncate">{supplier.name}</h2>
+      <div className="flex items-center gap-2">
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white truncate">{supplier.name}</h2>
+        <button onClick={onEdit} className="p-1.5 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition" title="Edit Supplier">
+          <Edit3 size={14} className="text-gray-600 dark:text-gray-300" />
+        </button>
+      </div>
       <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-0.5">
         <Phone size={12} /> {supplier.phone || "No phone"}
       </p>
@@ -226,57 +233,6 @@ const ReceiptModal = ({ tx, onClose, onViewTx, onFix, onCancel, currency, active
           <button onClick={onClose} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full"><X size={18} className="text-gray-600 dark:text-gray-300" /></button>
         </div>
         <div className="p-5 space-y-4">
-          
-          {/* 👇 NEW: ITEMS SECTION (Shows specific products purchased) */}
-          {tx.type === 'purchase' && tx.items && tx.items.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider px-1">
-                Items ({tx.items.length})
-              </p>
-              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {tx.items.map((item, idx) => (
-                    <div key={idx} className="px-4 py-3">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1 min-w-0 pr-2">
-                          <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
-                            {item.name}
-                          </p>
-                          {item.brand && (
-                            <p className="text-[10px] text-gray-500 dark:text-gray-400 italic truncate">
-                              {item.brand}
-                            </p>
-                          )}
-                          <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 uppercase tracking-wider">
-                            {item.unitName || 'Piece'}
-                          </p>
-                        </div>
-                        <p className="text-base font-bold flex-shrink-0 text-gray-900 dark:text-white">
-                          {formatCurrency(item.total || 0, currency)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs mt-1">
-                        <div className="flex items-center gap-1">
-                          <span className="text-gray-500 dark:text-gray-400">Qty:</span>
-                          <span className="inline-block px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded font-bold">
-                            {item.quantity || 1}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-gray-500 dark:text-gray-400">Price:</span>
-                          <span className="font-semibold text-purple-600 dark:text-purple-400">
-                            {formatCurrency(item.price || 0, currency)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* PAYMENT DETAILS SECTION */}
           <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl space-y-3">
             <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Date</span><span className="font-semibold text-gray-900 dark:text-white">{formatDate(tx.date || tx.createdAt)}</span></div>
             {tx.type === 'supplier_payment' && (
@@ -379,7 +335,10 @@ export const SupplierProfilePage = () => {
   const [showFixModal, setShowFixModal] = useState(false);
   const [fixReason, setFixReason] = useState("");
   const [txToFix, setTxToFix] = useState(null);
+  
+  // 👇 NEW: Share Account & Edit Modal State
   const [showShareModal, setShowShareModal] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   useEffect(() => {
     if (selectedSupplier?.id) {
@@ -390,6 +349,9 @@ export const SupplierProfilePage = () => {
 
   if (!supplierData) return null;
 
+  // ==========================================
+  // SINGLE SOURCE OF TRUTH CALCULATION
+  // ==========================================
   const activePayments = useMemo(() =>
     history.filter(tx => tx.type === 'supplier_payment' && (tx.status === 'active' || !tx.status)),
   [history]);
@@ -515,7 +477,13 @@ export const SupplierProfilePage = () => {
       <TopBar title="Supplier Profile" showBack={true} onBack={() => { setView("suppliers"); setSelectedSupplier(null); }} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
         
-        <SupplierHeader supplier={supplierData} daysSinceLastActive={daysSinceLastActive} />
+        {/*  UPDATED: Pass onEdit to SupplierHeader */}
+        <SupplierHeader 
+          supplier={supplierData} 
+          daysSinceLastActive={daysSinceLastActive} 
+          onEdit={() => setIsEditModalOpen(true)} 
+        />
+        
         <BalanceCard balance={trueBalance} lastPayment={lastPayment} currency={currency} />
         
         <QuickActions 
@@ -543,6 +511,7 @@ export const SupplierProfilePage = () => {
       <FixReasonModal isOpen={showFixModal} onClose={() => setShowFixModal(false)} onConfirm={confirmFix} fixReason={fixReason} setFixReason={setFixReason} />
       <CancelModal isOpen={showCancelModal} onClose={() => setShowCancelModal(false)} onConfirm={executeCancelTransaction} cancelReason={cancelReason} setCancelReason={setCancelReason} amount={viewingTransaction?.amount || viewingTransaction?.paid} currency={currency} type={viewingTransaction?.type} />
       
+      {/* 👇 NEW: Share Account Modal */}
       <ShareAccountModal 
         isOpen={showShareModal}
         onClose={() => setShowShareModal(false)}
@@ -550,6 +519,23 @@ export const SupplierProfilePage = () => {
         transactions={history}
         store={currentStore}
         onShared={handleShareAccount}
+      />
+
+      {/* 👇 NEW: Edit Supplier Modal */}
+      <AddSupplierModal 
+        isOpen={isEditModalOpen} 
+        onClose={() => setIsEditModalOpen(false)} 
+        supplier={supplierData} 
+        onSaved={() => {
+          // Instantly refresh the profile data after editing
+          SupplierService.getById(supplierData.id).then(setSupplierData);
+          // Also refresh the global suppliers list in the background
+          if (currentStore?.id) {
+             SupplierService.getAll(currentStore.id).then(updated => {
+               useStore.getState().setSuppliers(updated);
+             });
+          }
+        }} 
       />
     </div>
   );

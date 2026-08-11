@@ -1,51 +1,48 @@
-import { db } from "../database/db";
-import { ContactService } from './ContactService';
-import { TransactionService } from './TransactionService';
+import { db } from '../database/db';
 
-// BRIDGE: Routes old CustomerService calls to the new unified services.
 export const CustomerService = {
-  getAll: (storeId) => ContactService.getAll(storeId, 'customer'),
-  getById: (id) => ContactService.getById(id),
-  
-  addCustomer: (storeId, name, phone) => 
-    ContactService.create(storeId, { name, phone, type: 'customer' }),
-    
-  addTransaction: (storeId, customerId, amount, paid, items, note) =>
-    TransactionService.create(storeId, customerId, 'sale', items, amount, paid, note),
-    
-  getHistory: (customerId) => TransactionService.getHistory(customerId), // 👈 ADDED THIS
-  
-  clearDebt: async (storeId, customerId) => {
-    const contact = await ContactService.getById(customerId);
-    if (contact && contact.balance > 0) {
-      await TransactionService.create(storeId, customerId, 'sale', [], 0, contact.balance, 'Balance cleared');
-    }
+  getAll: async (storeId) => {
+    return await db.contacts.where({ storeId, type: 'customer' }).toArray();
   },
-  
-  voidTransaction: (txId, reason) => TransactionService.voidTransaction(txId, reason),
-  redoTransaction: (txId) => TransactionService.redoTransaction(txId),
-  updateBalance: async (customerId) => {
-    // Fetch all transactions for this customer
-    const txs = await db.transactions.where({ contactId: customerId }).toArray();
+
+  getById: async (id) => {
+    return await db.contacts.get(id);
+  },
+
+  addCustomer: async (storeId, name, phone) => {
+    const newCustomer = {
+      storeId,
+      type: 'customer',
+      name,
+      phone: phone || '',
+      balance: 0,
+      isArchived: false,
+      createdAt: new Date().toISOString()
+    };
+    return await db.contacts.add(newCustomer);
+  },
+
+  // 👇 ADDED: Update method for editing existing customers
+  update: async (id, data) => {
+    await db.contacts.update(id, data);
+  },
+
+  updateBalance: async (id) => {
+    const transactions = await db.transactions.where({ contactId: id }).toArray();
+    let balance = 0;
     
-    // Filter active transactions
-    const activeSales = txs.filter(t => t.type === 'sale' && t.status === 'active');
-    const activePayments = txs.filter(t => t.type === 'payment' && t.status === 'active');
-    
-    // Calculate totals
-    const totalSalesAmount = activeSales.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
-    const totalUpfrontPaid = activeSales.reduce((sum, t) => sum + (parseFloat(t.paid) || 0), 0);
-    const totalStandalonePayments = activePayments.reduce((sum, t) => sum + (parseFloat(t.paid) || 0), 0);
-    
-    // The Golden Formula: Sales - Upfront Paid - Standalone Payments
-    const newBalance = totalSalesAmount - totalUpfrontPaid - totalStandalonePayments;
-    
-    // Update the customer record
-    await db.customers.update(customerId, { 
-      balance: newBalance,
-      lastActivity: new Date().toISOString() // Keep the "Recently Active" logic working
+    transactions.forEach(tx => {
+      const isActive = tx.status === 'active' || !tx.status;
+      if (!isActive) return;
+      
+      if (tx.type === 'sale') {
+        balance += (parseFloat(tx.amount) || 0) - (parseFloat(tx.paid) || 0);
+      } else if (tx.type === 'payment') {
+        balance -= (parseFloat(tx.paid) || 0);
+      }
     });
     
-    return newBalance;
-  },
+    await db.contacts.update(id, { balance });
+    return balance;
+  }
 };

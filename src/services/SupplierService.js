@@ -1,57 +1,48 @@
 import { db } from '../database/db';
-import { ContactService } from './ContactService';
-import { TransactionService } from './TransactionService';
 
-// BRIDGE: Routes old SupplierService calls to the new unified services.
 export const SupplierService = {
-  getAll: (storeId) => ContactService.getAll(storeId, 'supplier'),
-  
-  getById: (id) => ContactService.getById(id),
-  
-  addSupplier: (storeId, name, phone) =>
-    ContactService.create(storeId, { name, phone, type: 'supplier' }),
-  
-  addTransaction: (storeId, supplierId, amount, paid, items, note) =>
-    TransactionService.create(storeId, supplierId, 'purchase', items, amount, paid, note),
-  
-  getHistory: (supplierId) => TransactionService.getHistory(supplierId),
-  
-  clearDebt: async (storeId, supplierId) => {
-    const contact = await ContactService.getById(supplierId);
-    if (contact && contact.balance > 0) {
-      await TransactionService.create(storeId, supplierId, 'purchase', [], 0, contact.balance, 'Balance cleared');
-    }
+  getAll: async (storeId) => {
+    return await db.contacts.where({ storeId, type: 'supplier' }).toArray();
   },
-  
-  voidTransaction: (txId, reason) => TransactionService.voidTransaction(txId, reason),
-  
-  redoTransaction: (txId) => TransactionService.redoTransaction(txId),
-  
-  // ==========================================
-  // UPDATED: Single Source of Truth Balance Calculation
-  // ==========================================
-  updateBalance: async (supplierId) => {
-    // Fetch all transactions for this supplier
-    const txs = await db.transactions.where({ contactId: supplierId }).toArray();
+
+  getById: async (id) => {
+    return await db.contacts.get(id);
+  },
+
+  addSupplier: async (storeId, name, phone) => {
+    const newSupplier = {
+      storeId,
+      type: 'supplier',
+      name,
+      phone: phone || '',
+      balance: 0,
+      isArchived: false,
+      createdAt: new Date().toISOString()
+    };
+    return await db.contacts.add(newSupplier);
+  },
+
+  // 👇 ADDED: Update method for editing existing suppliers
+  update: async (id, data) => {
+    await db.contacts.update(id, data);
+  },
+
+  updateBalance: async (id) => {
+    const transactions = await db.transactions.where({ contactId: id }).toArray();
+    let balance = 0;
     
-    // Filter active transactions
-    const activePurchases = txs.filter(t => t.type === 'purchase' && t.status === 'active');
-    const activePayments = txs.filter(t => t.type === 'supplier_payment' && t.status === 'active');
-    
-    // Calculate totals
-    const totalPurchasesAmount = activePurchases.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
-    const totalUpfrontPaid = activePurchases.reduce((sum, t) => sum + (parseFloat(t.paid) || 0), 0);
-    const totalStandalonePayments = activePayments.reduce((sum, t) => sum + (parseFloat(t.paid) || 0), 0);
-    
-    // The Golden Formula: Purchases - Upfront Paid - Standalone Payments
-    const newBalance = totalPurchasesAmount - totalUpfrontPaid - totalStandalonePayments;
-    
-    // Update the supplier record
-    await db.suppliers.update(supplierId, { 
-      balance: newBalance,
-      lastActivity: new Date().toISOString()
+    transactions.forEach(tx => {
+      const isActive = tx.status === 'active' || !tx.status;
+      if (!isActive) return;
+      
+      if (tx.type === 'purchase') {
+        balance += (parseFloat(tx.amount) || 0) - (parseFloat(tx.paid) || 0);
+      } else if (tx.type === 'supplier_payment') {
+        balance -= (parseFloat(tx.paid) || 0);
+      }
     });
     
-    return newBalance;
+    await db.contacts.update(id, { balance });
+    return balance;
   }
-};
+}; 
