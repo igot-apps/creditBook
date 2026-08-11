@@ -11,56 +11,59 @@ import { TopBar } from "../components/TopBar";
 export const SuppliersPage = () => {
   const {
     currentStore,
-    setSelectedSupplier, setView, setPrefillTransaction
+    setSelectedSupplier,
+    setView,
+    setPrefillTransaction
   } = useStore();
-  
+
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [actionSupplier, setActionSupplier] = useState(null);
   
-  // 👇 NEW: Local state to hold suppliers with their mathematically true balances
+  // 👇 Local state to hold suppliers with their mathematically true balances
   const [suppliersData, setSuppliersData] = useState([]);
   
   const currency = currentStore?.currency || "GH₵";
 
   // 1. Load Data & Calculate True Balances (Single Source of Truth)
+  const fetchSuppliers = async () => {
+    if (!currentStore?.id) return;
+    try {
+      const [suppliers, transactions] = await Promise.all([
+        SupplierService.getAll(currentStore.id),
+        TransactionService.getAll(currentStore.id)
+      ]);
+
+      const trueBalances = {};
+      suppliers.forEach(s => { trueBalances[s.id] = 0; });
+
+      transactions.forEach(tx => {
+        const isActive = tx.status === 'active' || !tx.status;
+        if (!isActive) return;
+
+        if (!trueBalances[tx.contactId]) trueBalances[tx.contactId] = 0;
+
+        if (tx.type === 'purchase') {
+          trueBalances[tx.contactId] += (parseFloat(tx.amount) || 0);
+          trueBalances[tx.contactId] -= (parseFloat(tx.paid) || 0);
+        } else if (tx.type === 'supplier_payment') {
+          trueBalances[tx.contactId] -= (parseFloat(tx.paid) || 0);
+        }
+      });
+
+      const suppliersWithTrueBalance = suppliers.map(s => ({
+        ...s,
+        trueBalance: trueBalances[s.id] || 0
+      }));
+
+      setSuppliersData(suppliersWithTrueBalance);
+    } catch (error) {
+      console.error("Failed to load suppliers data", error);
+    }
+  };
+
   useEffect(() => {
-    const loadData = async () => {
-      if (!currentStore?.id) return;
-      try {
-        const [suppliers, transactions] = await Promise.all([
-          SupplierService.getAll(currentStore.id),
-          TransactionService.getAll(currentStore.id)
-        ]);
-
-        const trueBalances = {};
-        suppliers.forEach(s => { trueBalances[s.id] = 0; });
-
-        transactions.forEach(tx => {
-          const isActive = tx.status === 'active' || !tx.status;
-          if (!isActive) return;
-
-          if (!trueBalances[tx.contactId]) trueBalances[tx.contactId] = 0;
-
-          if (tx.type === 'purchase') {
-            trueBalances[tx.contactId] += (parseFloat(tx.amount) || 0);
-            trueBalances[tx.contactId] -= (parseFloat(tx.paid) || 0);
-          } else if (tx.type === 'supplier_payment') {
-            trueBalances[tx.contactId] -= (parseFloat(tx.paid) || 0);
-          }
-        });
-
-        const suppliersWithTrueBalance = suppliers.map(s => ({
-          ...s,
-          trueBalance: trueBalances[s.id] || 0
-        }));
-
-        setSuppliersData(suppliersWithTrueBalance);
-      } catch (error) {
-        console.error("Failed to load suppliers data", error);
-      }
-    };
-    loadData();
+    fetchSuppliers();
   }, [currentStore?.id]);
 
   // 2. SMART SEARCH
@@ -139,7 +142,7 @@ export const SuppliersPage = () => {
       amount: "0",
       paid: ""
     });
-    setView("recordSupplierPayment"); // 👈 Updated to use the new dedicated payment page
+    setView("recordSupplierPayment");
   };
 
   const handleViewProfile = (supplier) => {
@@ -275,34 +278,11 @@ export const SuppliersPage = () => {
         </div>
       </div>
 
-      {/* Add Supplier Modal */}
+      {/* 👇 UPDATED: Add Supplier Modal with onSaved callback to refresh the list */}
       <AddSupplierModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
-        onSaved={() => {
-          // Re-fetch data to update the list immediately after adding
-          if (currentStore?.id) {
-            SupplierService.getAll(currentStore.id).then(suppliers => {
-              // We also need to re-calculate balances, so just re-run the loadData logic
-              TransactionService.getAll(currentStore.id).then(transactions => {
-                const trueBalances = {};
-                suppliers.forEach(s => { trueBalances[s.id] = 0; });
-                transactions.forEach(tx => {
-                  const isActive = tx.status === 'active' || !tx.status;
-                  if (!isActive) return;
-                  if (!trueBalances[tx.contactId]) trueBalances[tx.contactId] = 0;
-                  if (tx.type === 'purchase') {
-                    trueBalances[tx.contactId] += (parseFloat(tx.amount) || 0);
-                    trueBalances[tx.contactId] -= (parseFloat(tx.paid) || 0);
-                  } else if (tx.type === 'supplier_payment') {
-                    trueBalances[tx.contactId] -= (parseFloat(tx.paid) || 0);
-                  }
-                });
-                setSuppliersData(suppliers.map(s => ({ ...s, trueBalance: trueBalances[s.id] || 0 })));
-              });
-            });
-          }
-        }} 
+        onSaved={fetchSuppliers} // 👈 THIS TRIGGERS THE REFRESH INSTANTLY
       />
 
       {/* ACTION BOTTOM SHEET */}

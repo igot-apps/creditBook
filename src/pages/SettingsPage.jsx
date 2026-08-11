@@ -1,192 +1,175 @@
 import { useState, useEffect } from "react";
-import { Save, Store, User, Mail, Phone, MapPin, CreditCard } from "lucide-react";
+import { Save, Store, User, Phone, Mail, MapPin, DollarSign, CheckCircle } from "lucide-react";
 import useStore from "../store/useStore";
-import { StoreRepository } from "../repositories/StoreRepository";
-import { TopBar } from "../components/TopBar"; // 👈 Import TopBar
+import { db } from "../database/db";
+import { TopBar } from "../components/TopBar";
 
 export const SettingsPage = () => {
-  const { currentStore, showToast } = useStore();
+  const { currentStore, setCurrentStore, showToast } = useStore();
+  
   const [formData, setFormData] = useState({
     name: "",
     ownerName: "",
-    email: "",
     phone: "",
-    address: "",
-    currency: "GHS"
+    email: "",
+    location: "",
+    currency: "GH₵"
   });
   const [isSaving, setIsSaving] = useState(false);
 
-  // 1. Load current store data into the form when the page loads
+  // Load current store data into the form
   useEffect(() => {
     if (currentStore) {
       setFormData({
         name: currentStore.name || "",
         ownerName: currentStore.ownerName || "",
-        email: currentStore.email || "",
         phone: currentStore.phone || "",
-        address: currentStore.address || "",
-        currency: currentStore.currency || "GHS"
+        email: currentStore.email || "",
+        location: currentStore.location || "",
+        currency: currentStore.currency || "GH₵"
       });
     }
   }, [currentStore]);
 
-  // 2. Handle the save action
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
   const handleSave = async () => {
     if (!formData.name.trim()) {
-      showToast("⚠️ Business name is required!");
+      showToast("⚠️ Business name is required");
       return;
     }
+
     setIsSaving(true);
     try {
-      // A. Update the database
-      const updatedStore = await StoreRepository.update(currentStore.id, {
-        name: formData.name.trim(),
-        ownerName: formData.ownerName.trim(),
-        email: formData.email.trim(),
-        phone: formData.phone.trim(),
-        address: formData.address.trim(),
-        currency: formData.currency
-      });
-      // B. Update the global Zustand store so the whole app updates instantly
-      useStore.getState().setCurrentStore(updatedStore);
-      showToast("✅ Business profile updated successfully!");
+      // 1. Update the database
+      await db.stores.update(currentStore.id, formData);
+      
+      // 2. Update the global Zustand state
+      const updatedStore = { ...currentStore, ...formData };
+      setCurrentStore(updatedStore);
+      
+      showToast("✅ Business details saved successfully!");
     } catch (error) {
-      console.error("Failed to save store:", error);
-      showToast("❌ Failed to save business profile.");
+      console.error("Failed to save settings:", error);
+      showToast("❌ Failed to save settings");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
-  if (!currentStore) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
-        <p className="text-gray-500">Loading settings...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      {/*  FIXED TOP BAR */}
-      <TopBar title="Settings" />
+      <TopBar title="Business Settings" showBack={true} onBack={() => window.history.back()} />
       
-      {/* 👇 MAIN CONTENT - Increased top padding for breathing room */}
-      <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 5.5rem)' }} className="p-4 max-w-lg mx-auto space-y-6">
+      <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-6">
         
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-5">
-          {/* Business Name */}
+        {/* Header Card */}
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 text-center">
+          <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-3">
+            {formData.name.charAt(0) || "S"}
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Store Profile</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            This information will appear on receipts and shared account statements.
+          </p>
+        </div>
+
+        {/* Form */}
+        <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+          
           <div>
-            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 block">Business Name *</label>
-            <div className="relative">
-              <Store className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            <label className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">
+              <Store size={14} /> Business Name
+            </label>
+            <input 
+              type="text" name="name" value={formData.name} onChange={handleChange} 
+              placeholder="e.g., Shalom Cold Store"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+            />
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">
+              <User size={14} /> Owner / Manager Name
+            </label>
+            <input 
+              type="text" name="ownerName" value={formData.ownerName} onChange={handleChange} 
+              placeholder="e.g., John Doe"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">
+                <Phone size={14} /> Phone
+              </label>
               <input 
-                type="text" 
-                value={formData.name} 
-                onChange={(e) => handleChange("name", e.target.value)} 
-                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
-                placeholder="e.g., Kwame's Provisions"
+                type="tel" name="phone" value={formData.phone} onChange={handleChange} 
+                placeholder="024XXXXXXX"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
               />
             </div>
-          </div>
-
-          {/* Owner Name */}
-          <div>
-            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 block">Owner Name</label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-              <input 
-                type="text" 
-                value={formData.ownerName} 
-                onChange={(e) => handleChange("ownerName", e.target.value)} 
-                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
-                placeholder="Your full name"
-              />
-            </div>
-          </div>
-
-          {/* Email */}
-          <div>
-            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 block">Email Address</label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-              <input 
-                type="email" 
-                value={formData.email} 
-                onChange={(e) => handleChange("email", e.target.value)} 
-                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
-                placeholder="store@example.com"
-              />
-            </div>
-          </div>
-
-          {/* Phone */}
-          <div>
-            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 block">Business Phone</label>
-            <div className="relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-              <input 
-                type="tel" 
-                value={formData.phone} 
-                onChange={(e) => handleChange("phone", e.target.value)} 
-                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white" 
-                placeholder="024 123 4567"
-              />
-            </div>
-          </div>
-
-          {/* Address */}
-          <div>
-            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 block">Business Address</label>
-            <div className="relative">
-              <MapPin className="absolute left-3 top-3 text-gray-400" size={20} />
-              <textarea 
-                value={formData.address} 
-                onChange={(e) => handleChange("address", e.target.value)} 
-                rows="2"
-                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white resize-none" 
-                placeholder="Street, City, Region"
-              />
-            </div>
-          </div>
-
-          {/* Currency */}
-          <div>
-            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 block">Default Currency</label>
-            <div className="relative">
-              <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            <div>
+              <label className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">
+                <DollarSign size={14} /> Currency
+              </label>
               <select 
-                value={formData.currency} 
-                onChange={(e) => handleChange("currency", e.target.value)} 
-                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white appearance-none"
+                name="currency" value={formData.currency} onChange={handleChange}
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white appearance-none"
               >
-                <option value="GHS">GHS (₵) - Ghana Cedi</option>
-                <option value="USD">USD ($) - US Dollar</option>
-                <option value="NGN">NGN (₦) - Nigerian Naira</option>
-                <option value="KES">KES (KSh) - Kenyan Shilling</option>
+                <option value="GH₵">GH₵ (Cedi)</option>
+                <option value="$">$ (USD)</option>
+                <option value="€">€ (Euro)</option>
+                <option value="£">£ (GBP)</option>
+                <option value="₦">₦ (Naira)</option>
+                <option value="KSh">KSh (Shilling)</option>
               </select>
             </div>
           </div>
 
-          {/* Save Button */}
-          <button 
-            onClick={handleSave} 
-            disabled={isSaving}
-            className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg mt-4"
-          >
-            {isSaving ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              <>
-                <Save size={20} /> Save Business Profile
-              </>
-            )}
-          </button>
+          <div>
+            <label className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">
+              <Mail size={14} /> Email (Optional)
+            </label>
+            <input 
+              type="email" name="email" value={formData.email} onChange={handleChange} 
+              placeholder="business@example.com"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+            />
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">
+              <MapPin size={14} /> Location / Address (Optional)
+            </label>
+            <input 
+              type="text" name="location" value={formData.location} onChange={handleChange} 
+              placeholder="e.g., Main Street, Accra"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+            />
+          </div>
+
         </div>
+
+        {/* Save Button */}
+        <button 
+          onClick={handleSave}
+          disabled={isSaving}
+          className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
+        >
+          {isSaving ? (
+            <>Saving...</>
+          ) : (
+            <>
+              <Save size={20} /> Save Business Details
+            </>
+          )}
+        </button>
+
       </div>
     </div>
   );

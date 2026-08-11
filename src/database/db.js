@@ -72,3 +72,14 @@ db.version(5).stores({
   // 👇 NEW: Dedicated table for suspended sales/purchases
   suspendedTransactions: '++id, storeId, contactId, type, createdAt'
 });
+
+// Version 6: Add Account Shares table for internal event logging
+db.version(6).stores({
+  stores: '++id, name',
+  contacts: '++id, storeId, type, name, phone, createdAt',
+  products: '++id, storeId, name, category, brand, isFavourite, usageCount, lastUsedAt, createdAt',
+  transactions: '++id, storeId, contactId, type, status, replacedByTransactionId, correctsTransactionId, createdAt',
+  suspendedTransactions: '++id, storeId, contactId, type, createdAt',
+  // 👇 NEW: Dedicated table for logging shared account events
+  accountShares: '++id, storeId, contactId, channel, scope, reference, createdAt'
+});

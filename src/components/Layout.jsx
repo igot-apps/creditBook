@@ -1,6 +1,6 @@
-import { 
-  Home, Users, Truck, Package, Bell, BarChart3, Settings, 
-  Moon, Sun, X, ChevronRight, Database, HelpCircle, User, Mail 
+import {
+  Home, Users, Truck, Package, BarChart3, Settings,
+  Moon, Sun, X, ChevronRight, Database, HelpCircle, User, Mail
 } from "lucide-react";
 import useStore from "../store/useStore";
 
@@ -29,7 +29,6 @@ export const Layout = ({ children }) => {
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-950">
-      
       {/* 1. HEADER: Business Info Only */}
       <div className="bg-white dark:bg-gray-900 p-5 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
         <div className="flex justify-between items-start mb-4">
@@ -50,7 +49,6 @@ export const Layout = ({ children }) => {
             <X size={18} className="text-gray-600 dark:text-gray-300" />
           </button>
         </div>
-
         {/* Business Info Section (Clean & Compact) */}
         <div className="space-y-2">
           {currentStore?.ownerName && (
@@ -70,7 +68,6 @@ export const Layout = ({ children }) => {
 
       {/* 2. SCROLLABLE NAVIGATION (Grouped) */}
       <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
-        
         {/* TODAY */}
         <div>
           <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider px-2 mb-2">Today</p>
@@ -87,7 +84,7 @@ export const Layout = ({ children }) => {
           <div className="space-y-1">
             <MenuItem icon={Package} label="Products" active={view === 'products'} onClick={() => navigateTo('products')} />
             <MenuItem icon={BarChart3} label="Reports" active={view === 'reports'} onClick={() => navigateTo('reports')} />
-            <MenuItem icon={Bell} label="Follow-ups" active={view === 'followups'} onClick={() => navigateTo('followups')} />
+            {/* 👇 REMOVED: Follow-ups */}
           </div>
         </div>
 
@@ -149,8 +146,8 @@ export const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex">
-      {/* 👇 Desktop Sidebar — Added top padding to sit below TopBar */}
-      <aside 
+      {/* Desktop Sidebar */}
+      <aside
         className="hidden lg:flex lg:flex-col lg:w-72 bg-gray-50 dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 fixed h-screen z-40"
         style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }}
       >

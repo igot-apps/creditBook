@@ -3,7 +3,6 @@ import useStore from "./store/useStore";
 import { BottomNav } from "./components/BottomNav";
 import { Toast } from "./components/Toast";
 import { Layout } from "./components/Layout";
-
 import { HomePage } from "./pages/HomePage";
 
 // Customer Pages
@@ -24,6 +23,9 @@ import { SuppliersPage } from "./pages/SuppliersPage";
 import { SupplierProfilePage } from "./pages/SupplierProfilePage";
 import { RecordPurchasePage } from "./pages/RecordPurchasePage";
 import { RecordSupplierPaymentPage } from "./pages/RecordSupplierPaymentPage";
+
+// 👇 NEW: Settings Page
+import { SettingsPage } from "./pages/SettingsPage";
 
 const AppRouter = () => {
   const { view, initializeApp, theme, pageKey } = useStore();
@@ -64,8 +66,10 @@ const AppRouter = () => {
         return <VisibilityManagerPage key={pageKey} />;
       case "reports":
         return <ReportsPage key={pageKey} />;
+      
+      // 👇 UPDATED: Settings Route
       case "settings":
-        return <MorePage key={pageKey} />;
+        return <SettingsPage key={pageKey} />;
       
       // Supplier Routes
       case "suppliers":

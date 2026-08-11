@@ -2,80 +2,52 @@ import { useState, useEffect, useMemo } from "react";
 import { Search, Plus, Phone, MessageCircle, DollarSign, ShoppingCart, X, Clock, AlertCircle, Star, ChevronRight } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
-import { openWhatsApp, openDialer } from "../utils/communication";
-import { CustomerService } from "../services/CustomerService";
-import { TransactionService } from "../services/TransactionService";
+import { openSMS, openWhatsApp, openDialer } from "../utils/communication";
 import { AddCustomerModal } from "../components/customer/AddCustomerModal";
 import { TopBar } from "../components/TopBar";
+import { CustomerService } from "../services/CustomerService"; // 👈 ADDED IMPORT
 
 export const CustomersPage = () => {
   const {
-    currentStore, 
-    setSelectedCustomer, setView, setPrefillTransaction
+    currentStore,
+    customers,
+    setCustomers, // 👈 ADDED
+    setSelectedCustomer,
+    setView,
+    setPrefillTransaction
   } = useStore();
-  
+
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [actionCustomer, setActionCustomer] = useState(null);
   
-  // 👇 NEW: Local state to hold customers with their mathematically true balances
-  const [customersData, setCustomersData] = useState([]);
-  
   const currency = currentStore?.currency || "GH₵";
 
-  // 1. Load Data & Calculate True Balances (Single Source of Truth)
+  // 👇 NEW: Local fetch function to ensure the list refreshes perfectly every time
+  const fetchCustomers = async () => {
+    if (currentStore?.id) {
+      const loaded = await CustomerService.getAll(currentStore.id);
+      setCustomers(loaded);
+    }
+  };
+
   useEffect(() => {
-    const loadData = async () => {
-      if (!currentStore?.id) return;
-      try {
-        const [customers, transactions] = await Promise.all([
-          CustomerService.getAll(currentStore.id),
-          TransactionService.getAll(currentStore.id)
-        ]);
-
-        const trueBalances = {};
-        customers.forEach(c => { trueBalances[c.id] = 0; });
-
-        transactions.forEach(tx => {
-          const isActive = tx.status === 'active' || !tx.status;
-          if (!isActive) return;
-
-          if (!trueBalances[tx.contactId]) trueBalances[tx.contactId] = 0;
-
-          if (tx.type === 'sale') {
-            trueBalances[tx.contactId] += (parseFloat(tx.amount) || 0);
-            trueBalances[tx.contactId] -= (parseFloat(tx.paid) || 0);
-          } else if (tx.type === 'payment') {
-            trueBalances[tx.contactId] -= (parseFloat(tx.paid) || 0);
-          }
-        });
-
-        const customersWithTrueBalance = customers.map(c => ({
-          ...c,
-          trueBalance: trueBalances[c.id] || 0
-        }));
-
-        setCustomersData(customersWithTrueBalance);
-      } catch (error) {
-        console.error("Failed to load customers data", error);
-      }
-    };
-    loadData();
+    fetchCustomers();
   }, [currentStore?.id]);
 
-  // 2. SMART SEARCH
+  // 1. SMART SEARCH
   const filteredCustomers = useMemo(() => {
-    if (!Array.isArray(customersData)) return [];
-    if (!searchQuery.trim()) return customersData;
+    if (!Array.isArray(customers)) return [];
+    if (!searchQuery.trim()) return customers;
     const q = searchQuery.toLowerCase();
-    return customersData.filter(c => 
+    return customers.filter(c => 
       c.name.toLowerCase().includes(q) || 
       (c.phone && c.phone.includes(q)) ||
       (c.lastBought && c.lastBought.toLowerCase().includes(q))
     );
-  }, [customersData, searchQuery]);
+  }, [customers, searchQuery]);
 
-  // 3. SECTIONING LOGIC
+  // 2. SECTIONING LOGIC
   const sections = useMemo(() => {
     const favorites = [];
     const needAttention = [];
@@ -95,7 +67,7 @@ export const CustomersPage = () => {
 
       if (c.isFavourite || c.isPinned) {
         favorites.push(c);
-      } else if (c.trueBalance > 0) { // 👈 Use trueBalance
+      } else if (c.balance > 0) {
         needAttention.push(c);
       } else if (isRecent) {
         recentlyActive.push(c);
@@ -104,20 +76,24 @@ export const CustomersPage = () => {
       }
     });
 
-    needAttention.sort((a, b) => b.trueBalance - a.trueBalance); // 👈 Sort by trueBalance
+    needAttention.sort((a, b) => b.balance - a.balance);
     recentlyActive.sort((a, b) => new Date(b.lastActivity) - new Date(a.lastActivity));
     others.sort((a, b) => a.name.localeCompare(b.name));
 
     return { favorites, needAttention, recentlyActive, others };
   }, [filteredCustomers, searchQuery]);
 
-  // 4. QUICK ACTIONS
+  // 3. QUICK ACTIONS
   const handleRecordSale = (customer) => {
     setActionCustomer(null);
     setSelectedCustomer(customer);
     setPrefillTransaction({
-      customerId: customer.id, name: customer.name, phone: customer.phone,
-      items: "", amount: "", paid: "0"
+      customerId: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+      items: "",
+      amount: "",
+      paid: "0"
     });
     setView("record");
   };
@@ -126,10 +102,14 @@ export const CustomersPage = () => {
     setActionCustomer(null);
     setSelectedCustomer(customer);
     setPrefillTransaction({
-      customerId: customer.id, name: customer.name, phone: customer.phone,
-      items: "Payment", amount: "0", paid: ""
+      customerId: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+      items: "Payment",
+      amount: "0",
+      paid: ""
     });
-    setView("recordPayment"); // 👈 Updated to use the new dedicated payment page
+    setView("record");
   };
 
   const handleViewProfile = (customer) => {
@@ -139,7 +119,7 @@ export const CustomersPage = () => {
   };
 
   const generateMessage = (c) =>
-    `Hello ${c.name}, this is ${currentStore?.name || "Store"}. Please send your outstanding balance of ${formatCurrency(c.trueBalance, currency)} by the end of the week. Thank you!`;
+    `Hello ${c.name}, this is ${currentStore?.name || "Store"}. Please send your outstanding balance of ${formatCurrency(c.balance, currency)} by the end of the week. Thank you!`;
 
   const getDaysOverdue = (lastActivity) => {
     if (!lastActivity) return null;
@@ -149,9 +129,6 @@ export const CustomersPage = () => {
 
   const renderCustomerCard = (customer) => {
     const daysOverdue = getDaysOverdue(customer.lastActivity);
-    // Fallback to customer.balance just in case, but trueBalance is primary
-    const balance = customer.trueBalance !== undefined ? customer.trueBalance : customer.balance;
-
     return (
       <button 
         key={customer.id} 
@@ -160,7 +137,7 @@ export const CustomersPage = () => {
       >
         <div className="flex items-start gap-3">
           <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 ${
-            balance > 0 ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+            customer.balance > 0 ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
           }`}>
             {customer.name.charAt(0)}
           </div>
@@ -180,10 +157,10 @@ export const CustomersPage = () => {
             )}
           </div>
           <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
-            {balance > 0 ? (
+            {customer.balance > 0 ? (
               <>
                 <p className="text-sm font-bold text-orange-600 dark:text-orange-400">
-                  {formatCurrency(balance, currency)}
+                  {formatCurrency(customer.balance, currency)}
                 </p>
                 {daysOverdue && (
                   <span className="text-[9px] font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded-md flex items-center gap-1">
@@ -191,9 +168,9 @@ export const CustomersPage = () => {
                   </span>
                 )}
               </>
-            ) : balance < 0 ? (
+            ) : customer.balance < 0 ? (
               <p className="text-sm font-bold text-blue-600 dark:text-blue-400">
-                Credit {formatCurrency(Math.abs(balance), currency)}
+                Credit {formatCurrency(Math.abs(customer.balance), currency)}
               </p>
             ) : (
               <p className="text-[10px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-lg">
@@ -265,8 +242,12 @@ export const CustomersPage = () => {
         </div>
       </div>
 
-      {/* Add Customer Modal */}
-      <AddCustomerModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      {/* 👇 UPDATED: Add Customer Modal with onSaved callback to refresh the list */}
+      <AddCustomerModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onSaved={fetchCustomers} // 👈 THIS TRIGGERS THE REFRESH INSTANTLY
+      />
 
       {/* ACTION BOTTOM SHEET */}
       {actionCustomer && (
@@ -279,7 +260,7 @@ export const CustomersPage = () => {
               <div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white">{actionCustomer.name}</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {actionCustomer.trueBalance > 0 ? `Owes ${formatCurrency(actionCustomer.trueBalance, currency)}` : "Paid Up"}
+                  {actionCustomer.balance > 0 ? `Owes ${formatCurrency(actionCustomer.balance, currency)}` : "Paid Up"}
                 </p>
               </div>
               <button onClick={() => setActionCustomer(null)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full">

@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
-import { Phone, MessageCircle, Edit3, Ban, Clock, AlertTriangle, FileText, X, Check, ArrowRight, ArrowLeft, ChevronDown, ChevronUp, Plus, Truck, Banknote, Smartphone, CreditCard } from "lucide-react";
+import { Phone, MessageCircle, Edit3, Ban, Clock, AlertTriangle, FileText, X, Check, ArrowRight, ChevronDown, ChevronUp, Plus, Star, Banknote, Smartphone, CreditCard, Share2, Truck } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openWhatsApp, openDialer } from "../utils/communication";
 import { SupplierService } from "../services/SupplierService";
 import { TransactionService } from "../services/TransactionService";
+import { AccountShareService } from "../services/AccountShareService";
+import { ShareAccountModal } from "../components/ShareAccountModal";
 import { TopBar } from "../components/TopBar";
 
 // ==========================================
@@ -30,7 +32,6 @@ const SupplierHeader = ({ supplier, daysSinceLastActive }) => (
   </div>
 );
 
-// UPDATED: Accepts 'balance' directly for Single Source of Truth
 const BalanceCard = ({ balance, lastPayment, currency }) => (
   <div className={`p-5 rounded-2xl shadow-sm border ${
     balance > 0 ? "bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800" : 
@@ -59,7 +60,7 @@ const BalanceCard = ({ balance, lastPayment, currency }) => (
   </div>
 );
 
-const QuickActions = ({ onPurchase, onPayment, onCall, onWhatsApp }) => (
+const QuickActions = ({ onPurchase, onPayment, onCall, onShare }) => (
   <div className="grid grid-cols-4 gap-2">
     <button onClick={onPurchase} className="bg-indigo-600 text-white p-3 rounded-xl flex flex-col items-center gap-1.5 active:scale-95 transition shadow-md">
       <Plus size={20} /> <span className="text-[10px] font-bold">Purchase</span>
@@ -70,8 +71,8 @@ const QuickActions = ({ onPurchase, onPayment, onCall, onWhatsApp }) => (
     <button onClick={onCall} className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 p-3 rounded-xl flex flex-col items-center gap-1.5 active:scale-95 transition">
       <Phone size={20} /> <span className="text-[10px] font-bold">Call</span>
     </button>
-    <button onClick={onWhatsApp} className="bg-green-500 text-white p-3 rounded-xl flex flex-col items-center gap-1.5 active:scale-95 transition shadow-md">
-      <MessageCircle size={20} /> <span className="text-[10px] font-bold">WhatsApp</span>
+    <button onClick={onShare} className="bg-purple-600 text-white p-3 rounded-xl flex flex-col items-center gap-1.5 active:scale-95 transition shadow-md">
+      <Share2 size={20} /> <span className="text-[10px] font-bold">Share</span>
     </button>
   </div>
 );
@@ -202,7 +203,6 @@ const MoreInformation = ({ totalPurchases, totalPayments, historyLength, created
 
 const ReceiptModal = ({ tx, onClose, onViewTx, onFix, onCancel, currency, activePayments }) => {
   if (!tx) return null;
-
   const subsequentPayments = useMemo(() => {
     if (tx.type !== 'purchase' || !activePayments) return [];
     return activePayments
@@ -212,7 +212,6 @@ const ReceiptModal = ({ tx, onClose, onViewTx, onFix, onCancel, currency, active
         return { id: p.id, date: p.createdAt || p.date, amount: alloc.amount, method: p.paymentMethod || 'Cash', note: p.note };
       });
   }, [tx, activePayments]);
-
   const totalAllocated = subsequentPayments.reduce((sum, p) => sum + p.amount, 0);
   const trueOutstanding = Math.max(0, (parseFloat(tx.amount) || 0) - (parseFloat(tx.paid) || 0) - totalAllocated);
 
@@ -227,48 +226,48 @@ const ReceiptModal = ({ tx, onClose, onViewTx, onFix, onCancel, currency, active
           <button onClick={onClose} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full"><X size={18} className="text-gray-600 dark:text-gray-300" /></button>
         </div>
         <div className="p-5 space-y-4">
-          <div className="flex flex-col items-center gap-2">
-            {tx.status === 'being_corrected' ? (
-              <span className="px-4 py-1.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1"><Edit3 size={12} /> Being Corrected</span>
-            ) : tx.status === 'cancelled' ? (
-              <span className="px-4 py-1.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1"><Ban size={12} /> Cancelled</span>
-            ) : (
-              <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1 ${
-                tx.type === 'supplier_payment' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
-              }`}>Completed</span>
-            )}
-            <div className="flex justify-between items-center w-full mt-2 px-2">
-              {tx.correctsTransactionId && (
-                <button onClick={async () => { const original = await TransactionService.getById(tx.correctsTransactionId); onViewTx(original); }} className="text-xs text-blue-600 dark:text-blue-400 underline flex items-center gap-1">
-                  <ArrowLeft size={12} /> Previous Version
-                </button>
-              )}
-              {tx.replacedByTransactionId && (
-                <button onClick={async () => { const replacement = await TransactionService.getById(tx.replacedByTransactionId); onViewTx(replacement); }} className="text-xs text-blue-600 dark:text-blue-400 underline flex items-center gap-1">
-                  Updated Receipt <ArrowRight size={12} />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* ITEMS SECTION (Only for Purchases) */}
+          
+          {/* 👇 NEW: ITEMS SECTION (Shows specific products purchased) */}
           {tx.type === 'purchase' && tx.items && tx.items.length > 0 && (
             <div className="space-y-3">
-              <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider px-1">Items ({tx.items.length})</p>
+              <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider px-1">
+                Items ({tx.items.length})
+              </p>
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
                 <div className="divide-y divide-gray-100 dark:divide-gray-700">
                   {tx.items.map((item, idx) => (
-                    <div key={idx} className={`px-4 py-3 ${tx.status !== 'active' ? 'opacity-60' : ''}`}>
+                    <div key={idx} className="px-4 py-3">
                       <div className="flex justify-between items-start">
                         <div className="flex-1 min-w-0 pr-2">
-                          <p className={`font-semibold text-sm text-gray-900 dark:text-white truncate ${tx.status !== 'active' ? 'line-through' : ''}`}>{item.name}</p>
-                          <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 uppercase tracking-wider">{item.unitName || 'Piece'}</p>
+                          <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
+                            {item.name}
+                          </p>
+                          {item.brand && (
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 italic truncate">
+                              {item.brand}
+                            </p>
+                          )}
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 uppercase tracking-wider">
+                            {item.unitName || 'Piece'}
+                          </p>
                         </div>
-                        <p className={`text-base font-bold flex-shrink-0 ${tx.status !== 'active' ? 'text-gray-400 line-through' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(item.total || 0, currency)}</p>
+                        <p className="text-base font-bold flex-shrink-0 text-gray-900 dark:text-white">
+                          {formatCurrency(item.total || 0, currency)}
+                        </p>
                       </div>
                       <div className="flex items-center gap-3 text-xs mt-1">
-                        <div className="flex items-center gap-1"><span className="text-gray-500 dark:text-gray-400">Qty:</span><span className="inline-block px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded font-bold">{item.quantity || 1}</span></div>
-                        <div className="flex items-center gap-1"><span className="text-gray-500 dark:text-gray-400">Price:</span><span className="font-semibold text-purple-600 dark:text-purple-400">{formatCurrency(item.price || 0, currency)}</span></div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-500 dark:text-gray-400">Qty:</span>
+                          <span className="inline-block px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded font-bold">
+                            {item.quantity || 1}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-500 dark:text-gray-400">Price:</span>
+                          <span className="font-semibold text-purple-600 dark:text-purple-400">
+                            {formatCurrency(item.price || 0, currency)}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -280,7 +279,6 @@ const ReceiptModal = ({ tx, onClose, onViewTx, onFix, onCancel, currency, active
           {/* PAYMENT DETAILS SECTION */}
           <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl space-y-3">
             <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Date</span><span className="font-semibold text-gray-900 dark:text-white">{formatDate(tx.date || tx.createdAt)}</span></div>
-            
             {tx.type === 'supplier_payment' && (
               <>
                 <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Method</span><span className="font-semibold text-gray-900 dark:text-white capitalize flex items-center gap-1">
@@ -290,16 +288,13 @@ const ReceiptModal = ({ tx, onClose, onViewTx, onFix, onCancel, currency, active
                 {tx.reference && <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Reference</span><span className="font-mono text-xs font-semibold text-gray-900 dark:text-white break-all text-right">{tx.reference}</span></div>}
               </>
             )}
-
             <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-2"></div>
-            
             {tx.type === 'supplier_payment' ? (
               <div className="flex justify-between text-lg font-bold"><span className="text-gray-700 dark:text-gray-300">Amount Paid</span><span className="text-green-600 dark:text-green-400">{formatCurrency(tx.paid, currency)}</span></div>
             ) : (
               <>
-                <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Total Purchase</span><span className={`font-bold ${tx.status !== 'active' ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(tx.amount, currency)}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Paid Upfront</span><span className={`font-bold ${tx.status !== 'active' ? 'line-through text-gray-400' : 'text-indigo-600 dark:text-indigo-400'}`}>{formatCurrency(tx.paid, currency)}</span></div>
-                
+                <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Total Purchase</span><span className="font-bold text-gray-900 dark:text-white">{formatCurrency(tx.amount, currency)}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Paid Upfront</span><span className="font-bold text-indigo-600 dark:text-indigo-400">{formatCurrency(tx.paid, currency)}</span></div>
                 {subsequentPayments.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700/50">
                     <p className="text-[10px] font-bold text-gray-500 uppercase mb-2">Subsequent Payments</p>
@@ -311,14 +306,12 @@ const ReceiptModal = ({ tx, onClose, onViewTx, onFix, onCancel, currency, active
                     ))}
                   </div>
                 )}
-                
                 <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-2"></div>
                 <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Total Paid</span><span className="font-bold text-green-600 dark:text-green-400">{formatCurrency((parseFloat(tx.paid)||0) + totalAllocated, currency)}</span></div>
                 <div className="flex justify-between text-sm mt-1"><span className="text-gray-500 dark:text-gray-400 font-bold">Outstanding</span><span className={`font-bold ${trueOutstanding > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-green-600 dark:text-green-400'}`}>{formatCurrency(trueOutstanding, currency)}</span></div>
               </>
             )}
           </div>
-
           {tx.status === 'active' && (
             <div className="pt-2 space-y-2">
               <button onClick={() => onFix(tx)} className="w-full bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"><Edit3 size={18} /> Fix {tx.type === 'supplier_payment' ? 'Payment' : 'Purchase'}</button>
@@ -386,6 +379,7 @@ export const SupplierProfilePage = () => {
   const [showFixModal, setShowFixModal] = useState(false);
   const [fixReason, setFixReason] = useState("");
   const [txToFix, setTxToFix] = useState(null);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   useEffect(() => {
     if (selectedSupplier?.id) {
@@ -396,9 +390,6 @@ export const SupplierProfilePage = () => {
 
   if (!supplierData) return null;
 
-  // ==========================================
-  // SINGLE SOURCE OF TRUTH CALCULATION
-  // ==========================================
   const activePayments = useMemo(() =>
     history.filter(tx => tx.type === 'supplier_payment' && (tx.status === 'active' || !tx.status)),
   [history]);
@@ -422,7 +413,6 @@ export const SupplierProfilePage = () => {
       .map(tx => ({ ...tx, trueOutstanding: getTrueOutstanding(tx) })),
   [history, activePayments]);
 
-  // Calculate true balance from transactions
   const trueBalance = useMemo(() => {
     const totalPurchases = history
       .filter(t => t.type === 'purchase' && (t.status === 'active' || !t.status))
@@ -457,6 +447,24 @@ export const SupplierProfilePage = () => {
 
   const handleMakePayment = () => {
     setView("recordSupplierPayment");
+  };
+
+  const handleShareAccount = async (shareData) => {
+    try {
+      const reference = AccountShareService.generateShareReference();
+      await AccountShareService.logShare({
+        storeId: currentStore.id,
+        contactId: supplierData.id,
+        contactName: supplierData.name,
+        channel: shareData.channel,
+        scope: shareData.scope,
+        reference: reference
+      });
+      showToast("✅ Account shared successfully");
+    } catch (error) {
+      console.error(error);
+      showToast("❌ Failed to log share event");
+    }
   };
 
   const handleFixTransaction = (tx) => {
@@ -514,7 +522,7 @@ export const SupplierProfilePage = () => {
           onPurchase={handleRecordPurchase} 
           onPayment={handleMakePayment} 
           onCall={() => openDialer(supplierData.phone)} 
-          onWhatsApp={() => openWhatsApp(supplierData.phone, generateMessage(supplierData))} 
+          onShare={() => setShowShareModal(true)} 
         />
         
         <OutstandingPurchases purchases={outstandingPurchases} onView={setViewingTransaction} currency={currency} />
@@ -534,6 +542,15 @@ export const SupplierProfilePage = () => {
       />
       <FixReasonModal isOpen={showFixModal} onClose={() => setShowFixModal(false)} onConfirm={confirmFix} fixReason={fixReason} setFixReason={setFixReason} />
       <CancelModal isOpen={showCancelModal} onClose={() => setShowCancelModal(false)} onConfirm={executeCancelTransaction} cancelReason={cancelReason} setCancelReason={setCancelReason} amount={viewingTransaction?.amount || viewingTransaction?.paid} currency={currency} type={viewingTransaction?.type} />
+      
+      <ShareAccountModal 
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        contact={supplierData}
+        transactions={history}
+        store={currentStore}
+        onShared={handleShareAccount}
+      />
     </div>
   );
 };

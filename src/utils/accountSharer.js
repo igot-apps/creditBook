@@ -1,0 +1,146 @@
+import { formatCurrency, formatDate } from './helpers';
+
+// ==========================================
+// 1. REFERENCE GENERATOR
+// ==========================================
+export const generateReference = () => {
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, ''); 
+  const randomNum = Math.floor(1000 + Math.random() * 9000); 
+  return `REF-${dateStr}-${randomNum}`;
+};
+
+// ==========================================
+// 2. MAIN DISPATCHER
+// ==========================================
+export const generateAccountShare = ({ channel, scope, contact, transactions = [], store }) => {
+  const contactType = contact?.type || 'customer'; // 'customer' or 'supplier'
+  const storeName = store?.name || "Our Store";
+  const currency = store?.currency || "GH₵";
+
+  // Filter out cancelled transactions
+  const activeTransactions = transactions.filter(tx => tx.status === 'active' || !tx.status);
+  
+  // Sort newest first
+  const sortedTransactions = [...activeTransactions].sort(
+    (a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)
+  );
+
+  // CALCULATE TRUE BALANCE (Single Source of Truth)
+  let balance = 0;
+  sortedTransactions.forEach(tx => {
+    if (contactType === 'customer') {
+      if (tx.type === 'sale') balance += (parseFloat(tx.amount) || 0) - (parseFloat(tx.paid) || 0);
+      if (tx.type === 'payment') balance -= (parseFloat(tx.paid) || 0);
+    } else {
+      // Supplier
+      if (tx.type === 'purchase') balance += (parseFloat(tx.amount) || 0) - (parseFloat(tx.paid) || 0);
+      if (tx.type === 'supplier_payment') balance -= (parseFloat(tx.paid) || 0);
+    }
+  });
+
+  // Apply Scope
+  let scopedTransactions = [];
+  let scopeText = "";
+
+  if (scope === 'balance') {
+    scopeText = "Showing: Current Status Only";
+  } else if (scope === 'last5') {
+    scopedTransactions = sortedTransactions.slice(0, 5);
+    scopeText = `Showing: Last 5 Transactions (of ${sortedTransactions.length} total)`;
+  } else if (scope === 'last10') {
+    scopedTransactions = sortedTransactions.slice(0, 10);
+    scopeText = `Showing: Last 10 Transactions (of ${sortedTransactions.length} total)`;
+  } else {
+    scopedTransactions = sortedTransactions;
+    scopeText = "Showing: Complete Account History";
+  }
+
+  const reference = generateReference();
+
+  if (channel === 'sms') {
+    return formatSMS({ contactType, contact, storeName, currency, balance, scopeText, reference, scopedTransactions });
+  } else {
+    return formatWhatsApp({ contactType, contact, storeName, currency, balance, scopeText, reference, scopedTransactions });
+  }
+};
+
+// ==========================================
+// 3. WHATSAPP FORMATTER
+// ==========================================
+const formatWhatsApp = ({ contactType, contact, storeName, currency, balance, scopeText, reference, scopedTransactions }) => {
+  const contactName = contact?.name || "Valued Partner";
+  const dateStr = formatDate(new Date().toISOString()).split(',')[0];
+
+  // Determine the professional phrasing using "outstanding account balance"
+  let statusMessage = "";
+  if (balance > 0) {
+    statusMessage = `*Your outstanding account balance with ${storeName} is ${formatCurrency(balance, currency)}.*`;
+  } else if (balance < 0) {
+    statusMessage = `*You have a credit balance of ${formatCurrency(Math.abs(balance), currency)} with ${storeName}.*`;
+  } else {
+    statusMessage = `*Your account with ${storeName} is fully paid up (Outstanding balance: ${formatCurrency(0, currency)}).*`;
+  }
+
+  let message = `*🧾 ${storeName} Account Summary*\n\n`;
+  message += `Hello ${contactName},\n\n`;
+  message += `Here is your account status as of ${dateStr}.\n\n`;
+  message += `${statusMessage}\n\n`;
+  message += `_${scopeText}_\n\n`;
+
+  if (scopedTransactions.length > 0) {
+    message += `*Recent Activity*\n`;
+    message += `──────────────────\n`;
+    
+    scopedTransactions.forEach(tx => {
+      const txDate = formatDate(tx.date || tx.createdAt).split(',')[0];
+      const isPayment = tx.type === 'payment' || tx.type === 'supplier_payment';
+      const isSaleOrPurchase = tx.type === 'sale' || tx.type === 'purchase';
+      
+      let label = "Transaction";
+      let amount = formatCurrency(tx.amount || tx.paid || 0, currency);
+
+      if (isSaleOrPurchase) { label = contactType === 'customer' ? "Sale" : "Purchase"; }
+      else if (isPayment) { label = "Payment Received"; amount = formatCurrency(tx.paid || 0, currency); }
+
+      let itemsText = "";
+      if (isSaleOrPurchase && tx.items && tx.items.length > 0) {
+        itemsText = `\n   _(${tx.items.map(i => `${i.quantity}x ${i.name}`).join(', ')})_`;
+      }
+
+      message += `• ${txDate} - ${label}${itemsText}\n`;
+      message += `   *${amount}*\n\n`;
+    });
+  } else {
+    message += `No recent transactions found in this scope.\n\n`;
+  }
+
+  message += `──────────────────\n`;
+  message += `*Reference: ${reference}*\n\n`;
+  message += `_This summary was generated by CreditBook. If you notice any discrepancy, please contact us immediately so we can resolve it. Thank you for your business!_`;
+
+  return message;
+};
+
+// ==========================================
+// 4. SMS FORMATTER (Reminder Style)
+// ==========================================
+const formatSMS = ({ contactType, contact, storeName, currency, balance, scopeText, reference, scopedTransactions }) => {
+  const contactName = contact?.name || "Partner";
+  
+  // REMINDER STYLE SMS with "outstanding account balance" phrasing
+  let reminderMessage = "";
+  
+  if (balance > 0) {
+    reminderMessage = `Dear ${contactName}, this is a reminder , your outstanding account balance with ${storeName} is ${formatCurrency(balance, currency)}. Please visit our shop to settle your account or send payment via MoMo. Thank you.`;
+  } else if (balance < 0) {
+    reminderMessage = `Dear ${contactName}, you have a credit balance of ${formatCurrency(Math.abs(balance), currency)} with ${storeName}. Thank you for your continued patronage.`;
+  } else {
+    reminderMessage = `Dear ${contactName}, your account with ${storeName} is fully paid up. Thank you for your business!`;
+  }
+
+  // Add reference for tracking
+  const smsMessage = `${storeName}: ${reminderMessage} Ref: ${reference}`;
+  
+  return smsMessage;
+};

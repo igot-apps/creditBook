@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
-import { Phone, MessageCircle, Edit3, Ban, Clock, AlertTriangle, FileText, X, Check, ArrowRight, ArrowLeft, ChevronDown, ChevronUp, Plus, Star, Banknote, Smartphone, CreditCard } from "lucide-react";
+import { Phone, MessageCircle, Edit3, Ban, Clock, AlertTriangle, FileText, X, Check, ArrowRight, ChevronDown, ChevronUp, Plus, Star, Banknote, Smartphone, CreditCard, Share2 } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openWhatsApp, openDialer } from "../utils/communication";
 import { CustomerService } from "../services/CustomerService";
 import { TransactionService } from "../services/TransactionService";
+import { AccountShareService } from "../services/AccountShareService";
+import { ShareAccountModal } from "../components/ShareAccountModal";
 import { TopBar } from "../components/TopBar";
 
 // ==========================================
@@ -30,7 +32,6 @@ const CustomerHeader = ({ customer, daysSinceLastActive }) => (
   </div>
 );
 
-//  UPDATED: Now accepts 'balance' directly instead of the whole customer object
 const BalanceCard = ({ balance, lastPayment, currency }) => (
   <div className={`p-5 rounded-2xl shadow-sm border ${
     balance > 0 ? "bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800" : 
@@ -59,7 +60,7 @@ const BalanceCard = ({ balance, lastPayment, currency }) => (
   </div>
 );
 
-const QuickActions = ({ onSale, onPayment, onCall, onWhatsApp }) => (
+const QuickActions = ({ onSale, onPayment, onCall, onShare }) => (
   <div className="grid grid-cols-4 gap-2">
     <button onClick={onSale} className="bg-green-600 text-white p-3 rounded-xl flex flex-col items-center gap-1.5 active:scale-95 transition shadow-md">
       <Plus size={20} /> <span className="text-[10px] font-bold">Sale</span>
@@ -70,8 +71,8 @@ const QuickActions = ({ onSale, onPayment, onCall, onWhatsApp }) => (
     <button onClick={onCall} className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 p-3 rounded-xl flex flex-col items-center gap-1.5 active:scale-95 transition">
       <Phone size={20} /> <span className="text-[10px] font-bold">Call</span>
     </button>
-    <button onClick={onWhatsApp} className="bg-green-500 text-white p-3 rounded-xl flex flex-col items-center gap-1.5 active:scale-95 transition shadow-md">
-      <MessageCircle size={20} /> <span className="text-[10px] font-bold">WhatsApp</span>
+    <button onClick={onShare} className="bg-purple-600 text-white p-3 rounded-xl flex flex-col items-center gap-1.5 active:scale-95 transition shadow-md">
+      <Share2 size={20} /> <span className="text-[10px] font-bold">Share</span>
     </button>
   </div>
 );
@@ -198,11 +199,8 @@ const MoreInformation = ({ totalSales, totalPayments, historyLength, createdAt, 
 };
 
 // ==========================================
-// MODALS (Receipt, Fix, Cancel) - Kept same as before
+// MODALS
 // ==========================================
-// ... (Paste the ReceiptModal, FixReasonModal, CancelModal components here exactly as they were in the previous version) ...
-// For brevity, I am assuming you keep the modal components from the previous file. 
-// If you need them, let me know, but the logic below is the critical fix.
 
 const ReceiptModal = ({ tx, onClose, onViewTx, onFix, onCancel, currency, activePayments }) => {
   if (!tx) return null;
@@ -229,8 +227,58 @@ const ReceiptModal = ({ tx, onClose, onViewTx, onFix, onCancel, currency, active
           <button onClick={onClose} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full"><X size={18} className="text-gray-600 dark:text-gray-300" /></button>
         </div>
         <div className="p-5 space-y-4">
-           {/* ... Receipt content same as before ... */}
-           <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl space-y-3">
+          
+          {/* 👇 NEW: ITEMS SECTION (Shows specific products bought) */}
+          {tx.type === 'sale' && tx.items && tx.items.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider px-1">
+                Items ({tx.items.length})
+              </p>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {tx.items.map((item, idx) => (
+                    <div key={idx} className="px-4 py-3">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1 min-w-0 pr-2">
+                          <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
+                            {item.name}
+                          </p>
+                          {item.brand && (
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 italic truncate">
+                              {item.brand}
+                            </p>
+                          )}
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 uppercase tracking-wider">
+                            {item.unitName || 'Piece'}
+                          </p>
+                        </div>
+                        <p className="text-base font-bold flex-shrink-0 text-gray-900 dark:text-white">
+                          {formatCurrency(item.total || 0, currency)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs mt-1">
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-500 dark:text-gray-400">Qty:</span>
+                          <span className="inline-block px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded font-bold">
+                            {item.quantity || 1}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-500 dark:text-gray-400">Price:</span>
+                          <span className="font-semibold text-purple-600 dark:text-purple-400">
+                            {formatCurrency(item.price || 0, currency)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PAYMENT DETAILS SECTION */}
+          <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl space-y-3">
             <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Date</span><span className="font-semibold text-gray-900 dark:text-white">{formatDate(tx.date || tx.createdAt)}</span></div>
             {tx.type === 'payment' && (
               <>
@@ -315,7 +363,6 @@ const CancelModal = ({ isOpen, onClose, onConfirm, cancelReason, setCancelReason
   );
 };
 
-
 // ==========================================
 // MAIN PAGE COMPONENT
 // ==========================================
@@ -333,6 +380,7 @@ export const CustomerProfilePage = () => {
   const [showFixModal, setShowFixModal] = useState(false);
   const [fixReason, setFixReason] = useState("");
   const [txToFix, setTxToFix] = useState(null);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   useEffect(() => {
     if (selectedCustomer?.id) {
@@ -343,9 +391,6 @@ export const CustomerProfilePage = () => {
 
   if (!customerData) return null;
 
-  // ==========================================
-  // SINGLE SOURCE OF TRUTH CALCULATION
-  // ==========================================
   const activePayments = useMemo(() =>
     history.filter(tx => tx.type === 'payment' && (tx.status === 'active' || !tx.status)),
   [history]);
@@ -369,7 +414,6 @@ export const CustomerProfilePage = () => {
       .map(tx => ({ ...tx, trueOutstanding: getTrueOutstanding(tx) })),
   [history, activePayments]);
 
-  // 👇 THIS IS THE FIX: Calculate balance from transactions, not the cache
   const trueBalance = useMemo(() => {
     const totalSales = history
       .filter(t => t.type === 'sale' && (t.status === 'active' || !t.status))
@@ -406,6 +450,24 @@ export const CustomerProfilePage = () => {
     setView("recordPayment");
   };
 
+  const handleShareAccount = async (shareData) => {
+    try {
+      const reference = AccountShareService.generateShareReference();
+      await AccountShareService.logShare({
+        storeId: currentStore.id,
+        contactId: customerData.id,
+        contactName: customerData.name,
+        channel: shareData.channel,
+        scope: shareData.scope,
+        reference: reference
+      });
+      showToast("✅ Account shared successfully");
+    } catch (error) {
+      console.error(error);
+      showToast("❌ Failed to log share event");
+    }
+  };
+
   const handleFixTransaction = (tx) => {
     setTxToFix(tx);
     setFixReason("");
@@ -434,7 +496,7 @@ export const CustomerProfilePage = () => {
       setHistory(updatedHistory);
       setViewingTransaction(null);
       showToast("✅ Transaction cancelled!");
-    } catch (error) { showToast(" Failed to cancel."); }
+    } catch (error) { showToast("❌ Failed to cancel."); }
     setCancelReason("");
   };
 
@@ -455,15 +517,13 @@ export const CustomerProfilePage = () => {
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
         
         <CustomerHeader customer={customerData} daysSinceLastActive={daysSinceLastActive} />
-        
-        {/*  UPDATED: Pass the calculated trueBalance instead of customerData */}
         <BalanceCard balance={trueBalance} lastPayment={lastPayment} currency={currency} />
         
         <QuickActions 
           onSale={handleRecordSale} 
           onPayment={handleReceivePayment} 
           onCall={() => openDialer(customerData.phone)} 
-          onWhatsApp={() => openWhatsApp(customerData.phone, generateMessage(customerData))} 
+          onShare={() => setShowShareModal(true)} 
         />
         
         <OutstandingInvoices invoices={outstandingInvoices} onView={setViewingTransaction} currency={currency} />
@@ -483,6 +543,15 @@ export const CustomerProfilePage = () => {
       />
       <FixReasonModal isOpen={showFixModal} onClose={() => setShowFixModal(false)} onConfirm={confirmFix} fixReason={fixReason} setFixReason={setFixReason} />
       <CancelModal isOpen={showCancelModal} onClose={() => setShowCancelModal(false)} onConfirm={executeCancelTransaction} cancelReason={cancelReason} setCancelReason={setCancelReason} amount={viewingTransaction?.amount || viewingTransaction?.paid} currency={currency} type={viewingTransaction?.type} />
+      
+      <ShareAccountModal 
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        contact={customerData}
+        transactions={history}
+        store={currentStore}
+        onShared={handleShareAccount}
+      />
     </div>
   );
 };
