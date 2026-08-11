@@ -2,26 +2,37 @@ import { useState, useMemo, useEffect } from "react";
 import { TrendingUp, TrendingDown, Users, Truck, ArrowUpRight, Calendar } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
-import { SupplierService } from "../services/SupplierService";
+import { TransactionService } from "../services/TransactionService";
 import { TopBar } from "../components/TopBar";
 
 export const ReportsPage = () => {
-  const { currentStore, customers, setView, setSelectedCustomer } = useStore();
-  const currency = currentStore?.currency || "GH";
+  const { 
+    currentStore, 
+    customers = [], 
+    suppliers = [], 
+    setView, 
+    setSelectedCustomer, 
+    setSelectedSupplier 
+  } = useStore();
   
+  const currency = currentStore?.currency || "GH₵";
   const [timeframe, setTimeframe] = useState("today");
-  const [suppliers, setSuppliers] = useState([]);
+  const [transactions, setTransactions] = useState([]);
 
-  // Fetch Supplier Data
+  // 1. Fetch Transactions directly (Single Source of Truth)
   useEffect(() => {
     if (currentStore?.id) {
-      SupplierService.getAll(currentStore.id).then(setSuppliers);
+      TransactionService.getAll(currentStore.id)
+        .then(setTransactions)
+        .catch(() => setTransactions([]));
     }
   }, [currentStore?.id]);
 
-  // Helper to check if a date falls within the selected timeframe
+  // 2. Helper to check if a date falls within the selected timeframe
   const isDateInRange = (dateString) => {
     if (timeframe === "all") return true;
+    if (!dateString) return false;
+    
     const date = new Date(dateString);
     const now = new Date();
     
@@ -37,51 +48,49 @@ export const ReportsPage = () => {
     return true;
   };
 
-  // Calculate Report Stats
+  // 3. Calculate Report Stats safely
   const stats = useMemo(() => {
     let totalSales = 0;
     let totalPurchases = 0;
     let paymentsReceived = 0;
     let paymentsMade = 0;
 
-    // 1. Calculate Customer Stats (Money In)
-    customers.forEach(c => {
-      if (c.isArchived) return;
-      c.history.forEach(tx => {
-        if (tx.isVoid) return;
-        if (isDateInRange(tx.date)) {
-          totalSales += (parseFloat(tx.amount) || 0);
-          paymentsReceived += (parseFloat(tx.paid) || 0);
+    // Calculate from the flat transactions array
+    if (Array.isArray(transactions)) {
+      transactions.forEach(tx => {
+        const isActive = tx.status === 'active' || !tx.status;
+        if (!isActive || tx.isVoid) return;
+
+        if (isDateInRange(tx.date || tx.createdAt)) {
+          if (tx.type === 'sale') {
+            totalSales += (parseFloat(tx.amount) || 0);
+            paymentsReceived += (parseFloat(tx.paid) || 0);
+          } else if (tx.type === 'purchase') {
+            totalPurchases += (parseFloat(tx.amount) || 0);
+            paymentsMade += (parseFloat(tx.paid) || 0);
+          } else if (tx.type === 'payment') {
+            paymentsReceived += (parseFloat(tx.paid) || 0);
+          } else if (tx.type === 'supplier_payment') {
+            paymentsMade += (parseFloat(tx.paid) || 0);
+          }
         }
       });
-    });
+    }
 
-    // 2. Calculate Supplier Stats (Money Out)
-    suppliers.forEach(s => {
-      if (s.isArchived) return;
-      s.history.forEach(tx => {
-        if (tx.isVoid) return;
-        if (isDateInRange(tx.date)) {
-          totalPurchases += (parseFloat(tx.amount) || 0);
-          paymentsMade += (parseFloat(tx.paid) || 0);
-        }
-      });
-    });
-
-    // Get top 5 customers currently owing money (Live data)
-    const topDebtors = customers
-      .filter(c => !c.isArchived && c.balance > 0)
-      .sort((a, b) => b.balance - a.balance)
+    // Get top 5 customers currently owing money (Safe fallbacks)
+    const topDebtors = (Array.isArray(customers) ? customers : [])
+      .filter(c => !c.isArchived && (c.balance || 0) > 0)
+      .sort((a, b) => (b.balance || 0) - (a.balance || 0))
       .slice(0, 5);
 
-    // Get top 5 suppliers currently owed money (Live data)
-    const topCreditors = suppliers
-      .filter(s => !s.isArchived && s.balance > 0)
-      .sort((a, b) => b.balance - a.balance)
+    // Get top 5 suppliers currently owed money (Safe fallbacks)
+    const topCreditors = (Array.isArray(suppliers) ? suppliers : [])
+      .filter(s => !s.isArchived && (s.balance || 0) > 0)
+      .sort((a, b) => (b.balance || 0) - (a.balance || 0))
       .slice(0, 5);
 
     return { totalSales, totalPurchases, paymentsReceived, paymentsMade, topDebtors, topCreditors };
-  }, [customers, suppliers, timeframe]);
+  }, [transactions, customers, suppliers, timeframe]);
 
   const timeframes = [
     { key: "today", label: "Today" },
@@ -93,7 +102,6 @@ export const ReportsPage = () => {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <TopBar title="Reports" subtitle="Business performance" />
-      
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-6">
         
         {/* Timeframe Selector */}
@@ -113,7 +121,7 @@ export const ReportsPage = () => {
           ))}
         </div>
 
-        {/*  MONEY IN vs MONEY OUT SPLIT */}
+        {/* MONEY IN vs MONEY OUT SPLIT */}
         <div className="grid grid-cols-2 gap-3">
           {/* Money In */}
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
@@ -126,7 +134,7 @@ export const ReportsPage = () => {
             <p className="text-lg font-bold text-gray-900 dark:text-white break-words">{formatCurrency(stats.totalSales, currency)}</p>
             <p className="text-[10px] text-green-600 dark:text-green-400 mt-1 font-semibold">Received: {formatCurrency(stats.paymentsReceived, currency)}</p>
           </div>
-
+          
           {/* Money Out */}
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-2 mb-2">
@@ -140,14 +148,14 @@ export const ReportsPage = () => {
           </div>
         </div>
 
-        {/*  TOP CUSTOMERS OWING */}
+        {/* TOP CUSTOMERS OWING */}
         {stats.topDebtors.length > 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
               <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <Users size={16} className="text-red-500" /> People Owe Me
               </h3>
-              <button onClick={() => setView("followups")} className="text-xs text-green-600 dark:text-green-400 font-bold flex items-center gap-1">
+              <button onClick={() => setView("customers")} className="text-xs text-green-600 dark:text-green-400 font-bold flex items-center gap-1">
                 View All <ArrowUpRight size={12} />
               </button>
             </div>
@@ -174,7 +182,7 @@ export const ReportsPage = () => {
           </div>
         )}
 
-        {/*  TOP SUPPLIERS OWED */}
+        {/* TOP SUPPLIERS OWED */}
         {stats.topCreditors.length > 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
@@ -189,7 +197,7 @@ export const ReportsPage = () => {
               {stats.topCreditors.map(supplier => (
                 <button 
                   key={supplier.id} 
-                  onClick={() => { setSelectedCustomer(supplier); setView("supplierProfile"); }}
+                  onClick={() => { setSelectedSupplier(supplier); setView("supplierProfile"); }}
                   className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition text-left"
                 >
                   <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded-full flex items-center justify-center font-bold flex-shrink-0">
