@@ -4,6 +4,29 @@ import {
 } from "lucide-react";
 import useStore from "../store/useStore";
 
+// Helper Component for Menu Items (defined outside to avoid remounting)
+const MenuItem = ({ icon: Icon, label, active, onClick, badge }) => (
+  <button
+    onClick={onClick}
+    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all active:scale-[0.98] ${
+      active
+        ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm border border-gray-100 dark:border-gray-700"
+        : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/50"
+    }`}
+  >
+    <div className="flex items-center gap-3">
+      <Icon size={18} strokeWidth={active ? 2.5 : 2} className={active ? "text-indigo-600 dark:text-indigo-400" : ""} />
+      <span className={`font-medium text-sm ${active ? "font-bold" : ""}`}>{label}</span>
+    </div>
+    {badge && (
+      <span className="text-[9px] font-bold text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">
+        {badge}
+      </span>
+    )}
+    {active && <ChevronRight size={14} className="text-gray-400" />}
+  </button>
+);
+
 export const Layout = ({ children }) => {
   const {
     currentStore,
@@ -17,6 +40,10 @@ export const Layout = ({ children }) => {
     refreshPage
   } = useStore();
 
+  // Handle both snake_case (Supabase) and camelCase
+  const ownerName = currentStore?.owner_name || currentStore?.ownerName;
+  const storeEmail = currentStore?.email;
+
   const navigateTo = (targetView) => {
     setSelectedCustomer(null);
     if (view === targetView) {
@@ -25,11 +52,13 @@ export const Layout = ({ children }) => {
       setView(targetView);
     }
     setIsMenuOpen(false);
+    // Since the document scrolls natively now, jump to top on navigation
+    window.scrollTo({ top: 0 });
   };
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-950">
-      {/* 1. HEADER: Business Info Only */}
+      {/* 1. HEADER: Business Info */}
       <div className="bg-white dark:bg-gray-900 p-5 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -42,8 +71,8 @@ export const Layout = ({ children }) => {
             </div>
           </div>
           {/* Close button for mobile only */}
-          <button 
-            onClick={() => setIsMenuOpen(false)} 
+          <button
+            onClick={() => setIsMenuOpen(false)}
             className="lg:hidden p-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition ml-2"
           >
             <X size={18} className="text-gray-600 dark:text-gray-300" />
@@ -51,16 +80,16 @@ export const Layout = ({ children }) => {
         </div>
         {/* Business Info Section (Clean & Compact) */}
         <div className="space-y-2">
-          {currentStore?.ownerName && (
+          {ownerName && (
             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
               <User size={14} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
-              <span className="truncate">{currentStore.ownerName}</span>
+              <span className="truncate">{ownerName}</span>
             </div>
           )}
-          {currentStore?.email && (
+          {storeEmail && (
             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
               <Mail size={14} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
-              <span className="truncate">{currentStore.email}</span>
+              <span className="truncate">{storeEmail}</span>
             </div>
           )}
         </div>
@@ -77,31 +106,28 @@ export const Layout = ({ children }) => {
             <MenuItem icon={Truck} label="Suppliers" active={view === 'suppliers'} onClick={() => navigateTo('suppliers')} />
           </div>
         </div>
-
         {/* MANAGE */}
         <div>
           <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider px-2 mb-2">Manage</p>
           <div className="space-y-1">
             <MenuItem icon={Package} label="Products" active={view === 'products'} onClick={() => navigateTo('products')} />
             <MenuItem icon={BarChart3} label="Reports" active={view === 'reports'} onClick={() => navigateTo('reports')} />
-            {/* 👇 REMOVED: Follow-ups */}
           </div>
         </div>
-
         {/* SYSTEM */}
         <div>
           <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider px-2 mb-2">System</p>
           <div className="space-y-1">
             <MenuItem icon={Database} label="Backup & Restore" onClick={() => { setIsMenuOpen(false); alert("Coming soon!"); }} badge="Soon" />
             <MenuItem icon={Settings} label="Settings" active={view === 'settings'} onClick={() => navigateTo('settings')} />
-            <MenuItem icon={HelpCircle} label="Help & About" onClick={() => { setIsMenuOpen(false); alert("CreditBook v2.0\n\nBuilt for small businesses.\n\nOffline-first with IndexedDB.\nNo login required!"); }} />
+            <MenuItem icon={HelpCircle} label="Help & About" onClick={() => { setIsMenuOpen(false); alert("CreditBook v3.0\n\nCloud-synced with Supabase.\nYour business data is safe online!"); }} />
           </div>
         </div>
       </div>
 
       {/* 3. FOOTER (Theme Toggle) */}
       <div className="p-4 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex-shrink-0">
-        <button 
+        <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
         >
@@ -121,34 +147,11 @@ export const Layout = ({ children }) => {
     </div>
   );
 
-  // Helper Component for Menu Items
-  const MenuItem = ({ icon: Icon, label, active, onClick, badge }) => (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all active:scale-[0.98] ${
-        active 
-          ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm border border-gray-100 dark:border-gray-700" 
-          : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/50"
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        <Icon size={18} strokeWidth={active ? 2.5 : 2} className={active ? "text-indigo-600 dark:text-indigo-400" : ""} />
-        <span className={`font-medium text-sm ${active ? "font-bold" : ""}`}>{label}</span>
-      </div>
-      {badge && (
-        <span className="text-[9px] font-bold text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">
-          {badge}
-        </span>
-      )}
-      {active && <ChevronRight size={14} className="text-gray-400" />}
-    </button>
-  );
-
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Desktop Sidebar */}
       <aside
-        className="hidden lg:flex lg:flex-col lg:w-72 bg-gray-50 dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 fixed h-screen z-40"
+        className="hidden lg:flex lg:flex-col lg:w-72 bg-gray-50 dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 fixed inset-y-0 left-0 z-40"
         style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }}
       >
         <SidebarContent />
@@ -157,9 +160,9 @@ export const Layout = ({ children }) => {
       {/* Mobile Sidebar Overlay */}
       {isMenuOpen && (
         <>
-          <div 
-            className="lg:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40" 
-            onClick={() => setIsMenuOpen(false)} 
+          <div
+            className="lg:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
+            onClick={() => setIsMenuOpen(false)}
           />
           <aside className="lg:hidden fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-gray-50 dark:bg-gray-950 z-50 shadow-2xl animate-in slide-in-from-left duration-300">
             <SidebarContent />
@@ -167,17 +170,10 @@ export const Layout = ({ children }) => {
         </>
       )}
 
-      {/* Main Content Area */}
+      {/* 👇 MAIN CONTENT — NO nested scroll container!
+          The document scrolls natively, guaranteeing smooth 1-finger scrolling on Android. */}
       <main className="flex-1 lg:ml-72 w-full max-w-full">
-        <div 
-          className="min-h-screen overflow-y-auto"
-          style={{ 
-            overscrollBehaviorY: 'contain',
-            WebkitOverflowScrolling: 'touch'
-          }}
-        >
-          {children}
-        </div>
+        {children}
       </main>
     </div>
   );

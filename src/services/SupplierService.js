@@ -2,13 +2,26 @@ import { supabase } from '../lib/supabaseClient';
 
 export const SupplierService = {
   // 1. Get all suppliers
-  getAll: async () => {
-    const { data, error } = await supabase
+getAll: async (options = {}) => {
+    const { limit = 30, offset = 0, search = "", fetchAll = false } = options;
+    
+    let query = supabase
       .from('contacts')
       .select('*')
       .eq('type', 'supplier')
       .order('created_at', { ascending: false });
-      
+
+    // Server-side search (Lightning fast)
+    if (search) {
+      query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
+    }
+    
+    // Only paginate if we aren't fetching everything
+    if (!fetchAll) {
+      query = query.range(offset, offset + limit - 1);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return data || [];
   },
