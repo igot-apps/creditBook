@@ -2,55 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 👇 1. ROOT & BODY SETUP (Prevents whole-page bouncing) */
+/* Safe globals — NO fixed positioning, NO overflow locks */
 html, body {
-  position: fixed;
-  width: 100%;
-  height: 100%;
   margin: 0;
   padding: 0;
-  overflow: hidden; /* Prevents body from scrolling */
-  overscroll-behavior: none; /* Disables pull-to-refresh on the whole page */
-  -webkit-overflow-scrolling: touch;
+  background-color: #f9fafb;
   -webkit-tap-highlight-color: transparent;
-  background-color: #f9fafb; /* Matches your app background */
-  box-sizing: border-box;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overscroll-behavior-y: none; /* kills pull-to-refresh WITHOUT locking scroll */
 }
 
-/* 👇 2. APP CONTAINER (Handles the main scroll) */
+/* Let the document scroll naturally */
 #root {
-  width: 100%;
-  height: 100%;
-  max-width: 100vw;
-  max-width: 100dvw;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch; /* Smooth momentum scrolling on iOS */
-  overscroll-behavior-y: contain; /* Contains the rubber band effect inside the app */
-  box-sizing: border-box;
+  min-height: 100vh;
 }
 
-/* Ensure all elements inherit box-sizing */
-*, *::before, *::after {
-  box-sizing: inherit;
+/* Android 1-finger scroll unlock for tappable elements */
+button, a, [role="button"], .cursor-pointer {
+  touch-action: manipulation;
 }
 
-/* 👇 3. INPUT FONT SIZE FIX (Prevents iOS zoom on focus) */
 input, select, textarea {
   font-size: 16px !important;
 }
 
-/* 👇 4. HIDE SCROLLBARS (For a cleaner mobile look) */
-.scrollbar-hide::-webkit-scrollbar { 
-  display: none; 
-}
-.scrollbar-hide { 
-  -ms-overflow-style: none; 
-  scrollbar-width: none; 
-}
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* 👇 5. PRINT STYLES */
 @media print {
   body * { visibility: hidden; }
   .print\:block, .print\:block * { visibility: visible; }

@@ -52,7 +52,7 @@ export const RecordPurchasePage = () => {
 
   useEffect(() => {
     if (currentStore?.id) {
-      SupplierService.getAll().then(res => setSuppliers(Array.isArray(res) ? res : [])).catch(() => setSuppliers([]));
+      SupplierService.getAll({ fetchAll: true }).then(res => setSuppliers(Array.isArray(res) ? res : [])).catch(() => setSuppliers([]));
       ProductService.getAll().then(res => setProducts(Array.isArray(res) ? res : [])).catch(() => setProducts([]));
     }
   }, [currentStore?.id]);
@@ -81,12 +81,12 @@ export const RecordPurchasePage = () => {
     }
   }, [resumedSuspendedId, clearResumedSuspended, showToast]);
 
-  // Duplicate Protection (with UUID guard)
+  // Duplicate Protection (with UUID guard to prevent 400 Bad Request)
   useEffect(() => {
     if (selectedSupplier?.id && mode === 'existing' && !isFixing && transactionType === 'purchase') {
       SuspendedTransactionService.checkDuplicateSuspended(currentStore?.id, selectedSupplier.id, 'purchase').then(susp => {
         if (susp && susp.id !== suspendedId) {
-          showToast(`⏸️ Resuming suspended purchase for ${selectedSupplier.name}`);
+          showToast(`⏸️ Resuming suspended purchase for ${selectedSupplier.name || "Supplier"}`);
           setSelectedSupplier({ 
             id: susp.contactId, 
             name: susp.contactName || "Unknown Supplier", 
@@ -103,8 +103,10 @@ export const RecordPurchasePage = () => {
 
   useEffect(() => {
     if (prefillTransaction && prefillTransaction.supplierId) {
-      const supplier = suppliers.find(s => s.id === prefillTransaction.supplierId) || {
-        id: prefillTransaction.supplierId, name: prefillTransaction.name || "Unknown Supplier", phone: prefillTransaction.phone || ""
+      const supplier = suppliers.find(s => s.id === prefillTransaction.supplierId) || { 
+        id: prefillTransaction.supplierId, 
+        name: prefillTransaction.name || "Unknown Supplier", 
+        phone: prefillTransaction.phone || "" 
       };
       setSelectedSupplier(supplier); 
       setMode("existing"); 
@@ -117,17 +119,21 @@ export const RecordPurchasePage = () => {
 
   useEffect(() => {
     if (fixTransaction && fixTransaction.id) {
-      const supplier = suppliers.find(s => s.id === fixTransaction.contactId) || {
-        id: fixTransaction.contactId, name: fixTransaction.contactName || "Unknown Supplier", phone: fixTransaction.contactPhone || ""
+      const supplier = suppliers.find(s => s.id === fixTransaction.contactId) || { 
+        id: fixTransaction.contactId, 
+        name: fixTransaction.contactName || "Unknown Supplier", 
+        phone: fixTransaction.contactPhone || "" 
       };
       setSelectedSupplier(supplier);
       setTransactionType(fixTransaction.type || "purchase");
       setInvoiceItems(fixTransaction.items || []);
       setNote(fixTransaction.note || '');
       setAmountPaid(fixTransaction.paid?.toString() || '');
-      setOriginalAmount(parseFloat(fixTransaction.amount) || 0);
-      setFixReason(fixTransaction.fixReason || ""); 
-      setMode("existing"); setIsFixing(true); setFixingOldId(fixTransaction.id);
+      setOriginalAmount(parseFloat(fixTransaction.amount) || 0); 
+      setFixReason(fixTransaction.fixReason || "");
+      setMode("existing"); 
+      setIsFixing(true); 
+      setFixingOldId(fixTransaction.id);
       TransactionService.update(fixTransaction.id, { status: 'being_corrected' });
       setFixTransaction(null);
     }
@@ -135,14 +141,24 @@ export const RecordPurchasePage = () => {
 
   const handleAbortFix = async () => {
     if (fixingOldId) await TransactionService.update(fixingOldId, { status: 'active' });
-    setIsFixing(false); setFixingOldId(null); setFixReason("");
-    setMode("search"); setSelectedSupplier(null); setAmountPaid(""); setInvoiceItems([]); setNote("");
+    setIsFixing(false); 
+    setFixingOldId(null); 
+    setFixReason("");
+    setMode("search"); 
+    setSelectedSupplier(null); 
+    setAmountPaid(""); 
+    setInvoiceItems([]); 
+    setNote("");
     clearAutoDraft('purchase');
   };
 
   useEffect(() => {
     if (autoDraft && autoDraft.draftType === 'purchase' && suppliers.length > 0 && !selectedSupplier && !prefillTransaction && !isFixing) {
-      const draftSupplier = suppliers.find(s => s.id === autoDraft.supplierId) || { id: autoDraft.supplierId, name: autoDraft.supplierName || 'Unknown Supplier', phone: autoDraft.supplierPhone || '' };
+      const draftSupplier = suppliers.find(s => s.id === autoDraft.supplierId) || { 
+        id: autoDraft.supplierId, 
+        name: autoDraft.supplierName || 'Unknown Supplier', 
+        phone: autoDraft.supplierPhone || '' 
+      };
       setSelectedSupplier(draftSupplier); 
       setTransactionType(autoDraft.transactionType || "purchase");
       setInvoiceItems(autoDraft.invoiceItems || []); 
@@ -154,7 +170,16 @@ export const RecordPurchasePage = () => {
 
   useEffect(() => {
     if (mode === 'existing' && selectedSupplier && !isFixing) {
-      const draftData = { supplierId: selectedSupplier.id, supplierName: selectedSupplier.name, supplierPhone: selectedSupplier.phone, transactionType, invoiceItems, note, amountPaid, draftType: 'purchase' };
+      const draftData = { 
+        supplierId: selectedSupplier.id, 
+        supplierName: selectedSupplier.name, 
+        supplierPhone: selectedSupplier.phone, 
+        transactionType, 
+        invoiceItems, 
+        note, 
+        amountPaid, 
+        draftType: 'purchase' 
+      };
       const timeoutId = setTimeout(() => { saveDraft(draftData, true); }, 500);
       return () => clearTimeout(timeoutId);
     }
@@ -167,16 +192,21 @@ export const RecordPurchasePage = () => {
     return suppliers.filter(s => s.name.toLowerCase().includes(q) || (s.phone && s.phone.includes(q)));
   }, [suppliers, searchQuery]);
 
-  const handleSelectSupplier = (supplier) => { setSelectedSupplier(supplier); setMode("existing"); setSearchQuery(""); };
+  const handleSelectSupplier = (supplier) => { 
+    setSelectedSupplier(supplier); 
+    setMode("existing"); 
+    setSearchQuery(""); 
+  };
   
   const handleCreateSupplier = () => {
     const name = searchQuery.trim();
     if (name) {
       SupplierService.addSupplier(currentStore.id, name, "").then(id => {
         setSelectedSupplier({ id, name, phone: "", balance: 0 }); 
-        setMode("existing"); setSearchQuery("");
-        showToast("✅ Supplier created!");
-        SupplierService.getAll().then(setSuppliers);
+        setMode("existing"); 
+        setSearchQuery("");
+        showToast("✅ Supplier created!"); 
+        SupplierService.getAll({ fetchAll: true }).then(setSuppliers);
       }).catch(() => showToast("❌ Failed to create supplier."));
     }
   };
@@ -250,6 +280,7 @@ export const RecordPurchasePage = () => {
           }
           return Array.from(itemMap.values());
         });
+        
         showToast("✅ Product template created and added!");
       }
       setNewProductName("");
@@ -282,31 +313,29 @@ export const RecordPurchasePage = () => {
 
   const handleSuspendPurchase = async () => {
     if (!selectedSupplier) { showToast("⚠️ Select a supplier first"); return; }
-    if (invoiceItems.length === 0 && !note.trim() && parseFloat(amountPaid) === 0) {
-      showToast("⚠️ Add items before suspending"); return;
+    if (invoiceItems.length === 0 && !note.trim() && parseFloat(amountPaid) === 0) { 
+      showToast("⚠️ Add items before suspending"); return; 
     }
-
     try {
-      const data = {
-        id: suspendedId,
-        storeId: currentStore.id,
-        type: 'purchase',
-        contactId: selectedSupplier.id,
-        contactName: selectedSupplier.name,
-        contactPhone: selectedSupplier.phone,
-        items: invoiceItems,
-        amount: totalAmount,
-        paid: parseFloat(amountPaid) || 0,
-        note: note
+      const data = { 
+        id: suspendedId, 
+        storeId: currentStore.id, 
+        type: 'purchase', 
+        contactId: selectedSupplier.id, 
+        contactName: selectedSupplier.name, 
+        contactPhone: selectedSupplier.phone, 
+        items: invoiceItems, 
+        amount: totalAmount, 
+        paid: parseFloat(amountPaid) || 0, 
+        note: note 
       };
-      
       const newId = await SuspendedTransactionService.suspendTransaction(data);
-      setSuspendedId(newId);
-      showToast("⏸️ Purchase suspended");
+      setSuspendedId(newId); 
+      showToast("⏸️ Purchase suspended"); 
       setView("home");
-    } catch (error) {
-      console.error(error);
-      showToast("❌ Failed to suspend purchase");
+    } catch (error) { 
+      console.error(error); 
+      showToast("❌ Failed to suspend purchase"); 
     }
   };
 
@@ -318,16 +347,17 @@ export const RecordPurchasePage = () => {
         cancelReason: null, 
         replacedByTransactionId: null 
       });
-      
       await SupplierService.updateBalance(undoData.supplierId);
       setShowUndoToast(false); 
-      setUndoData(null);
+      setUndoData(null); 
       showToast("✅ Correction undone.");
-      
       const s = suppliers.find(s => s.id === undoData.supplierId);
       if (s) { setStoreSelectedSupplier(s); setView("supplierProfile"); } 
       else { setView("suppliers"); }
-    } catch (error) { console.error(error); showToast("❌ Failed to undo."); }
+    } catch (error) { 
+      console.error(error); 
+      showToast("❌ Failed to undo."); 
+    }
   };
 
   const handleSavePurchase = async () => {
@@ -343,7 +373,7 @@ export const RecordPurchasePage = () => {
       const extraData = { contactName: selectedSupplier.name, contactPhone: selectedSupplier.phone };
 
       if (isFixing && fixingOldId) {
-        extraData.correctsTransactionId = fixingOldId;
+        extraData.correctsTransactionId = fixingOldId; 
         extraData.fixReason = fixReason; 
         
         const newId = await TransactionService.create(
@@ -353,31 +383,30 @@ export const RecordPurchasePage = () => {
         
         await TransactionService.update(fixingOldId, { 
           replacedByTransactionId: newId, status: 'cancelled', 
-          cancelReason: `Replaced by ${transactionType === "payment" ? "Payment" : "Purchase"} ${newId}`
+          cancelReason: `Replaced by ${transactionType === "payment" ? "Payment" : "Purchase"} ${newId}` 
         });
         await SupplierService.updateBalance(selectedSupplier.id);
         
-        setUndoData({ newId, oldId: fixingOldId, supplierId: selectedSupplier.id });
+        setUndoData({ newId, oldId: fixingOldId, supplierId: selectedSupplier.id }); 
         setShowUndoToast(true);
         setTimeout(() => { setShowUndoToast(false); setUndoData(null); }, 10000);
-        
-        setIsFixing(false); setFixingOldId(null); setFixReason("");
+        setIsFixing(false); 
+        setFixingOldId(null); 
+        setFixReason("");
       } else {
         await TransactionService.create(currentStore.id, selectedSupplier.id, transactionType === "payment" ? "payment" : "purchase", invoiceItems, finalTotal, finalPaid, note, extraData);
         await SupplierService.updateBalance(selectedSupplier.id);
         clearAutoDraft('purchase');
-
         if (suspendedId) {
-          await SuspendedTransactionService.deleteSuspendedTransaction(suspendedId);
+          await SuspendedTransactionService.deleteSuspendedTransaction(suspendedId); 
           setSuspendedId(null);
         }
         showToast("✅ Transaction recorded!");
       }
       
-      setLastScrollPosition(window.scrollY);
-      setStoreSelectedSupplier(selectedSupplier);
+      setLastScrollPosition(window.scrollY); 
+      setStoreSelectedSupplier(selectedSupplier); 
       setView("supplierProfile");
-      
     } catch (error) { 
       console.error(error); 
       showToast("❌ Failed to record transaction."); 
@@ -419,12 +448,19 @@ export const RecordPurchasePage = () => {
               {Array.isArray(filteredSuppliers) && filteredSuppliers.map(s => (
                 <button key={s.id} onClick={() => handleSelectSupplier(s)} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition text-left">
                   <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full flex items-center justify-center font-bold flex-shrink-0">{s.name.charAt(0)}</div>
-                  <div className="flex-1 min-w-0"><p className="font-semibold text-gray-900 dark:text-white truncate">{s.name}</p><p className="text-xs text-gray-500 dark:text-gray-400 truncate">{s.phone || "No phone"}</p></div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 dark:text-white truncate">{s.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{s.phone || "No phone"}</p>
+                  </div>
                 </button>
               ))}
               {searchQuery.trim() && filteredSuppliers.length === 0 && (
                 <button onClick={handleCreateSupplier} className="w-full flex items-center gap-3 p-3 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-400 transition text-left">
-                  <Plus size={20} className="flex-shrink-0" /><div className="flex-1 min-w-0"><p className="font-semibold text-sm">Create new supplier</p><p className="text-xs opacity-80 truncate">Use "{searchQuery}"</p></div>
+                  <Plus size={20} className="flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm">Create new supplier</p>
+                    <p className="text-xs opacity-80 truncate">Use "{searchQuery}"</p>
+                  </div>
                 </button>
               )}
             </div>
@@ -441,21 +477,21 @@ export const RecordPurchasePage = () => {
                 <p className="text-xs text-indigo-600 dark:text-indigo-400 uppercase font-bold">{isFixing ? "Correcting" : (transactionType === "purchase" ? "Buying from" : "Paying to")}</p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedSupplier.name || "Unknown Supplier"}</p>
               </div>
+              {/* 👇 THE FIXED "CHANGE" BUTTON (Keeps items, only swaps supplier) */}
               {!isFixing && (
-                  <button 
-                    onClick={() => { 
-                      // Keep items, note & amount paid — only swap the supplier
-                      useStore.setState({ autoDraft: null });
-                      setMode("search"); 
-                      setSelectedSupplier(null); 
-                      setSuspendedId(null); // Safety: don't delete the old supplier's suspended record on save
-                      clearAutoDraft('purchase'); 
-                    }} 
-                    className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
-                  >
-                    Change
-                  </button>
-                )}
+                <button 
+                  onClick={() => { 
+                    useStore.setState({ autoDraft: null }); 
+                    setMode("search"); 
+                    setSelectedSupplier(null); 
+                    setSuspendedId(null); // Safety: don't delete the old supplier's suspended record on save
+                    clearAutoDraft('purchase'); 
+                  }} 
+                  className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
+                >
+                  Change
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -502,10 +538,16 @@ export const RecordPurchasePage = () => {
               
               {mode === "existing" && !isFixing && transactionType === "purchase" && (
                 <div className="grid grid-cols-2 gap-3 pt-2">
-                  <button onClick={handleSuspendPurchase} className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-sm">
+                  <button 
+                    onClick={handleSuspendPurchase} 
+                    className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-sm"
+                  >
                     <Pause size={20} /> Suspend
                   </button>
-                  <button onClick={handleSavePurchase} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg">
+                  <button 
+                    onClick={handleSavePurchase} 
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
+                  >
                     <Check size={24} /> Save Purchase
                   </button>
                 </div>

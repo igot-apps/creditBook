@@ -32,51 +32,52 @@ export const HomePage = () => {
   const [topDebtors, setTopDebtors] = useState([]);
   const [recentCustomers, setRecentCustomers] = useState([]);
   const [suspended, setSuspended] = useState([]);
-  
+
   const currency = currentStore?.currency || "GH₵";
   // Handle both snake_case (Supabase) and camelCase
-  const ownerName = currentStore?.owner_name || currentStore?.ownerName || "Boss";
+  const ownerName = currentStore?.owner_name || currentStore?.ownerName || "Shop Owner";
 
   // 1. Load Dashboard Data from Supabase
   useEffect(() => {
     const loadData = async () => {
       if (!currentStore?.id) return;
       try {
-        // Supabase services no longer require currentStore.id as an argument
         const [customers, transactions, suspendedTx] = await Promise.all([
-          CustomerService.getAll(),
+          CustomerService.getAll({ fetchAll: true }),
           TransactionService.getAll(),
           SuspendedTransactionService.getSuspendedTransactions()
         ]);
 
+        const validCustomers = Array.isArray(customers) ? customers : [];
+        const validTransactions = Array.isArray(transactions) ? transactions : [];
+
         const today = new Date().toDateString();
         let received = 0;
         let purchases = 0;
-        
-        (Array.isArray(transactions) ? transactions : []).forEach(tx => {
+
+        validTransactions.forEach(tx => {
           const isActive = tx.status === 'active' || !tx.status;
           if (!isActive) return;
-          
+
           if (new Date(tx.created_at || tx.createdAt).toDateString() === today) {
             if (tx.type === 'sale' || tx.type === 'payment') received += (parseFloat(tx.paid) || 0);
-            if (tx.type === 'purchase') purchases += (parseFloat(tx.amount) || 0);
+            if (tx.type === 'purchase' || tx.type === 'supplier_payment') purchases += (parseFloat(tx.paid) || 0);
           }
         });
 
         // Calculate Outstanding (Total owed to me)
-        const validCustomers = Array.isArray(customers) ? customers : [];
-        const outstanding = validCustomers.reduce((sum, c) => sum + ((parseFloat(c.balance) || 0) > 0 ? (parseFloat(c.balance) || 0) : 0), 0);
+        const outstanding = validCustomers.reduce(
+          (sum, c) => sum + ((parseFloat(c.balance) || 0) > 0 ? (parseFloat(c.balance) || 0) : 0), 0
+        );
         setTodayStats({ received, purchases, outstanding });
 
         const debtors = validCustomers
           .filter(c => (parseFloat(c.balance) || 0) > 0)
           .sort((a, b) => (parseFloat(b.balance) || 0) - (parseFloat(a.balance) || 0))
           .slice(0, 3);
-          
         setTopDebtors(debtors);
         setRecentCustomers(validCustomers.slice(0, 5));
         setSuspended(Array.isArray(suspendedTx) ? suspendedTx : []);
-
       } catch (error) {
         console.error("Failed to load dashboard data", error);
       }
@@ -88,7 +89,7 @@ export const HomePage = () => {
   const handleContinueDraft = () => {
     if (!autoDraft) return;
     if (autoDraft.draftType === 'sale') {
-      setView('record'); 
+      setView('record');
     } else if (autoDraft.draftType === 'purchase') {
       setView('recordSupplierPurchase');
     }
@@ -115,12 +116,12 @@ export const HomePage = () => {
   const handleDiscardSuspended = async (tx) => {
     const label = tx.type === 'sale' ? 'sale' : 'purchase';
     const name = tx.contactName || "Unknown";
-    
+
     if (!window.confirm(`Discard this suspended ${label} for ${name}? This cannot be undone.`)) return;
-    
+
     try {
       await SuspendedTransactionService.deleteSuspendedTransaction(tx.id);
-      setSuspended(prev => prev.filter(s => s.id !== tx.id));
+      setSuspended(prev => (Array.isArray(prev) ? prev : []).filter(s => s.id !== tx.id));
       showToast("🗑️ Suspended transaction discarded");
     } catch (error) {
       console.error(error);
@@ -139,14 +140,14 @@ export const HomePage = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <TopBar title="Dashboard" />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
-        
+
         {/* 1. GREETING & SEARCH TRIGGER */}
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">{getGreeting()},</p>
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">{ownerName} 👋</h1>
           </div>
-          <button 
+          <button
             onClick={() => setShowSearch(true)}
             className="w-10 h-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full flex items-center justify-center text-gray-600 dark:text-gray-300 shadow-sm active:scale-95 transition"
           >
@@ -175,7 +176,7 @@ export const HomePage = () => {
 
         {/* 3. CONTINUE WORKING (Auto-Draft) */}
         {autoDraft && (
-          <button 
+          <button
             onClick={handleContinueDraft}
             className="w-full bg-white dark:bg-gray-800 p-4 rounded-2xl border-2 border-indigo-200 dark:border-indigo-800 shadow-sm flex items-center justify-between active:scale-[0.98] transition"
           >
@@ -195,7 +196,7 @@ export const HomePage = () => {
           </button>
         )}
 
-        {/* 4. SUSPENDED TRANSACTIONS SECTION */}
+        {/* 4. SUSPENDED TRANSACTIONS SECTION (Resume + Discard) */}
         {suspended.length > 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
             <div className="p-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900/50">
@@ -222,13 +223,13 @@ export const HomePage = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <button 
+                    <button
                       onClick={() => handleResumeSuspended(tx)}
                       className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg active:scale-95 transition"
                     >
                       Resume
                     </button>
-                    <button 
+                    <button
                       onClick={() => handleDiscardSuspended(tx)}
                       className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg active:scale-95 transition"
                       title="Discard"
@@ -244,14 +245,14 @@ export const HomePage = () => {
 
         {/* 5. QUICK ACTIONS */}
         <div className="grid grid-cols-2 gap-3">
-          <button 
+          <button
             onClick={handleQuickSale}
             className="bg-green-600 hover:bg-green-700 text-white p-4 rounded-2xl shadow-md flex flex-col items-center gap-2 active:scale-95 transition"
           >
             <Plus size={24} />
             <span className="font-bold text-sm">Record Sale</span>
           </button>
-          <button 
+          <button
             onClick={handleQuickPurchase}
             className="bg-indigo-600 hover:bg-indigo-700 text-white p-4 rounded-2xl shadow-md flex flex-col items-center gap-2 active:scale-95 transition"
           >
@@ -267,9 +268,9 @@ export const HomePage = () => {
               <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Recent Customers</h3>
               <button onClick={() => setView('customers')} className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">View All</button>
             </div>
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+            <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {recentCustomers.map(c => (
-                <button 
+                <button
                   key={c.id}
                   onClick={() => { setSelectedCustomer(c); setView('profile'); }}
                   className="flex-shrink-0 flex flex-col items-center gap-1.5 w-16"
@@ -295,7 +296,7 @@ export const HomePage = () => {
             </div>
             <div className="divide-y divide-gray-100 dark:divide-gray-700">
               {topDebtors.map(c => (
-                <button 
+                <button
                   key={c.id}
                   onClick={() => { setSelectedCustomer(c); setView('profile'); }}
                   className="w-full flex items-center justify-between p-3 active:bg-gray-50 dark:active:bg-gray-700/50 transition text-left"
@@ -319,7 +320,7 @@ export const HomePage = () => {
           </div>
         )}
       </div>
-      
+
       {/* Universal Search Modal */}
       <UniversalSearchModal isOpen={showSearch} onClose={() => setShowSearch(false)} />
     </div>

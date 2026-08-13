@@ -39,7 +39,7 @@ export const RecordSalePage = () => {
 
   useEffect(() => {
     if (currentStore?.id) {
-      CustomerService.getAll().then(res => setCustomers(Array.isArray(res) ? res : [])).catch(() => setCustomers([]));
+      CustomerService.getAll({ fetchAll: true }).then(res => setCustomers(Array.isArray(res) ? res : [])).catch(() => setCustomers([]));
       ProductService.getAll().then(res => setProducts(Array.isArray(res) ? res : [])).catch(() => setProducts([]));
     }
   }, [currentStore?.id]);
@@ -76,7 +76,7 @@ export const RecordSalePage = () => {
     if (selectedCustomer?.id && mode === 'existing' && !isFixing) {
       SuspendedTransactionService.checkDuplicateSuspended(currentStore?.id, selectedCustomer.id, 'sale').then(susp => {
         if (susp && susp.id !== suspendedId) {
-          showToast(`⏸️ Resuming suspended sale for ${selectedCustomer.name}`);
+          showToast(`⏸️ Resuming suspended sale for ${selectedCustomer.name || "Customer"}`);
           setSelectedCustomer({ 
             id: susp.contactId, 
             name: susp.contactName || "Unknown Customer", 
@@ -205,7 +205,7 @@ export const RecordSalePage = () => {
         setMode("existing"); 
         setSearchQuery("");
         showToast("✅ Customer created!"); 
-        CustomerService.getAll().then(setCustomers);
+        CustomerService.getAll({ fetchAll: true }).then(setCustomers);
       }).catch(() => showToast("❌ Failed to create customer."));
     }
   };
@@ -368,11 +368,10 @@ export const RecordSalePage = () => {
                 <p className="text-xs text-green-600 dark:text-green-400 uppercase font-bold">{isFixing ? "Correcting sale for" : "Selling to"}</p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedCustomer.name || "Unknown Customer"}</p>
               </div>
+              {/* 👇 THE FIXED "CHANGE" BUTTON (Keeps items, only swaps customer) */}
               {!isFixing && (
                 <button 
                   onClick={() => { 
-                    // Clear the draft so the OLD customer isn't auto-restored,
-                    // but KEEP the invoice items & amounts so they can be assigned to the new customer
                     useStore.setState({ autoDraft: null }); 
                     setMode("search"); 
                     setSelectedCustomer(null); 
