@@ -9,7 +9,6 @@ import { SuspendedTransactionService } from "../services/SuspendedTransactionSer
 import { ProductPickerModal } from "../components/ProductPickerModal";
 import { AddProductModal } from "../components/AddProductModal";
 import { TopBar } from "../components/TopBar";
-import { db } from "../database/db";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
@@ -19,7 +18,7 @@ export const RecordPurchasePage = () => {
     autoDraft, saveDraft, clearAutoDraft,
     fixTransaction, setFixTransaction, lastScrollPosition, setLastScrollPosition,
     setSelectedSupplier: setStoreSelectedSupplier,
-    resumedSuspendedId, clearResumedSuspended, suspendTransaction, deleteSuspendedTransaction, checkDuplicateSuspended
+    resumedSuspendedId, clearResumedSuspended
   } = useStore();
   
   const currency = currentStore?.currency || "GH₵";
@@ -48,20 +47,27 @@ export const RecordPurchasePage = () => {
   const [showUndoToast, setShowUndoToast] = useState(false);
   const [suspendedId, setSuspendedId] = useState(null);
 
+  // Load Draft on Mount
+  useEffect(() => { useStore.getState().loadDraft('purchase'); }, []);
+
   useEffect(() => {
     if (currentStore?.id) {
-      SupplierService.getAll(currentStore.id).then(res => setSuppliers(Array.isArray(res) ? res : [])).catch(() => setSuppliers([]));
-      ProductService.getAll(currentStore.id).then(res => setProducts(Array.isArray(res) ? res : [])).catch(() => setProducts([]));
+      SupplierService.getAll().then(res => setSuppliers(Array.isArray(res) ? res : [])).catch(() => setSuppliers([]));
+      ProductService.getAll().then(res => setProducts(Array.isArray(res) ? res : [])).catch(() => setProducts([]));
     }
   }, [currentStore?.id]);
 
   // Load Suspended Purchase if resumed from Home Page
   useEffect(() => {
     if (resumedSuspendedId) {
-      SuspendedTransactionService.getSuspendedTransactions(currentStore.id).then(all => {
+      SuspendedTransactionService.getSuspendedTransactions().then(all => {
         const susp = all.find(s => s.id === resumedSuspendedId);
         if (susp) {
-          setSelectedSupplier({ id: susp.contactId, name: susp.contactName, phone: susp.contactPhone });
+          setSelectedSupplier({ 
+            id: susp.contactId, 
+            name: susp.contactName || "Unknown Supplier", 
+            phone: susp.contactPhone || "" 
+          });
           setInvoiceItems(susp.items || []);
           setTransactionType(susp.type === 'payment' ? 'payment' : 'purchase');
           setAmountPaid((susp.paid || 0).toString());
@@ -73,15 +79,19 @@ export const RecordPurchasePage = () => {
         clearResumedSuspended();
       });
     }
-  }, [resumedSuspendedId, currentStore?.id, clearResumedSuspended, showToast]);
+  }, [resumedSuspendedId, clearResumedSuspended, showToast]);
 
-  // Duplicate Protection
+  // Duplicate Protection (with UUID guard)
   useEffect(() => {
-    if (selectedSupplier && mode === 'existing' && !isFixing && transactionType === 'purchase') {
-      checkDuplicateSuspended(currentStore.id, selectedSupplier.id, 'purchase').then(susp => {
+    if (selectedSupplier?.id && mode === 'existing' && !isFixing && transactionType === 'purchase') {
+      SuspendedTransactionService.checkDuplicateSuspended(currentStore?.id, selectedSupplier.id, 'purchase').then(susp => {
         if (susp && susp.id !== suspendedId) {
           showToast(`⏸️ Resuming suspended purchase for ${selectedSupplier.name}`);
-          setSelectedSupplier({ id: susp.contactId, name: susp.contactName, phone: susp.contactPhone });
+          setSelectedSupplier({ 
+            id: susp.contactId, 
+            name: susp.contactName || "Unknown Supplier", 
+            phone: susp.contactPhone || "" 
+          });
           setInvoiceItems(susp.items || []);
           setAmountPaid((susp.paid || 0).toString());
           setNote(susp.note || "");
@@ -89,11 +99,11 @@ export const RecordPurchasePage = () => {
         }
       });
     }
-  }, [selectedSupplier, mode, isFixing, transactionType, currentStore?.id, suspendedId, checkDuplicateSuspended, showToast]);
+  }, [selectedSupplier?.id, mode, isFixing, transactionType, currentStore?.id, suspendedId, showToast]);
 
   useEffect(() => {
     if (prefillTransaction && prefillTransaction.supplierId) {
-      const supplier = (Array.isArray(suppliers) ? suppliers : []).find(s => s.id === prefillTransaction.supplierId) || {
+      const supplier = suppliers.find(s => s.id === prefillTransaction.supplierId) || {
         id: prefillTransaction.supplierId, name: prefillTransaction.name || "Unknown Supplier", phone: prefillTransaction.phone || ""
       };
       setSelectedSupplier(supplier); 
@@ -101,13 +111,13 @@ export const RecordPurchasePage = () => {
       setTransactionType(prefillTransaction.type || "purchase");
       if (prefillTransaction.paid !== undefined) setAmountPaid(prefillTransaction.paid.toString());
       setPrefillTransaction(null); 
-      clearAutoDraft();
+      clearAutoDraft('purchase');
     }
   }, [prefillTransaction, suppliers, setPrefillTransaction, clearAutoDraft]);
 
   useEffect(() => {
     if (fixTransaction && fixTransaction.id) {
-      const supplier = (Array.isArray(suppliers) ? suppliers : []).find(s => s.id === fixTransaction.contactId) || {
+      const supplier = suppliers.find(s => s.id === fixTransaction.contactId) || {
         id: fixTransaction.contactId, name: fixTransaction.contactName || "Unknown Supplier", phone: fixTransaction.contactPhone || ""
       };
       setSelectedSupplier(supplier);
@@ -117,11 +127,7 @@ export const RecordPurchasePage = () => {
       setAmountPaid(fixTransaction.paid?.toString() || '');
       setOriginalAmount(parseFloat(fixTransaction.amount) || 0);
       setFixReason(fixTransaction.fixReason || ""); 
-      
-      setMode("existing");
-      setIsFixing(true);
-      setFixingOldId(fixTransaction.id);
-      
+      setMode("existing"); setIsFixing(true); setFixingOldId(fixTransaction.id);
       TransactionService.update(fixTransaction.id, { status: 'being_corrected' });
       setFixTransaction(null);
     }
@@ -131,7 +137,7 @@ export const RecordPurchasePage = () => {
     if (fixingOldId) await TransactionService.update(fixingOldId, { status: 'active' });
     setIsFixing(false); setFixingOldId(null); setFixReason("");
     setMode("search"); setSelectedSupplier(null); setAmountPaid(""); setInvoiceItems([]); setNote("");
-    clearAutoDraft();
+    clearAutoDraft('purchase');
   };
 
   useEffect(() => {
@@ -167,10 +173,10 @@ export const RecordPurchasePage = () => {
     const name = searchQuery.trim();
     if (name) {
       SupplierService.addSupplier(currentStore.id, name, "").then(id => {
-        const newSupplier = { id, name, phone: "", balance: 0 };
-        setSelectedSupplier(newSupplier); setMode("existing"); setSearchQuery("");
+        setSelectedSupplier({ id, name, phone: "", balance: 0 }); 
+        setMode("existing"); setSearchQuery("");
         showToast("✅ Supplier created!");
-        SupplierService.getAll(currentStore.id).then(setSuppliers);
+        SupplierService.getAll().then(setSuppliers);
       }).catch(() => showToast("❌ Failed to create supplier."));
     }
   };
@@ -215,7 +221,7 @@ export const RecordPurchasePage = () => {
 
     try {
       const newId = await ProductService.create(currentStore.id, productData);
-      const updatedProducts = await ProductService.getAll(currentStore.id);
+      const updatedProducts = await ProductService.getAll();
       setProducts(updatedProducts);
       const createdProduct = updatedProducts.find(p => p.id === newId);
       
@@ -244,13 +250,12 @@ export const RecordPurchasePage = () => {
           }
           return Array.from(itemMap.values());
         });
-        
         showToast("✅ Product template created and added!");
       }
       setNewProductName("");
     } catch (error) { 
       console.error(error); 
-      showToast(" Failed to create product."); 
+      showToast("❌ Failed to create product."); 
     }
   };
 
@@ -272,14 +277,9 @@ export const RecordPurchasePage = () => {
   const removeItem = (index) => setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
   
   const totalAmount = useMemo(() => {
-    return invoiceItems.reduce((sum, item) => { 
-      const qty = parseFloat(item.quantity) || 0; 
-      const price = parseFloat(item.price) || 0; 
-      return sum + (qty * price); 
-    }, 0);
+    return invoiceItems.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0);
   }, [invoiceItems]);
 
-  // Suspend Purchase Handler
   const handleSuspendPurchase = async () => {
     if (!selectedSupplier) { showToast("⚠️ Select a supplier first"); return; }
     if (invoiceItems.length === 0 && !note.trim() && parseFloat(amountPaid) === 0) {
@@ -300,7 +300,7 @@ export const RecordPurchasePage = () => {
         note: note
       };
       
-      const newId = await suspendTransaction(data);
+      const newId = await SuspendedTransactionService.suspendTransaction(data);
       setSuspendedId(newId);
       showToast("⏸️ Purchase suspended");
       setView("home");
@@ -313,14 +313,19 @@ export const RecordPurchasePage = () => {
   const handleUndoFix = async () => {
     if (!undoData) return;
     try {
-      await db.transactions.delete(undoData.newId);
-      await TransactionService.update(undoData.oldId, { status: 'active', cancelReason: null, replacedByTransactionId: null });
+      await TransactionService.update(undoData.oldId, { 
+        status: 'active', 
+        cancelReason: null, 
+        replacedByTransactionId: null 
+      });
+      
       await SupplierService.updateBalance(undoData.supplierId);
-      setShowUndoToast(false); setUndoData(null);
+      setShowUndoToast(false); 
+      setUndoData(null);
       showToast("✅ Correction undone.");
       
-      const supplierToRestore = suppliers.find(s => s.id === undoData.supplierId);
-      if (supplierToRestore) { setStoreSelectedSupplier(supplierToRestore); setView("supplierProfile"); }
+      const s = suppliers.find(s => s.id === undoData.supplierId);
+      if (s) { setStoreSelectedSupplier(s); setView("supplierProfile"); } 
       else { setView("suppliers"); }
     } catch (error) { console.error(error); showToast("❌ Failed to undo."); }
   };
@@ -360,13 +365,12 @@ export const RecordPurchasePage = () => {
       } else {
         await TransactionService.create(currentStore.id, selectedSupplier.id, transactionType === "payment" ? "payment" : "purchase", invoiceItems, finalTotal, finalPaid, note, extraData);
         await SupplierService.updateBalance(selectedSupplier.id);
-        await clearAutoDraft();
+        clearAutoDraft('purchase');
 
         if (suspendedId) {
-          await deleteSuspendedTransaction(suspendedId, currentStore.id);
+          await SuspendedTransactionService.deleteSuspendedTransaction(suspendedId);
           setSuspendedId(null);
         }
-        
         showToast("✅ Transaction recorded!");
       }
       
@@ -430,33 +434,28 @@ export const RecordPurchasePage = () => {
         {mode === "existing" && selectedSupplier && (
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-indigo-100 dark:border-indigo-900/30">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0">{selectedSupplier.name.charAt(0)}</div>
+              <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0">
+                {(selectedSupplier.name || "?").charAt(0)}
+              </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-indigo-600 dark:text-indigo-400 uppercase font-bold">{isFixing ? "Correcting" : (transactionType === "purchase" ? "Buying from" : "Paying to")}</p>
-                <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedSupplier.name}</p>
+                <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedSupplier.name || "Unknown Supplier"}</p>
               </div>
-              {/* 👇 WORKING CHANGE BUTTON */}
               {!isFixing && (
-                <button 
-                  onClick={() => { 
-                    // 1. Instantly clear the auto-draft from memory so the background effect doesn't fight us
-                    useStore.setState({ autoDraft: null });
-
-                    // 2. Reset the UI state
-                    setMode("search"); 
-                    setSelectedSupplier(null); 
-                    setInvoiceItems([]); 
-                    setNote(""); 
-                    setAmountPaid(""); 
-                    
-                    // 3. Delete the draft from the database in the background
-                    clearAutoDraft(); 
-                  }} 
-                  className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
-                >
-                  Change
-                </button>
-              )}
+                  <button 
+                    onClick={() => { 
+                      // Keep items, note & amount paid — only swap the supplier
+                      useStore.setState({ autoDraft: null });
+                      setMode("search"); 
+                      setSelectedSupplier(null); 
+                      setSuspendedId(null); // Safety: don't delete the old supplier's suspended record on save
+                      clearAutoDraft('purchase'); 
+                    }} 
+                    className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
+                  >
+                    Change
+                  </button>
+                )}
             </div>
           </div>
         )}

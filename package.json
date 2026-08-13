@@ -12,6 +12,7 @@
     "build:preview": "npm run build && npm run preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
     "dexie": "^4.4.4",
     "firebase": "^12.16.0",
     "libphonenumber-js": "^1.13.9",

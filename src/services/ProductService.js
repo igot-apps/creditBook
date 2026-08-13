@@ -1,273 +1,100 @@
-import { db } from '../database/db';
+import { supabase } from '../lib/supabaseClient';
 
-// Emoji mapping for common categories (visual recognition)
+// 👇 Category emojis for the product picker UI
 export const CATEGORY_EMOJIS = {
-  'rice': '🍚',
-  'milk': '🥛',
-  'drinks': '',
-  'beverages': '',
-  'oil': '🫒',
-  'sugar': '🍬',
-  'soap': '🧼',
-  'biscuits': '🍪',
-  'bread': '🍞',
-  'frozen': '🧊',
-  'medicine': '💊',
-  'snacks': '',
-  'water': '💧',
-  'meat': '🥩',
-  'fish': '🐟',
-  'chicken': '🍗',
-  'eggs': '🥚',
-  'fruit': '🍎',
-  'fruits': '',
-  'vegetable': '',
-  'vegetables': '🥬',
-  'spices': '🌶️',
-  'grains': '🌾',
-  'flour': '🌾',
-  'pasta': '🍝',
-  'tea': '🍵',
-  'coffee': '☕',
-  'cereal': '🥣',
-  'sauce': '',
-  'cleaning': '',
-  'baby': '🍼',
-  'default': '📦'
+  "General": "📦",
+  "Food & Beverage": "🍔",
+  "Electronics": "📱",
+  "Clothing": "👕",
+  "Health & Beauty": "💄",
+  "Home & Garden": "🏠",
+  "Automotive": "🚗",
+  "Services": "🛠️",
+  "Other": "📌"
 };
 
 export const ProductService = {
-
-  // Get emoji for a category
-  getCategoryEmoji: (category) => {
-    if (!category) return CATEGORY_EMOJIS.default;
-    const key = category.toLowerCase().trim();
-    return CATEGORY_EMOJIS[key] || CATEGORY_EMOJIS.default;
-  },
-
-  // 1. GET ALL PRODUCTS
-  getAll: async (storeId) => {
-    return await db.products.where('storeId').equals(storeId).toArray();
-  },
-
-  // 2. SMART SEARCH (For search mode)
-  search: async (storeId, query) => {
-    const allProducts = await db.products.where('storeId').equals(storeId).toArray();
-    
-    if (!query || !query.trim()) {
-      return allProducts
-        .sort((a, b) => {
-          if (a.isFavourite !== b.isFavourite) return b.isFavourite ? 1 : -1;
-          return (b.usageCount || 0) - (a.usageCount || 0);
-        })
-        .slice(0, 15);
-    }
-    
-    const q = query.toLowerCase();
-    
-    const filtered = allProducts.filter(p => {
-      const matchesName = p.name && p.name.toLowerCase().includes(q);
-      const matchesCategory = p.category && p.category.toLowerCase().includes(q);
-      const matchesBrand = p.brand && p.brand.toLowerCase().includes(q);
-      const matchesUnit = p.units && p.units.some(u => u.name.toLowerCase().includes(q));
-      const matchesLegacyName = p.name && p.name.toLowerCase().includes(q);
+  getAll: async () => {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .order('created_at', { ascending: false });
       
-      return matchesName || matchesCategory || matchesBrand || matchesUnit || matchesLegacyName;
-    });
-
-    return filtered.sort((a, b) => {
-      if (a.isFavourite !== b.isFavourite) return b.isFavourite ? 1 : -1;
-      if ((b.usageCount || 0) !== (a.usageCount || 0)) return (b.usageCount || 0) - (a.usageCount || 0);
-      return (a.name || '').localeCompare(b.name || '');
-    });
+    if (error) throw error;
+    return data || [];
   },
 
-  // 3. GET FAVORITE PRODUCTS
-  getFavorites: async (storeId) => {
-    const allProducts = await db.products.where('storeId').equals(storeId).toArray();
-    return allProducts
-      .filter(p => p.isFavourite)
-      .sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0));
+  // Returns the list of categories for the UI
+  getCategories: async () => {
+    return Object.keys(CATEGORY_EMOJIS);
   },
 
-  // 4. GET RECENTLY USED PRODUCTS
-  getRecent: async (storeId, limit = 10) => {
-    const allProducts = await db.products.where('storeId').equals(storeId).toArray();
-    return allProducts
-      .filter(p => p.lastUsedAt)
-      .sort((a, b) => new Date(b.lastUsedAt) - new Date(a.lastUsedAt))
-      .slice(0, limit);
+  // 👇 ADDED: Get emoji for a specific category
+  getCategoryEmoji: (category) => {
+    return CATEGORY_EMOJIS[category] || "📦";
   },
 
-  // 5. GET MOST USED PRODUCTS
-  getMostUsed: async (storeId, limit = 10) => {
-    const allProducts = await db.products.where('storeId').equals(storeId).toArray();
-    return allProducts
-      .filter(p => (p.usageCount || 0) > 0)
-      .sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0))
-      .slice(0, limit);
-  },
-
-  // 6. GET PRODUCTS BY CATEGORY
-  getByCategory: async (storeId, category) => {
-    const allProducts = await db.products.where('storeId').equals(storeId).toArray();
-    if (!category || category === 'All') {
-      return allProducts.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    }
-    return allProducts
-      .filter(p => p.category && p.category.toLowerCase() === category.toLowerCase())
-      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  },
-
-  // 7. GET ALL UNIQUE CATEGORIES
-  getCategories: async (storeId) => {
-    const allProducts = await db.products.where('storeId').equals(storeId).toArray();
-    const categories = new Set();
-    allProducts.forEach(p => {
-      if (p.category && p.category.trim()) {
-        categories.add(p.category.trim());
-      }
-    });
-    return Array.from(categories).sort();
-  },
-
-  // 8. CREATE PRODUCT
-  create: async (storeId, productData) => {
-    // 👇 NEW: Map units with default visibility flags
-    const units = (productData.units || []).map((u, index) => ({
-      id: u.id || `u_${Date.now()}_${index}`,
-      name: (u.name || 'Piece').trim(),
-      defaultPurchasePrice: parseFloat(u.defaultPurchasePrice || u.purchasePrice) || 0,
-      defaultSalePrice: parseFloat(u.defaultSalePrice || u.salePrice) || 0,
-      visibleInSales: u.visibleInSales ?? true,
-      visibleInPurchases: u.visibleInPurchases ?? true
-    }));
-
-    if (units.length === 0 && productData.unit) {
-      units.push({
-        id: `u_${Date.now()}_0`,
-        name: productData.unit,
-        defaultPurchasePrice: parseFloat(productData.defaultPurchasePrice || productData.price) || 0,
-        defaultSalePrice: parseFloat(productData.defaultSalePrice || productData.price) || 0,
-        visibleInSales: true,
-        visibleInPurchases: true
-      });
-    }
-
-    const newProduct = {
-      id: 'prod_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-      storeId,
-      name: productData.name || productData.brand || 'Unnamed Product',
-      category: productData.category || '',
-      brand: productData.brand || '',
-      units: units,
-      isFavourite: productData.isFavourite || false,
-      usageCount: 0,
-      lastUsedAt: null,
-      createdAt: new Date().toISOString(),
-      // 👇 NEW: Default product-level visibility (kept for backward compatibility)
-      visibility: {
-        sales: productData.visibility?.sales ?? true,
-        purchases: productData.visibility?.purchases ?? true
-      }
-    };
-
-    await db.products.add(newProduct);
-    return newProduct.id;
-  },
-
-  // 9. UPDATE PRODUCT
-  update: async (productId, updateData) => {
-    const existingProduct = await db.products.get(productId);
-    if (!existingProduct) throw new Error("Product not found");
-
-    // If updating units, ensure they have visibility flags
-    if (updateData.units) {
-      updateData.units = updateData.units.map(u => ({
-        ...u,
-        visibleInSales: u.visibleInSales ?? true,
-        visibleInPurchases: u.visibleInPurchases ?? true
-      }));
-    }
-
-    const updatedData = {
-      ...updateData,
-      visibility: {
-        sales: updateData.visibility?.sales ?? existingProduct.visibility?.sales ?? true,
-        purchases: updateData.visibility?.purchases ?? existingProduct.visibility?.purchases ?? true
-      }
-    };
-    
-    await db.products.update(productId, updatedData);
-  },
-
-  // 10. DELETE PRODUCT
-  delete: async (productId) => {
-    await db.products.delete(productId);
-  },
-
-  // 11. TRACK USAGE
+  // 👇 ADDED: Track product usage for "Most Used" and "Recent" tabs
   trackUsage: async (productId) => {
-    const product = await db.products.get(productId);
-    if (product) {
-      await db.products.update(productId, { 
-        usageCount: (product.usageCount || 0) + 1,
-        lastUsedAt: new Date().toISOString()
-      });
+    try {
+      // First get the current usage count to increment it
+      const { data: product } = await supabase
+        .from('products')
+        .select('usage_count')
+        .eq('id', productId)
+        .single();
+        
+      const newCount = (product?.usage_count || 0) + 1;
+      
+      await supabase
+        .from('products')
+        .update({ 
+          usage_count: newCount, 
+          last_used_at: new Date().toISOString() 
+        })
+        .eq('id', productId);
+    } catch (error) {
+      console.error("Failed to track usage", error);
     }
   },
 
-  // 12. GET SINGLE PRODUCT
-  getById: async (productId) => {
-    return await db.products.get(productId);
+  create: async (storeId, productData) => {
+    const { data, error } = await supabase
+      .from('products')
+      .insert([
+        {
+          store_id: storeId,
+          name: productData.name,
+          category: productData.category || 'General',
+          brand: productData.brand || '',
+          is_favourite: productData.isFavourite || false,
+          units: productData.units || [], // JSONB
+          usage_count: 0,
+          last_used_at: null
+        }
+      ])
+      .select()
+      .single();
+      
+    if (error) throw error;
+    return data.id;
   },
 
-  // 13. TOGGLE FAVOURITE
-  toggleFavourite: async (productId) => {
-    const product = await db.products.get(productId);
-    if (product) {
-      await db.products.update(productId, { 
-        isFavourite: !product.isFavourite 
-      });
-    }
+  update: async (id, data) => {
+    const { error } = await supabase
+      .from('products')
+      .update(data)
+      .eq('id', id);
+      
+    if (error) throw error;
   },
 
-  // 👇 14. NEW: UPDATE SINGLE UNIT VISIBILITY
-  updateUnitVisibility: async (productId, unitId, visibilityData) => {
-    const product = await db.products.get(productId);
-    if (!product) throw new Error("Product not found");
-
-    const updatedUnits = product.units.map(u => {
-      if (u.id === unitId) {
-        return {
-          ...u,
-          // Lazy migration: default to true if missing
-          visibleInSales: visibilityData.visibleInSales ?? u.visibleInSales ?? true,
-          visibleInPurchases: visibilityData.visibleInPurchases ?? u.visibleInPurchases ?? true
-        };
-      }
-      return u;
-    });
-
-    await db.products.update(productId, { units: updatedUnits });
-  },
-
-  // 👇 15. NEW: BULK UPDATE UNIT VISIBILITY
-  bulkUpdateUnitVisibility: async (productId, unitIds, visibilityData) => {
-    const product = await db.products.get(productId);
-    if (!product) throw new Error("Product not found");
-
-    const updatedUnits = product.units.map(u => {
-      if (unitIds.includes(u.id)) {
-        return {
-          ...u,
-          visibleInSales: visibilityData.visibleInSales ?? u.visibleInSales ?? true,
-          visibleInPurchases: visibilityData.visibleInPurchases ?? u.visibleInPurchases ?? true
-        };
-      }
-      return u;
-    });
-
-    await db.products.update(productId, { units: updatedUnits });
+  delete: async (id) => {
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', id);
+      
+    if (error) throw error;
   }
 };
