@@ -1,146 +1,139 @@
 import { useState } from "react";
-import { Store, User, Mail, Phone, Lock, AlertCircle } from "lucide-react";
-import { useApp } from "../contexts/AppContext";
+import { Store, Mail, Lock, User, Eye, EyeOff, Loader2 } from "lucide-react";
+import { AuthService } from "../services/AuthService";
+import useStore from "../store/useStore";
 
 export const RegisterPage = () => {
-  const { setView, showToast, handleRegister: registerAction } = useApp();
-  const [form, setForm] = useState({ storeName: "", ownerName: "", email: "", phone: "", password: "" });
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [storeName, setStoreName] = useState("");
+  const [ownerName, setOwnerName] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [debugInfo, setDebugInfo] = useState([]);
+  
+  const { setView, setCurrentStore } = useStore();
 
-  const addDebug = (msg) => {
-    setDebugInfo(prev => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${msg}`]);
-  };
-
-  const onSubmit = async (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
-    setError("");
-    
-    if (isLoading) {
-      addDebug("⚠️ Already loading, ignoring click");
-      return;
-    }
-    
-    addDebug(`🔵 Starting registration for: ${form.email}`);
     setIsLoading(true);
-    
+    setError("");
+
     try {
-      addDebug("🔵 Calling registerAction...");
-      await registerAction(form);
-      addDebug("🟢 Registration successful!");
-      showToast("Store created successfully on this device!");
+      const { user, store } = await AuthService.signUp(email, password, storeName, ownerName);
+      setCurrentStore(store);
+      setView("home");
     } catch (err) {
-      console.error("Registration error:", err);
-      const errorMsg = err.message || "Registration failed";
-      setError(errorMsg);
-      addDebug(`🔴 Error: ${errorMsg}`);
-      showToast(errorMsg);
+      if (err.message.includes("User already registered")) {
+        setError("An account with this email already exists.");
+      } else if (err.message.includes("password should be at least")) {
+        setError("Password must be at least 6 characters.");
+      } else {
+        setError(err.message || "Failed to create account. Please try again.");
+      }
+    } finally {
       setIsLoading(false);
     }
   };
 
-  const testDatabase = async () => {
-    addDebug("🔵 Testing database...");
-    try {
-      const { AuthService } = await import("../services/AuthService");
-      const result = await AuthService.testDatabase();
-      if (result.success) {
-        addDebug("✅ Database is working!");
-        alert("✅ Database is working! You can register.");
-      } else {
-        addDebug("❌ Database failed: " + result.message);
-        alert("❌ Database Error: " + result.message + "\n\nTry:\n1. Close private/incognito mode\n2. Use a different browser\n3. Clear browser data");
-      }
-    } catch (err) {
-      addDebug("❌ Test failed: " + err.message);
-      alert("❌ Test failed: " + err.message);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white dark:bg-gray-900 p-8 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800">
-        <div className="text-center mb-6">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800 p-8">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Store size={32} />
+          </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create Your Store</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-2">Start managing your sales and debts today</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Start managing your business in the cloud</p>
         </div>
 
-        {/* Error Alert */}
         {error && (
-          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="font-bold text-red-800 dark:text-red-300 text-sm">Registration Failed</p>
-              <p className="text-red-700 dark:text-red-400 text-sm mt-1">{error}</p>
-            </div>
+          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm text-center">
+            {error}
           </div>
         )}
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="relative">
-            <Store className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-            <input required value={form.storeName} onChange={e => setForm({...form, storeName: e.target.value})} disabled={isLoading}
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white disabled:opacity-50"
-              placeholder="Store Name (e.g., Shalom Cloth)" />
-          </div>
-          <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-            <input required value={form.ownerName} onChange={e => setForm({...form, ownerName: e.target.value})} disabled={isLoading}
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white disabled:opacity-50"
-              placeholder="Your Name" />
-          </div>
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-            <input type="email" required value={form.email} onChange={e => setForm({...form, email: e.target.value})} disabled={isLoading}
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white disabled:opacity-50"
-              placeholder="Email Address" autoComplete="email" />
-          </div>
-          <div className="relative">
-            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-            <input type="tel" required value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} disabled={isLoading}
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white disabled:opacity-50"
-              placeholder="Business Phone" autoComplete="tel" />
-          </div>
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-            <input type="password" required value={form.password} onChange={e => setForm({...form, password: e.target.value})} disabled={isLoading}
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white disabled:opacity-50"
-              placeholder="Create Password" autoComplete="new-password" />
+        <form onSubmit={handleRegister} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Business Name</label>
+            <div className="relative">
+              <Store className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="text"
+                value={storeName}
+                onChange={(e) => setStoreName(e.target.value)}
+                required
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                placeholder="e.g., Shalom Cold Store"
+              />
+            </div>
           </div>
 
-          <button type="submit" disabled={isLoading}
-            className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-3.5 rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-            {isLoading ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Creating Store...
-              </>
-            ) : "Create Store & Continue"}
+          <div>
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Your Name</label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="text"
+                value={ownerName}
+                onChange={(e) => setOwnerName(e.target.value)}
+                required
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                placeholder="e.g., John Doe"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Email Address</label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                placeholder="you@example.com"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Password</label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+                className="w-full pl-10 pr-12 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                placeholder="Min. 6 characters"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg mt-6"
+          >
+            {isLoading ? <Loader2 className="animate-spin" size={20} /> : "Create Account & Store"}
           </button>
         </form>
 
-        {/* Debug Panel */}
-        {debugInfo.length > 0 && (
-          <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg text-xs font-mono">
-            <p className="font-bold text-gray-700 dark:text-gray-300 mb-2">Debug Log:</p>
-            {debugInfo.map((log, i) => (
-              <p key={i} className="text-gray-600 dark:text-gray-400">{log}</p>
-            ))}
-          </div>
-        )}
-
-        {/* Test Database Button */}
-        <button 
-          onClick={testDatabase}
-          className="w-full mt-4 text-sm text-gray-500 dark:text-gray-400 underline"
-        >
-          Test if database is working
-        </button>
-
-        <p className="text-center mt-6 text-gray-600 dark:text-gray-400">
-          Already have a store?{" "}
-          <button onClick={() => setView("login")} className="text-green-700 dark:text-green-400 font-bold hover:underline">
+        <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
+          Already have an account?{" "}
+          <button onClick={() => setView("login")} className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline">
             Sign In
           </button>
         </p>

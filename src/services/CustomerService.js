@@ -1,48 +1,67 @@
-import { db } from '../database/db';
+import { supabase } from '../lib/supabaseClient';
 
 export const CustomerService = {
-  getAll: async (storeId) => {
-    return await db.contacts.where({ storeId, type: 'customer' }).toArray();
-  },
-
-  getById: async (id) => {
-    return await db.contacts.get(id);
-  },
-
-  addCustomer: async (storeId, name, phone) => {
-    const newCustomer = {
-      storeId,
-      type: 'customer',
-      name,
-      phone: phone || '',
-      balance: 0,
-      isArchived: false,
-      createdAt: new Date().toISOString()
-    };
-    return await db.contacts.add(newCustomer);
-  },
-
-  // 👇 ADDED: Update method for editing existing customers
-  update: async (id, data) => {
-    await db.contacts.update(id, data);
-  },
-
-  updateBalance: async (id) => {
-    const transactions = await db.transactions.where({ contactId: id }).toArray();
-    let balance = 0;
-    
-    transactions.forEach(tx => {
-      const isActive = tx.status === 'active' || !tx.status;
-      if (!isActive) return;
+  // 1. Get all customers for the logged-in user's store
+  getAll: async () => {
+    const { data, error } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('type', 'customer')
+      .order('created_at', { ascending: false });
       
-      if (tx.type === 'sale') {
-        balance += (parseFloat(tx.amount) || 0) - (parseFloat(tx.paid) || 0);
-      } else if (tx.type === 'payment') {
-        balance -= (parseFloat(tx.paid) || 0);
-      }
-    });
-    
-    await db.contacts.update(id, { balance });
-    return balance;
+    if (error) throw error;
+    return data || [];
+  },
+
+  // 2. Get a single customer by ID
+  getById: async (id) => {
+    const { data, error } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('id', id)
+      .single();
+      
+    if (error) throw error;
+    return data;
+  },
+
+  // 3. Add a new customer
+  addCustomer: async (storeId, name, phone) => {
+    const { data, error } = await supabase
+      .from('contacts')
+      .insert([
+        { 
+          store_id: storeId, 
+          type: 'customer', 
+          name, 
+          phone: phone || '', 
+          balance: 0 
+        }
+      ])
+      .select()
+      .single();
+      
+    if (error) throw error;
+    return data.id;
+  },
+
+  // 4. Update customer details (Name, Phone, etc.)
+  update: async (id, data) => {
+    const { error } = await supabase
+      .from('contacts')
+      .update(data)
+      .eq('id', id);
+      
+    if (error) throw error;
+  },
+
+  // 5. Update customer balance (Called after a transaction is saved/cancelled)
+  updateBalance: async (id, newBalance) => {
+    const { error } = await supabase
+      .from('contacts')
+      .update({ balance: newBalance })
+      .eq('id', id);
+      
+    if (error) throw error;
   }
 };

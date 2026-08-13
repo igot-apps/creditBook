@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { Save, Store, User, Phone, Mail, MapPin, DollarSign, CheckCircle } from "lucide-react";
+import { Save, Store, User, Phone, Mail, MapPin, DollarSign, Loader2 } from "lucide-react";
 import useStore from "../store/useStore";
-import { db } from "../database/db";
+import { supabase } from "../lib/supabaseClient";
 import { TopBar } from "../components/TopBar";
 
 export const SettingsPage = () => {
@@ -22,7 +22,8 @@ export const SettingsPage = () => {
     if (currentStore) {
       setFormData({
         name: currentStore.name || "",
-        ownerName: currentStore.ownerName || "",
+        // Handle both camelCase and snake_case from Supabase
+        ownerName: currentStore.owner_name || currentStore.ownerName || "",
         phone: currentStore.phone || "",
         email: currentStore.email || "",
         location: currentStore.location || "",
@@ -44,17 +45,29 @@ export const SettingsPage = () => {
 
     setIsSaving(true);
     try {
-      // 1. Update the database
-      await db.stores.update(currentStore.id, formData);
+      // 1. Update the database in Supabase
+      const { data, error } = await supabase
+        .from('stores')
+        .update({
+          name: formData.name,
+          owner_name: formData.ownerName,
+          phone: formData.phone,
+          email: formData.email,
+          location: formData.location,
+          currency: formData.currency
+        })
+        .eq('id', currentStore.id)
+        .select()
+        .single();
+
+      if (error) throw error;
       
-      // 2. Update the global Zustand state
-      const updatedStore = { ...currentStore, ...formData };
-      setCurrentStore(updatedStore);
-      
+      // 2. Update the global Zustand state instantly
+      setCurrentStore(data);
       showToast("✅ Business details saved successfully!");
     } catch (error) {
       console.error("Failed to save settings:", error);
-      showToast("❌ Failed to save settings");
+      showToast("❌ Failed to save settings. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -85,7 +98,10 @@ export const SettingsPage = () => {
               <Store size={14} /> Business Name
             </label>
             <input 
-              type="text" name="name" value={formData.name} onChange={handleChange} 
+              type="text" 
+              name="name" 
+              value={formData.name} 
+              onChange={handleChange} 
               placeholder="e.g., Shalom Cold Store"
               className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
             />
@@ -96,7 +112,10 @@ export const SettingsPage = () => {
               <User size={14} /> Owner / Manager Name
             </label>
             <input 
-              type="text" name="ownerName" value={formData.ownerName} onChange={handleChange} 
+              type="text" 
+              name="ownerName" 
+              value={formData.ownerName} 
+              onChange={handleChange} 
               placeholder="e.g., John Doe"
               className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
             />
@@ -108,7 +127,10 @@ export const SettingsPage = () => {
                 <Phone size={14} /> Phone
               </label>
               <input 
-                type="tel" name="phone" value={formData.phone} onChange={handleChange} 
+                type="tel" 
+                name="phone" 
+                value={formData.phone} 
+                onChange={handleChange} 
                 placeholder="024XXXXXXX"
                 className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
               />
@@ -118,7 +140,9 @@ export const SettingsPage = () => {
                 <DollarSign size={14} /> Currency
               </label>
               <select 
-                name="currency" value={formData.currency} onChange={handleChange}
+                name="currency" 
+                value={formData.currency} 
+                onChange={handleChange}
                 className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white appearance-none"
               >
                 <option value="GH₵">GH₵ (Cedi)</option>
@@ -136,7 +160,10 @@ export const SettingsPage = () => {
               <Mail size={14} /> Email (Optional)
             </label>
             <input 
-              type="email" name="email" value={formData.email} onChange={handleChange} 
+              type="email" 
+              name="email" 
+              value={formData.email} 
+              onChange={handleChange} 
               placeholder="business@example.com"
               className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
             />
@@ -147,7 +174,10 @@ export const SettingsPage = () => {
               <MapPin size={14} /> Location / Address (Optional)
             </label>
             <input 
-              type="text" name="location" value={formData.location} onChange={handleChange} 
+              type="text" 
+              name="location" 
+              value={formData.location} 
+              onChange={handleChange} 
               placeholder="e.g., Main Street, Accra"
               className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
             />
@@ -162,7 +192,9 @@ export const SettingsPage = () => {
           className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
         >
           {isSaving ? (
-            <>Saving...</>
+            <>
+              <Loader2 className="animate-spin" size={20} /> Saving...
+            </>
           ) : (
             <>
               <Save size={20} /> Save Business Details

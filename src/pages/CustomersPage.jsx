@@ -2,16 +2,14 @@ import { useState, useEffect, useMemo } from "react";
 import { Search, Plus, Phone, MessageCircle, DollarSign, ShoppingCart, X, Clock, AlertCircle, Star, ChevronRight } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
-import { openSMS, openWhatsApp, openDialer } from "../utils/communication";
+import { openWhatsApp, openDialer } from "../utils/communication";
 import { AddCustomerModal } from "../components/customer/AddCustomerModal";
 import { TopBar } from "../components/TopBar";
-import { CustomerService } from "../services/CustomerService"; // 👈 ADDED IMPORT
+import { CustomerService } from "../services/CustomerService";
 
 export const CustomersPage = () => {
   const {
     currentStore,
-    customers,
-    setCustomers, // 👈 ADDED
     setSelectedCustomer,
     setView,
     setPrefillTransaction
@@ -21,13 +19,16 @@ export const CustomersPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [actionCustomer, setActionCustomer] = useState(null);
   
+  // 👇 Use local state instead of global store for the list
+  const [customers, setCustomers] = useState([]);
+  
   const currency = currentStore?.currency || "GH₵";
 
-  // 👇 NEW: Local fetch function to ensure the list refreshes perfectly every time
+  // 👇 Local fetch function
   const fetchCustomers = async () => {
     if (currentStore?.id) {
-      const loaded = await CustomerService.getAll(currentStore.id);
-      setCustomers(loaded);
+      const loaded = await CustomerService.getAll();
+      setCustomers(Array.isArray(loaded) ? loaded : []);
     }
   };
 
@@ -67,7 +68,7 @@ export const CustomersPage = () => {
 
       if (c.isFavourite || c.isPinned) {
         favorites.push(c);
-      } else if (c.balance > 0) {
+      } else if ((c.balance || 0) > 0) {
         needAttention.push(c);
       } else if (isRecent) {
         recentlyActive.push(c);
@@ -76,8 +77,8 @@ export const CustomersPage = () => {
       }
     });
 
-    needAttention.sort((a, b) => b.balance - a.balance);
-    recentlyActive.sort((a, b) => new Date(b.lastActivity) - new Date(a.lastActivity));
+    needAttention.sort((a, b) => (b.balance || 0) - (a.balance || 0));
+    recentlyActive.sort((a, b) => new Date(b.lastActivity || 0) - new Date(a.lastActivity || 0));
     others.sort((a, b) => a.name.localeCompare(b.name));
 
     return { favorites, needAttention, recentlyActive, others };
@@ -109,7 +110,7 @@ export const CustomersPage = () => {
       amount: "0",
       paid: ""
     });
-    setView("record");
+    setView("recordPayment");
   };
 
   const handleViewProfile = (customer) => {
@@ -119,7 +120,7 @@ export const CustomersPage = () => {
   };
 
   const generateMessage = (c) =>
-    `Hello ${c.name}, this is ${currentStore?.name || "Store"}. Please send your outstanding balance of ${formatCurrency(c.balance, currency)} by the end of the week. Thank you!`;
+    `Hello ${c.name}, this is ${currentStore?.name || "Store"}. Please send your outstanding balance of ${formatCurrency(c.balance || 0, currency)} by the end of the week. Thank you!`;
 
   const getDaysOverdue = (lastActivity) => {
     if (!lastActivity) return null;
@@ -129,6 +130,8 @@ export const CustomersPage = () => {
 
   const renderCustomerCard = (customer) => {
     const daysOverdue = getDaysOverdue(customer.lastActivity);
+    const balance = customer.balance || 0;
+    
     return (
       <button 
         key={customer.id} 
@@ -137,7 +140,7 @@ export const CustomersPage = () => {
       >
         <div className="flex items-start gap-3">
           <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 ${
-            customer.balance > 0 ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+            balance > 0 ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
           }`}>
             {customer.name.charAt(0)}
           </div>
@@ -157,10 +160,10 @@ export const CustomersPage = () => {
             )}
           </div>
           <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
-            {customer.balance > 0 ? (
+            {balance > 0 ? (
               <>
                 <p className="text-sm font-bold text-orange-600 dark:text-orange-400">
-                  {formatCurrency(customer.balance, currency)}
+                  {formatCurrency(balance, currency)}
                 </p>
                 {daysOverdue && (
                   <span className="text-[9px] font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded-md flex items-center gap-1">
@@ -168,9 +171,9 @@ export const CustomersPage = () => {
                   </span>
                 )}
               </>
-            ) : customer.balance < 0 ? (
+            ) : balance < 0 ? (
               <p className="text-sm font-bold text-blue-600 dark:text-blue-400">
-                Credit {formatCurrency(Math.abs(customer.balance), currency)}
+                Credit {formatCurrency(Math.abs(balance), currency)}
               </p>
             ) : (
               <p className="text-[10px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-lg">
@@ -185,7 +188,7 @@ export const CustomersPage = () => {
 
   const renderSection = (title, icon, data) => {
     if (searchQuery.trim() && title !== "Search Results") return null;
-    if (data.length === 0) return null;
+    if (!data || data.length === 0) return null;
     return (
       <div className="mt-6 first:mt-0">
         <h3 className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1 flex items-center gap-1.5">
@@ -242,11 +245,11 @@ export const CustomersPage = () => {
         </div>
       </div>
 
-      {/* 👇 UPDATED: Add Customer Modal with onSaved callback to refresh the list */}
+      {/* Add Customer Modal */}
       <AddCustomerModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
-        onSaved={fetchCustomers} // 👈 THIS TRIGGERS THE REFRESH INSTANTLY
+        onSaved={fetchCustomers} // 👈 Triggers instant refresh
       />
 
       {/* ACTION BOTTOM SHEET */}
@@ -260,7 +263,7 @@ export const CustomersPage = () => {
               <div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white">{actionCustomer.name}</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {actionCustomer.balance > 0 ? `Owes ${formatCurrency(actionCustomer.balance, currency)}` : "Paid Up"}
+                  {(actionCustomer.balance || 0) > 0 ? `Owes ${formatCurrency(actionCustomer.balance, currency)}` : "Paid Up"}
                 </p>
               </div>
               <button onClick={() => setActionCustomer(null)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full">

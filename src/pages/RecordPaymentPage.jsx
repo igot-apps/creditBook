@@ -9,14 +9,14 @@ import { TopBar } from "../components/TopBar";
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
 export const RecordPaymentPage = () => {
-  const { 
-    currentStore, 
-    selectedCustomer, 
-    setView, 
-    showToast 
+  const {
+    currentStore,
+    selectedCustomer,
+    setView,
+    showToast
   } = useStore();
 
-  const currency = currentStore?.currency || "GH";
+  const currency = currentStore?.currency || "GH₵";
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("cash");
   const [note, setNote] = useState("");
@@ -31,7 +31,6 @@ export const RecordPaymentPage = () => {
 
   const handleSave = async () => {
     const finalAmount = parseFloat(amount);
-    
     if (!finalAmount || finalAmount <= 0) {
       showToast("⚠️ Please enter a valid amount.");
       return;
@@ -39,7 +38,7 @@ export const RecordPaymentPage = () => {
 
     setIsSaving(true);
     try {
-      // 1. Record the payment (FIFO allocation happens invisibly here)
+      // 1. Record the payment
       await TransactionService.recordPayment(
         currentStore.id,
         selectedCustomer.id,
@@ -49,13 +48,25 @@ export const RecordPaymentPage = () => {
       );
 
       // 2. Recalculate the customer's total balance
-      await CustomerService.updateBalance(selectedCustomer.id);
+      // (In a cloud DB, we fetch all transactions and sum them up)
+      const history = await TransactionService.getHistory(selectedCustomer.id);
+      let newBalance = 0;
+      history.forEach(tx => {
+        const isActive = tx.status === 'active' || !tx.status;
+        if (!isActive) return;
+        if (tx.type === 'sale') {
+          newBalance += (parseFloat(tx.amount) || 0) - (parseFloat(tx.paid) || 0);
+        } else if (tx.type === 'payment') {
+          newBalance -= (parseFloat(tx.paid) || 0);
+        }
+      });
+      
+      await CustomerService.updateBalance(selectedCustomer.id, newBalance);
 
       showToast(`✅ Received ${formatCurrency(finalAmount, currency)}`);
       
-      // 3. Return to the customer's profile to see the updated balance
+      // 3. Return to the customer's profile
       setView("profile");
-      
     } catch (error) {
       console.error(error);
       showToast("❌ Failed to record payment.");
@@ -68,12 +79,11 @@ export const RecordPaymentPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      <TopBar 
-        title="Receive Payment" 
-        showBack={true} 
-        onBack={() => setView("profile")} 
+      <TopBar
+        title="Receive Payment"
+        showBack={true}
+        onBack={() => setView("profile")}
       />
-      
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-6">
         
         {/* 1. Customer Context Card */}
@@ -90,7 +100,7 @@ export const RecordPaymentPage = () => {
           </div>
         </div>
 
-        {/* 2. Massive Amount Input (Auto-focus for numeric keypad) */}
+        {/* 2. Massive Amount Input */}
         <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 text-center">
           <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-3 block">Amount Received</label>
           <div className="relative flex items-center justify-center">
@@ -107,7 +117,7 @@ export const RecordPaymentPage = () => {
           </div>
         </div>
 
-        {/* 3. Payment Method (Optional but useful for memory) */}
+        {/* 3. Payment Method */}
         <div>
           <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 block px-1">Payment Method</label>
           <div className="grid grid-cols-3 gap-2">
@@ -117,7 +127,7 @@ export const RecordPaymentPage = () => {
           </div>
         </div>
 
-        {/* 4. Note (Optional) */}
+        {/* 4. Note */}
         <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
           <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 block">Note (Optional)</label>
           <textarea 
@@ -143,21 +153,16 @@ export const RecordPaymentPage = () => {
             </>
           )}
         </button>
-
       </div>
     </div>
   );
 };
 
-// Helper Component for Method Buttons
+// 👇 FIXED: Added the missing '>' at the end of the className string
 const MethodButton = ({ icon: Icon, label, value, current, set }) => (
   <button
     onClick={() => set(value)}
-    className={`flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border-2 transition-all ${
-      current === value 
-        ? "border-green-500 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400" 
-        : "border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:border-gray-200 dark:hover:border-gray-600"
-    }`}
+    className={`flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border-2 transition-all ${ current === value ? "border-green-500 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400" : "border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:border-gray-200 dark:hover:border-gray-600" }`}
   >
     <Icon size={20} strokeWidth={current === value ? 2.5 : 2} />
     <span className="text-xs font-bold">{label}</span>

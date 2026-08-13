@@ -7,7 +7,7 @@ import { disableZoom } from './utils/disableZoom';
 import { disableBounce } from './utils/disableBounce'; // 👈 NEW
 
 disableZoom();
-disableBounce(); //  NEW
+//disableBounce(); //  NEW
 
 
 createRoot(document.getElementById('root')).render(

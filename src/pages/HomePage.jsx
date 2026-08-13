@@ -4,6 +4,7 @@ import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
 import { TransactionService } from "../services/TransactionService";
+import { SuspendedTransactionService } from "../services/SuspendedTransactionService";
 import { TopBar } from "../components/TopBar";
 import { UniversalSearchModal } from "../components/UniversalSearchModal";
 
@@ -22,48 +23,59 @@ const getTimeAgo = (dateString) => {
 
 export const HomePage = () => {
   const {
-    currentStore, setView, autoDraft, clearAutoDraft,
-    setSelectedCustomer, setSelectedSupplier, setPrefillTransaction,
-    // 👇 NEW: Suspended Transaction Hooks
-    suspendedTransactions, resumeSuspendedTransaction, deleteSuspendedTransaction
+    currentStore, setView, autoDraft, showToast,
+    setSelectedCustomer, setPrefillTransaction, setResumedSuspendedId
   } = useStore();
 
   const [showSearch, setShowSearch] = useState(false);
   const [todayStats, setTodayStats] = useState({ received: 0, purchases: 0, outstanding: 0 });
   const [topDebtors, setTopDebtors] = useState([]);
   const [recentCustomers, setRecentCustomers] = useState([]);
+  const [suspended, setSuspended] = useState([]);
   
   const currency = currentStore?.currency || "GH₵";
-  const ownerName = currentStore?.ownerName || "Shop Owner";
+  // Handle both snake_case (Supabase) and camelCase
+  const ownerName = currentStore?.owner_name || currentStore?.ownerName || "Boss";
 
-  // 1. Load Dashboard Data
+  // 1. Load Dashboard Data from Supabase
   useEffect(() => {
     const loadData = async () => {
       if (!currentStore?.id) return;
       try {
-        const [customers, transactions] = await Promise.all([
-          CustomerService.getAll(currentStore.id),
-          TransactionService.getAll(currentStore.id)
+        // Supabase services no longer require currentStore.id as an argument
+        const [customers, transactions, suspendedTx] = await Promise.all([
+          CustomerService.getAll(),
+          TransactionService.getAll(),
+          SuspendedTransactionService.getSuspendedTransactions()
         ]);
 
         const today = new Date().toDateString();
         let received = 0;
         let purchases = 0;
         
-        transactions.forEach(tx => {
-          if (new Date(tx.date || tx.createdAt).toDateString() === today) {
-            if (tx.type === 'sale' || tx.type === 'payment') received += (tx.paid || 0);
-            if (tx.type === 'purchase') purchases += (tx.amount || 0);
+        (Array.isArray(transactions) ? transactions : []).forEach(tx => {
+          const isActive = tx.status === 'active' || !tx.status;
+          if (!isActive) return;
+          
+          if (new Date(tx.created_at || tx.createdAt).toDateString() === today) {
+            if (tx.type === 'sale' || tx.type === 'payment') received += (parseFloat(tx.paid) || 0);
+            if (tx.type === 'purchase') purchases += (parseFloat(tx.amount) || 0);
           }
         });
 
         // Calculate Outstanding (Total owed to me)
-        const outstanding = customers.reduce((sum, c) => sum + (c.balance > 0 ? c.balance : 0), 0);
+        const validCustomers = Array.isArray(customers) ? customers : [];
+        const outstanding = validCustomers.reduce((sum, c) => sum + ((parseFloat(c.balance) || 0) > 0 ? (parseFloat(c.balance) || 0) : 0), 0);
         setTodayStats({ received, purchases, outstanding });
 
-        const debtors = customers.filter(c => c.balance > 0).sort((a, b) => b.balance - a.balance).slice(0, 3);
+        const debtors = validCustomers
+          .filter(c => (parseFloat(c.balance) || 0) > 0)
+          .sort((a, b) => (parseFloat(b.balance) || 0) - (parseFloat(a.balance) || 0))
+          .slice(0, 3);
+          
         setTopDebtors(debtors);
-        setRecentCustomers(customers.slice(0, 3));
+        setRecentCustomers(validCustomers.slice(0, 5));
+        setSuspended(Array.isArray(suspendedTx) ? suspendedTx : []);
 
       } catch (error) {
         console.error("Failed to load dashboard data", error);
@@ -93,11 +105,27 @@ export const HomePage = () => {
     setView('recordSupplierPurchase');
   };
 
-  // 👇 NEW: Handle Resume Suspended Transaction
+  // 4. Handle Resume Suspended Transaction
   const handleResumeSuspended = (tx) => {
-    resumeSuspendedTransaction(tx.id);
-    // Navigate to the correct page based on type
+    setResumedSuspendedId(tx.id);
     setView(tx.type === 'sale' ? 'record' : 'recordSupplierPurchase');
+  };
+
+  // 5. Handle Discard Suspended Transaction
+  const handleDiscardSuspended = async (tx) => {
+    const label = tx.type === 'sale' ? 'sale' : 'purchase';
+    const name = tx.contactName || "Unknown";
+    
+    if (!window.confirm(`Discard this suspended ${label} for ${name}? This cannot be undone.`)) return;
+    
+    try {
+      await SuspendedTransactionService.deleteSuspendedTransaction(tx.id);
+      setSuspended(prev => prev.filter(s => s.id !== tx.id));
+      showToast("🗑️ Suspended transaction discarded");
+    } catch (error) {
+      console.error(error);
+      showToast("❌ Failed to discard");
+    }
   };
 
   const getGreeting = () => {
@@ -167,16 +195,16 @@ export const HomePage = () => {
           </button>
         )}
 
-        {/* 👇 NEW: SUSPENDED TRANSACTIONS SECTION */}
-        {suspendedTransactions.length > 0 && (
+        {/* 4. SUSPENDED TRANSACTIONS SECTION */}
+        {suspended.length > 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
             <div className="p-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900/50">
               <h3 className="text-xs font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                <Pause size={14} className="text-orange-500" /> Suspended ({suspendedTransactions.length})
+                <Pause size={14} className="text-orange-500" /> Suspended ({suspended.length})
               </h3>
             </div>
             <div className="divide-y divide-gray-100 dark:divide-gray-700">
-              {suspendedTransactions.map(tx => (
+              {suspended.map(tx => (
                 <div key={tx.id} className="p-3 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
@@ -186,10 +214,10 @@ export const HomePage = () => {
                     </div>
                     <div className="min-w-0">
                       <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
-                        {tx.type === 'sale' ? 'Sale' : 'Purchase'} • {tx.contactName}
+                        {tx.type === 'sale' ? 'Sale' : 'Purchase'} • {tx.contactName || "Unknown"}
                       </p>
                       <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-                        {tx.items?.length || 0} items • {getTimeAgo(tx.createdAt)}
+                        {tx.items?.length || 0} items • {getTimeAgo(tx.createdAt || tx.created_at)}
                       </p>
                     </div>
                   </div>
@@ -201,7 +229,7 @@ export const HomePage = () => {
                       Resume
                     </button>
                     <button 
-                      onClick={() => deleteSuspendedTransaction(tx.id, currentStore.id)}
+                      onClick={() => handleDiscardSuspended(tx)}
                       className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg active:scale-95 transition"
                       title="Discard"
                     >
@@ -214,7 +242,7 @@ export const HomePage = () => {
           </div>
         )}
 
-        {/* 4. QUICK ACTIONS */}
+        {/* 5. QUICK ACTIONS */}
         <div className="grid grid-cols-2 gap-3">
           <button 
             onClick={handleQuickSale}
@@ -232,14 +260,14 @@ export const HomePage = () => {
           </button>
         </div>
 
-        {/* 5. RECENT CUSTOMERS (Horizontal Scroll) */}
+        {/* 6. RECENT CUSTOMERS (Horizontal Scroll) */}
         {recentCustomers.length > 0 && (
           <div>
             <div className="flex justify-between items-center mb-2 px-1">
               <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Recent Customers</h3>
               <button onClick={() => setView('customers')} className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">View All</button>
             </div>
-            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
               {recentCustomers.map(c => (
                 <button 
                   key={c.id}
@@ -247,16 +275,16 @@ export const HomePage = () => {
                   className="flex-shrink-0 flex flex-col items-center gap-1.5 w-16"
                 >
                   <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center font-bold text-lg">
-                    {c.name.charAt(0)}
+                    {(c.name || "?").charAt(0)}
                   </div>
-                  <p className="text-[10px] font-medium text-gray-700 dark:text-gray-300 truncate w-full text-center">{c.name.split(' ')[0]}</p>
+                  <p className="text-[10px] font-medium text-gray-700 dark:text-gray-300 truncate w-full text-center">{(c.name || "Unknown").split(' ')[0]}</p>
                 </button>
               ))}
             </div>
           </div>
         )}
 
-        {/* 6. CUSTOMERS TO FOLLOW UP */}
+        {/* 7. CUSTOMERS TO FOLLOW UP */}
         {topDebtors.length > 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             <div className="p-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
@@ -274,15 +302,15 @@ export const HomePage = () => {
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full flex items-center justify-center text-xs font-bold">
-                      {c.name.charAt(0)}
+                      {(c.name || "?").charAt(0)}
                     </div>
                     <div>
-                      <p className="font-semibold text-sm text-gray-900 dark:text-white">{c.name}</p>
+                      <p className="font-semibold text-sm text-gray-900 dark:text-white">{c.name || "Unknown"}</p>
                       <p className="text-[10px] text-gray-500 dark:text-gray-400">{c.phone || "No phone"}</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-bold text-orange-600 dark:text-orange-400">{formatCurrency(c.balance, currency)}</p>
+                    <p className="text-sm font-bold text-orange-600 dark:text-orange-400">{formatCurrency(c.balance || 0, currency)}</p>
                     <p className="text-[9px] text-gray-400">Owes</p>
                   </div>
                 </button>
