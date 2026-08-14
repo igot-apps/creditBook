@@ -1,5 +1,28 @@
 import { supabase } from '../lib/supabaseClient';
 
+// 👇 Translates the app's camelCase keys -> Supabase snake_case columns
+// This permanently prevents PGRST204 "column not found" errors.
+const toSnake = (obj) => {
+  const map = {
+    cancelReason: 'cancel_reason',
+    replacedByTransactionId: 'replaced_by_transaction_id',
+    correctsTransactionId: 'corrects_transaction_id',
+    paymentMethod: 'payment_method',
+    contactName: 'contact_name',
+    contactPhone: 'contact_phone',
+    storeId: 'store_id',
+    contactId: 'contact_id',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    reference: 'reference',
+  };
+  const out = {};
+  Object.keys(obj || {}).forEach(k => {
+    out[map[k] || k] = obj[k];
+  });
+  return out;
+};
+
 export const TransactionService = {
   getAll: async () => {
     const { data, error } = await supabase
@@ -45,9 +68,8 @@ export const TransactionService = {
           items: items || [],
           status: 'active',
           corrects_transaction_id: extraData.correctsTransactionId || null,
-          replaced_by_transaction_id: extraData.replacedByTransactionId || null,
           payment_method: extraData.paymentMethod || null,
-          reference: extraData.reference || null
+          reference: extraData.reference || null,
         }
       ])
       .select()
@@ -56,7 +78,23 @@ export const TransactionService = {
     return data.id;
   },
 
-  // 👇 ADDED: Dedicated function for Customer Payments
+  // 👇 FIXED: auto-translates camelCase -> snake_case
+  update: async (id, updateData) => {
+    const { error } = await supabase
+      .from('transactions')
+      .update(toSnake(updateData))
+      .eq('id', id);
+    if (error) throw error;
+  },
+
+  cancelTransaction: async (id, cancelReason) => {
+    const { error } = await supabase
+      .from('transactions')
+      .update({ status: 'cancelled', cancel_reason: cancelReason })
+      .eq('id', id);
+    if (error) throw error;
+  },
+
   recordPayment: async (storeId, contactId, amount, note, extraData = {}) => {
     const { data, error } = await supabase
       .from('transactions')
@@ -71,7 +109,7 @@ export const TransactionService = {
           note: note || '',
           payment_method: extraData.paymentMethod || 'cash',
           reference: extraData.reference || null,
-          status: 'active'
+          status: 'active',
         }
       ])
       .select()
@@ -80,7 +118,6 @@ export const TransactionService = {
     return data.id;
   },
 
-  // 👇 ADDED: Dedicated function for Supplier Payments
   recordSupplierPayment: async (storeId, contactId, amount, note, extraData = {}) => {
     const { data, error } = await supabase
       .from('transactions')
@@ -95,7 +132,7 @@ export const TransactionService = {
           note: note || '',
           payment_method: extraData.paymentMethod || 'cash',
           reference: extraData.reference || null,
-          status: 'active'
+          status: 'active',
         }
       ])
       .select()
@@ -103,23 +140,4 @@ export const TransactionService = {
     if (error) throw error;
     return data.id;
   },
-
-  update: async (id, updateData) => {
-    const { error } = await supabase
-      .from('transactions')
-      .update(updateData)
-      .eq('id', id);
-    if (error) throw error;
-  },
-
-  cancelTransaction: async (id, cancelReason) => {
-    const { error } = await supabase
-      .from('transactions')
-      .update({ 
-        status: 'cancelled', 
-        cancel_reason: cancelReason 
-      })
-      .eq('id', id);
-    if (error) throw error;
-  }
 };

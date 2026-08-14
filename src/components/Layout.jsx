@@ -1,8 +1,9 @@
 import {
   Home, Users, Truck, Package, BarChart3, Settings,
-  Moon, Sun, X, ChevronRight, Database, HelpCircle, User, Mail
+  Moon, Sun, X, ChevronRight, Database, HelpCircle, User, Mail, LogOut
 } from "lucide-react";
 import useStore from "../store/useStore";
+import { AuthService } from "../services/AuthService";
 
 // Helper Component for Menu Items (defined outside to avoid remounting)
 const MenuItem = ({ icon: Icon, label, active, onClick, badge }) => (
@@ -37,7 +38,8 @@ export const Layout = ({ children }) => {
     setSelectedCustomer,
     isMenuOpen,
     setIsMenuOpen,
-    refreshPage
+    refreshPage,
+    showToast
   } = useStore();
 
   // Handle both snake_case (Supabase) and camelCase
@@ -52,8 +54,31 @@ export const Layout = ({ children }) => {
       setView(targetView);
     }
     setIsMenuOpen(false);
-    // Since the document scrolls natively now, jump to top on navigation
     window.scrollTo({ top: 0 });
+  };
+
+  // 👇 NEW: Logout handler
+  const handleLogout = async () => {
+    if (!window.confirm("Log out of CreditBook?")) return;
+    try {
+      await AuthService.signOut();
+
+      // Clear local drafts & selection so the next user on this device starts fresh
+      useStore.getState().clearAutoDraft();
+      useStore.setState({
+        currentStore: null,
+        selectedCustomer: null,
+        selectedSupplier: null,
+        view: "home",
+      });
+
+      setIsMenuOpen(false);
+      showToast("👋 Logged out successfully");
+      // App.jsx's onAuthStateChange listener will now show the Login screen automatically
+    } catch (error) {
+      console.error(error);
+      showToast("❌ Failed to log out");
+    }
   };
 
   const SidebarContent = () => (
@@ -78,7 +103,7 @@ export const Layout = ({ children }) => {
             <X size={18} className="text-gray-600 dark:text-gray-300" />
           </button>
         </div>
-        {/* Business Info Section (Clean & Compact) */}
+        {/* Business Info Section */}
         <div className="space-y-2">
           {ownerName && (
             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
@@ -125,8 +150,9 @@ export const Layout = ({ children }) => {
         </div>
       </div>
 
-      {/* 3. FOOTER (Theme Toggle) */}
-      <div className="p-4 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex-shrink-0">
+      {/* 3. FOOTER (Theme Toggle + Logout) */}
+      <div className="p-4 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex-shrink-0 space-y-3">
+        {/* Theme Toggle */}
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
@@ -142,6 +168,14 @@ export const Layout = ({ children }) => {
           <div className={`w-10 h-6 rounded-full p-1 transition-colors ${theme === "dark" ? "bg-indigo-600" : "bg-gray-300"}`}>
             <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${theme === "dark" ? "translate-x-4" : "translate-x-0"}`} />
           </div>
+        </button>
+
+        {/* 👇 NEW: Logout Button */}
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/40 text-red-600 dark:text-red-400 font-semibold text-sm hover:bg-red-100 dark:hover:bg-red-900/30 transition active:scale-[0.98]"
+        >
+          <LogOut size={16} /> Log Out
         </button>
       </div>
     </div>
@@ -170,8 +204,7 @@ export const Layout = ({ children }) => {
         </>
       )}
 
-      {/* 👇 MAIN CONTENT — NO nested scroll container!
-          The document scrolls natively, guaranteeing smooth 1-finger scrolling on Android. */}
+      {/* Main Content Area — NO nested scroll container (keeps Android scrolling smooth) */}
       <main className="flex-1 lg:ml-72 w-full max-w-full">
         {children}
       </main>

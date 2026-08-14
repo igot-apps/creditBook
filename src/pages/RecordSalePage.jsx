@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Users, Check, RotateCcw, Pause } from "lucide-react";
+import { Search, Plus, Users, Check, RotateCcw, Pause, Loader2 } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
@@ -33,10 +33,14 @@ export const RecordSalePage = () => {
   const [undoData, setUndoData] = useState(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
   const [suspendedId, setSuspendedId] = useState(null);
+  // Double-tap protection locks
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSuspending, setIsSuspending] = useState(false);
 
   // Load Draft on Mount
   useEffect(() => { useStore.getState().loadDraft('sale'); }, []);
 
+  // Load Customers (full list) & Products
   useEffect(() => {
     if (currentStore?.id) {
       CustomerService.getAll({ fetchAll: true }).then(res => setCustomers(Array.isArray(res) ? res : [])).catch(() => setCustomers([]));
@@ -50,19 +54,19 @@ export const RecordSalePage = () => {
       SuspendedTransactionService.getSuspendedTransactions().then(all => {
         const susp = all.find(s => s.id === resumedSuspendedId);
         if (susp) {
-          setSelectedCustomer({ 
-            id: susp.contactId, 
-            name: susp.contactName || "Unknown Customer", 
-            phone: susp.contactPhone || "" 
+          setSelectedCustomer({
+            id: susp.contactId,
+            name: susp.contactName || "Unknown Customer",
+            phone: susp.contactPhone || ""
           });
           setInvoiceItems(susp.items || []);
-          setTx({ 
-            amount: (susp.amount || 0).toString(), 
-            paid: (susp.paid || 0).toString(), 
-            discount: (susp.discount || 0).toString(), 
-            note: susp.note || "" 
+          setTx({
+            amount: (susp.amount || 0).toString(),
+            paid: (susp.paid || 0).toString(),
+            discount: (susp.discount || 0).toString(),
+            note: susp.note || ""
           });
-          setSuspendedId(susp.id); 
+          setSuspendedId(susp.id);
           setMode("existing");
           showToast("⏸️ Resumed suspended sale");
         }
@@ -71,23 +75,23 @@ export const RecordSalePage = () => {
     }
   }, [resumedSuspendedId, clearResumedSuspended, showToast]);
 
-  // Duplicate Protection (with UUID guard to prevent 400 Bad Request)
+  // Duplicate Protection (UUID guard + direct service call)
   useEffect(() => {
     if (selectedCustomer?.id && mode === 'existing' && !isFixing) {
       SuspendedTransactionService.checkDuplicateSuspended(currentStore?.id, selectedCustomer.id, 'sale').then(susp => {
         if (susp && susp.id !== suspendedId) {
           showToast(`⏸️ Resuming suspended sale for ${selectedCustomer.name || "Customer"}`);
-          setSelectedCustomer({ 
-            id: susp.contactId, 
-            name: susp.contactName || "Unknown Customer", 
-            phone: susp.contactPhone || "" 
+          setSelectedCustomer({
+            id: susp.contactId,
+            name: susp.contactName || "Unknown Customer",
+            phone: susp.contactPhone || ""
           });
           setInvoiceItems(susp.items || []);
-          setTx({ 
-            amount: (susp.amount || 0).toString(), 
-            paid: (susp.paid || 0).toString(), 
-            discount: (susp.discount || 0).toString(), 
-            note: susp.note || "" 
+          setTx({
+            amount: (susp.amount || 0).toString(),
+            paid: (susp.paid || 0).toString(),
+            discount: (susp.discount || 0).toString(),
+            note: susp.note || ""
           });
           setSuspendedId(susp.id);
         }
@@ -95,89 +99,100 @@ export const RecordSalePage = () => {
     }
   }, [selectedCustomer?.id, mode, isFixing, currentStore?.id, suspendedId, showToast]);
 
+  // Handle Prefill from Profile Page
   useEffect(() => {
     if (prefillTransaction && prefillTransaction.customerId) {
-      const customer = customers.find(c => c.id === prefillTransaction.customerId) || { 
-        id: prefillTransaction.customerId, 
-        name: prefillTransaction.name || "Unknown", 
-        phone: prefillTransaction.phone || "" 
+      const customer = customers.find(c => c.id === prefillTransaction.customerId) || {
+        id: prefillTransaction.customerId,
+        name: prefillTransaction.name || "Unknown",
+        phone: prefillTransaction.phone || ""
       };
-      setSelectedCustomer(customer); 
+      setSelectedCustomer(customer);
       setMode("existing");
       if (prefillTransaction.paid !== undefined) setTx(prev => ({ ...prev, paid: prefillTransaction.paid.toString() }));
-      setPrefillTransaction(null); 
+      setPrefillTransaction(null);
       clearAutoDraft('sale');
     }
   }, [prefillTransaction, customers, setPrefillTransaction, clearAutoDraft]);
 
+  // 👇 Handle Fix Transaction (snake_case-safe + fetches REAL customer name)
   useEffect(() => {
-    if (fixTransaction && fixTransaction.id) {
-      const customer = customers.find(c => c.id === fixTransaction.contactId) || { 
-        id: fixTransaction.contactId, 
-        name: fixTransaction.contactName || "Unknown", 
-        phone: fixTransaction.contactPhone || "" 
-      };
-      setSelectedCustomer(customer); 
+    if (!fixTransaction || !fixTransaction.id) return;
+
+    const contactId = fixTransaction.contact_id || fixTransaction.contactId;
+
+    const startFixMode = (customer) => {
+      setSelectedCustomer(customer);
       setInvoiceItems(fixTransaction.items || []);
-      setTx({ 
-        amount: fixTransaction.amount?.toString() || "0", 
-        paid: fixTransaction.paid?.toString() || "", 
-        discount: fixTransaction.discount?.toString() || "", 
-        note: fixTransaction.note || "" 
+      setTx({
+        amount: fixTransaction.amount?.toString() || "0",
+        paid: fixTransaction.paid?.toString() || "",
+        discount: fixTransaction.discount?.toString() || "",
+        note: fixTransaction.note || ""
       });
-      setOriginalAmount(parseFloat(fixTransaction.amount) || 0); 
+      setOriginalAmount(parseFloat(fixTransaction.amount) || 0);
       setFixReason(fixTransaction.fixReason || "");
-      setMode("existing"); 
-      setIsFixing(true); 
+      setMode("existing");
+      setIsFixing(true);
       setFixingOldId(fixTransaction.id);
       TransactionService.update(fixTransaction.id, { status: 'being_corrected' });
       setFixTransaction(null);
+    };
+
+    if (contactId) {
+      CustomerService.getById(contactId)
+        .then(c => startFixMode(c || { id: contactId, name: "Unknown Customer", phone: "" }))
+        .catch(() => startFixMode({ id: contactId, name: "Unknown Customer", phone: "" }));
+    } else {
+      startFixMode({ id: null, name: "Unknown Customer", phone: "" });
     }
-  }, [fixTransaction, customers, setFixTransaction]);
+  }, [fixTransaction, setFixTransaction]);
 
   const handleAbortFix = async () => {
     if (fixingOldId) await TransactionService.update(fixingOldId, { status: 'active' });
-    setIsFixing(false); 
-    setFixingOldId(null); 
+    setIsFixing(false);
+    setFixingOldId(null);
     setFixReason("");
-    setMode("search"); 
-    setSelectedCustomer(null); 
+    setMode("search");
+    setSelectedCustomer(null);
     setInvoiceItems([]);
-    setTx({ amount: "0", paid: "", discount: "", note: "" }); 
+    setTx({ amount: "0", paid: "", discount: "", note: "" });
     clearAutoDraft('sale');
   };
 
+  // Restore Auto-Draft
   useEffect(() => {
     if (autoDraft && autoDraft.draftType === 'sale' && customers.length > 0 && !selectedCustomer && !prefillTransaction && !isFixing) {
-      const draftCustomer = customers.find(c => c.id === autoDraft.customerId) || { 
-        id: autoDraft.customerId, 
-        name: autoDraft.customerName || 'Unknown', 
-        phone: autoDraft.customerPhone || '' 
+      const draftCustomer = customers.find(c => c.id === autoDraft.customerId) || {
+        id: autoDraft.customerId,
+        name: autoDraft.customerName || 'Unknown',
+        phone: autoDraft.customerPhone || ''
       };
-      setSelectedCustomer(draftCustomer); 
+      setSelectedCustomer(draftCustomer);
       setInvoiceItems(autoDraft.invoiceItems || []);
-      setTx({ 
-        amount: autoDraft.amount || "0", 
-        paid: autoDraft.paid || "", 
-        discount: autoDraft.discount || "", 
-        note: autoDraft.note || "" 
+      setTx({
+        amount: autoDraft.amount || "0",
+        paid: autoDraft.paid || "",
+        discount: autoDraft.discount || "",
+        note: autoDraft.note || ""
       });
       setMode("existing");
     }
   }, [autoDraft, customers, selectedCustomer, prefillTransaction, isFixing]);
 
+  // Save Auto-Draft (debounced)
   useEffect(() => {
     if (mode === 'existing' && selectedCustomer && !isFixing) {
-      const draftData = { 
-        customerId: selectedCustomer.id, 
-        customerName: selectedCustomer.name, 
-        customerPhone: selectedCustomer.phone, 
-        invoiceItems, 
-        amount: tx.amount, 
-        paid: tx.paid, 
-        discount: tx.discount, 
-        note: tx.note, 
-        draftType: 'sale' 
+      const draftData = {
+        customerId: selectedCustomer.id,
+        customerName: selectedCustomer.name,
+        customerPhone: selectedCustomer.phone,
+        invoiceItems,
+        amount: tx.amount,
+        paid: tx.paid,
+        discount: tx.discount,
+        note: tx.note,
+        draftType: 'sale'
       };
       const timeoutId = setTimeout(() => { saveDraft(draftData, true); }, 500);
       return () => clearTimeout(timeoutId);
@@ -191,127 +206,137 @@ export const RecordSalePage = () => {
     return customers.filter(c => c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)));
   }, [customers, searchQuery]);
 
-  const handleSelectCustomer = (customer) => { 
-    setSelectedCustomer(customer); 
-    setMode("existing"); 
-    setSearchQuery(""); 
+  const handleSelectCustomer = (customer) => {
+    setSelectedCustomer(customer);
+    setMode("existing");
+    setSearchQuery("");
   };
-  
+
   const handleCreateCustomer = () => {
     const name = searchQuery.trim();
     if (name) {
       CustomerService.addCustomer(currentStore.id, name, "").then(id => {
-        setSelectedCustomer({ id, name, phone: "", balance: 0 }); 
-        setMode("existing"); 
+        setSelectedCustomer({ id, name, phone: "", balance: 0 });
+        setMode("existing");
         setSearchQuery("");
-        showToast("✅ Customer created!"); 
+        showToast("✅ Customer created!");
         CustomerService.getAll({ fetchAll: true }).then(setCustomers);
       }).catch(() => showToast("❌ Failed to create customer."));
     }
   };
 
+  // Suspend (locked against double-taps)
   const handleSuspendSale = async () => {
+    if (isSuspending || isSaving) return;
     if (!selectedCustomer) { showToast("⚠️ Select a customer first"); return; }
-    if (invoiceItems.length === 0 && !tx.note.trim() && parseFloat(tx.amount) === 0) { 
-      showToast("⚠️ Add items before suspending"); return; 
+    if (invoiceItems.length === 0 && !tx.note.trim() && parseFloat(tx.amount) === 0) {
+      showToast("⚠️ Add items before suspending"); return;
     }
+    setIsSuspending(true);
     try {
-      const data = { 
-        id: suspendedId, 
-        storeId: currentStore.id, 
-        type: 'sale', 
-        contactId: selectedCustomer.id, 
-        contactName: selectedCustomer.name, 
-        contactPhone: selectedCustomer.phone, 
-        items: invoiceItems, 
-        amount: parseFloat(tx.amount) || 0, 
-        paid: parseFloat(tx.paid) || 0, 
-        discount: parseFloat(tx.discount) || 0, 
-        note: tx.note 
+      const data = {
+        id: suspendedId,
+        storeId: currentStore.id,
+        type: 'sale',
+        contactId: selectedCustomer.id,
+        contactName: selectedCustomer.name,
+        contactPhone: selectedCustomer.phone,
+        items: invoiceItems,
+        amount: parseFloat(tx.amount) || 0,
+        paid: parseFloat(tx.paid) || 0,
+        discount: parseFloat(tx.discount) || 0,
+        note: tx.note
       };
       const newId = await SuspendedTransactionService.suspendTransaction(data);
-      setSuspendedId(newId); 
-      showToast("⏸️ Sale suspended"); 
+      setSuspendedId(newId);
+      showToast("⏸️ Sale suspended");
       setView("home");
-    } catch (error) { 
-      console.error(error); 
-      showToast("❌ Failed to suspend sale"); 
+    } catch (error) {
+      console.error(error);
+      showToast("❌ Failed to suspend sale");
+    } finally {
+      setIsSuspending(false);
     }
   };
 
   const handleUndoFix = async () => {
     if (!undoData) return;
     try {
-      await TransactionService.update(undoData.oldId, { 
-        status: 'active', 
-        cancelReason: null, 
-        replacedByTransactionId: null 
+      await TransactionService.update(undoData.oldId, {
+        status: 'active',
+        cancelReason: null,
+        replacedByTransactionId: null
       });
       await CustomerService.updateBalance(undoData.customerId);
-      setShowUndoToast(false); 
-      setUndoData(null); 
+      setShowUndoToast(false);
+      setUndoData(null);
       showToast("✅ Correction undone.");
       const c = customers.find(c => c.id === undoData.customerId);
-      if (c) { setStoreSelectedCustomer(c); setView("profile"); } 
+      if (c) { setStoreSelectedCustomer(c); setView("profile"); }
       else { setView("customers"); }
-    } catch (error) { 
-      console.error(error); 
-      showToast("❌ Failed to undo."); 
+    } catch (error) {
+      console.error(error);
+      showToast("❌ Failed to undo.");
     }
   };
 
+  // Save (locked against double-taps)
   const handleSaveInvoice = async () => {
+    if (isSaving || isSuspending) return;
     if (!selectedCustomer) return;
-    const finalAmount = parseFloat(tx.amount) || 0; 
+    const finalAmount = parseFloat(tx.amount) || 0;
     const finalPaid = parseFloat(tx.paid) || 0;
-    if (finalAmount === 0 && finalPaid === 0 && !tx.note.trim() && invoiceItems.length === 0) { 
-      showToast("⚠️ Please add items, a payment amount, or a note."); return; 
+    if (finalAmount === 0 && finalPaid === 0 && !tx.note.trim() && invoiceItems.length === 0) {
+      showToast("⚠️ Please add items, a payment amount, or a note."); return;
     }
+    setIsSaving(true);
     try {
       const extraData = { contactName: selectedCustomer.name, contactPhone: selectedCustomer.phone };
       if (isFixing && fixingOldId) {
-        extraData.correctsTransactionId = fixingOldId; 
+        extraData.correctsTransactionId = fixingOldId;
         extraData.fixReason = fixReason;
         const newId = await TransactionService.create(currentStore.id, selectedCustomer.id, 'sale', invoiceItems, finalAmount, finalPaid, tx.note, extraData);
-        await TransactionService.update(fixingOldId, { 
-          replacedByTransactionId: newId, 
-          status: 'cancelled', 
-          cancelReason: `Replaced by Sale ${newId}` 
+        await TransactionService.update(fixingOldId, {
+          replacedByTransactionId: newId,
+          status: 'cancelled',
+          cancelReason: `Replaced by Sale ${newId}`
         });
         await CustomerService.updateBalance(selectedCustomer.id);
-        setUndoData({ newId, oldId: fixingOldId, customerId: selectedCustomer.id }); 
+        setUndoData({ newId, oldId: fixingOldId, customerId: selectedCustomer.id });
         setShowUndoToast(true);
         setTimeout(() => { setShowUndoToast(false); setUndoData(null); }, 10000);
-        setIsFixing(false); 
-        setFixingOldId(null); 
+        setIsFixing(false);
+        setFixingOldId(null);
         setFixReason("");
       } else {
         await TransactionService.create(currentStore.id, selectedCustomer.id, 'sale', invoiceItems, finalAmount, finalPaid, tx.note, extraData);
         await CustomerService.updateBalance(selectedCustomer.id);
         clearAutoDraft('sale');
         if (suspendedId) {
-          await SuspendedTransactionService.deleteSuspendedTransaction(suspendedId); 
+          await SuspendedTransactionService.deleteSuspendedTransaction(suspendedId);
           setSuspendedId(null);
         }
         showToast("✅ Sale recorded!");
       }
-      setLastScrollPosition(window.scrollY); 
-      setStoreSelectedCustomer(selectedCustomer); 
+      setLastScrollPosition(window.scrollY);
+      setStoreSelectedCustomer(selectedCustomer);
       setView("profile");
-    } catch (error) { 
-      console.error(error); 
-      showToast("❌ Failed to record sale."); 
+    } catch (error) {
+      console.error(error);
+      showToast("❌ Failed to record sale.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const currentTotal = parseFloat(tx.amount) || 0; 
+  const currentTotal = parseFloat(tx.amount) || 0;
   const difference = currentTotal - originalAmount;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <TopBar title={isFixing ? "Fix Sale" : "Record Sale"} showBack={true} onBack={isFixing ? handleAbortFix : () => setView("customers")} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
-        
+
         {isFixing && (
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 p-3 rounded-r-xl shadow-sm">
             <p className="text-[10px] font-bold text-yellow-800 dark:text-yellow-400 uppercase tracking-wider mb-1">Editing Previous Sale</p>
@@ -338,7 +363,7 @@ export const RecordSalePage = () => {
             <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
               {Array.isArray(filteredCustomers) && filteredCustomers.map(c => (
                 <button key={c.id} onClick={() => handleSelectCustomer(c)} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition text-left">
-                  <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full flex items-center justify-center font-bold flex-shrink-0">{c.name.charAt(0)}</div>
+                  <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full flex items-center justify-center font-bold flex-shrink-0">{(c.name || "?").charAt(0)}</div>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900 dark:text-white truncate">{c.name}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{c.phone || "No phone"}</p>
@@ -368,16 +393,16 @@ export const RecordSalePage = () => {
                 <p className="text-xs text-green-600 dark:text-green-400 uppercase font-bold">{isFixing ? "Correcting sale for" : "Selling to"}</p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedCustomer.name || "Unknown Customer"}</p>
               </div>
-              {/* 👇 THE FIXED "CHANGE" BUTTON (Keeps items, only swaps customer) */}
+              {/* Change button: swaps ONLY the customer, keeps invoice items */}
               {!isFixing && (
-                <button 
-                  onClick={() => { 
-                    useStore.setState({ autoDraft: null }); 
-                    setMode("search"); 
-                    setSelectedCustomer(null); 
-                    setSuspendedId(null); // Safety: don't delete the old customer's suspended record on save
-                    clearAutoDraft('sale'); 
-                  }} 
+                <button
+                  onClick={() => {
+                    useStore.setState({ autoDraft: null });
+                    setMode("search");
+                    setSelectedCustomer(null);
+                    setSuspendedId(null);
+                    clearAutoDraft('sale');
+                  }}
                   className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
                 >
                   Change
@@ -394,30 +419,36 @@ export const RecordSalePage = () => {
         {mode === "existing" && (
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 block">Add a note (optional)</label>
-            <textarea value={tx.note} onChange={e => setTx({...tx, note: e.target.value})} placeholder="Add a note (optional)..." className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white text-sm resize-none" rows="2" />
+            <textarea value={tx.note} onChange={e => setTx({ ...tx, note: e.target.value })} placeholder="Add a note (optional)..." className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white text-sm resize-none" rows="2" />
           </div>
         )}
 
         {mode === "existing" && !isFixing && (
           <div className="grid grid-cols-2 gap-3 pt-2">
-            <button 
-              onClick={handleSuspendSale} 
-              className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-sm"
+            <button
+              onClick={handleSuspendSale}
+              disabled={isSuspending || isSaving}
+              className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-sm disabled:opacity-60"
             >
-              <Pause size={20} /> Suspend Sale
+              {isSuspending ? <><Loader2 className="animate-spin" size={20} /> Suspending...</> : <><Pause size={20} /> Suspend Sale</>}
             </button>
-            <button 
-              onClick={handleSaveInvoice} 
-              className="bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
+            <button
+              onClick={handleSaveInvoice}
+              disabled={isSaving || isSuspending}
+              className="bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg disabled:opacity-60"
             >
-              <Check size={24} /> Save Sale
+              {isSaving ? <><Loader2 className="animate-spin" size={24} /> Saving...</> : <><Check size={24} /> Save Sale</>}
             </button>
           </div>
         )}
 
         {mode === "existing" && isFixing && (
-          <button onClick={handleSaveInvoice} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg">
-            <Check size={24} /> Save Corrected Sale
+          <button
+            onClick={handleSaveInvoice}
+            disabled={isSaving || isSuspending}
+            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg disabled:opacity-60"
+          >
+            {isSaving ? <><Loader2 className="animate-spin" size={24} /> Saving...</> : <><Check size={24} /> Save Corrected Sale</>}
           </button>
         )}
       </div>
