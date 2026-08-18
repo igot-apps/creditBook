@@ -76,5 +76,25 @@ getAll: async (options = {}) => {
       .eq('id', id);
       
     if (error) throw error;
+  },
+
+  delete: async (id) => {
+  const { error: txError } = await supabase
+    .from('transactions')
+    .delete()
+    .eq('contact_id', id);
+  if (txError) throw txError;
+
+  const { error: suspError } = await supabase
+    .from('suspended_transactions')
+    .delete()
+    .eq('contact_id', id);
+  if (suspError) throw suspError;
+
+  const { error } = await supabase
+    .from('contacts')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
   }
 };

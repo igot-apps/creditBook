@@ -76,5 +76,29 @@ export const CustomerService = {
       .eq('id', id);
       
     if (error) throw error;
-  }
+  },
+
+  // 6. Delete a customer AND all their transactions (cascade)
+delete: async (id) => {
+  // 1. Delete all transactions tied to this customer
+  const { error: txError } = await supabase
+    .from('transactions')
+    .delete()
+    .eq('contact_id', id);
+  if (txError) throw txError;
+
+  // 2. Delete all suspended transactions tied to this customer
+  const { error: suspError } = await supabase
+    .from('suspended_transactions')
+    .delete()
+    .eq('contact_id', id);
+  if (suspError) throw suspError;
+
+  // 3. Delete the customer itself
+  const { error } = await supabase
+    .from('contacts')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+}
 };
