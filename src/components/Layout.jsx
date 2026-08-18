@@ -57,13 +57,10 @@ export const Layout = ({ children }) => {
     window.scrollTo({ top: 0 });
   };
 
-  // 👇 NEW: Logout handler
   const handleLogout = async () => {
     if (!window.confirm("Log out of CreditBook?")) return;
     try {
       await AuthService.signOut();
-
-      // Clear local drafts & selection so the next user on this device starts fresh
       useStore.getState().clearAutoDraft();
       useStore.setState({
         currentStore: null,
@@ -71,10 +68,8 @@ export const Layout = ({ children }) => {
         selectedSupplier: null,
         view: "home",
       });
-
       setIsMenuOpen(false);
       showToast("👋 Logged out successfully");
-      // App.jsx's onAuthStateChange listener will now show the Login screen automatically
     } catch (error) {
       console.error(error);
       showToast("❌ Failed to log out");
@@ -83,7 +78,7 @@ export const Layout = ({ children }) => {
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-950">
-      {/* 1. HEADER: Business Info */}
+      {/* 1. HEADER: Business Info (now fully visible on mobile) */}
       <div className="bg-white dark:bg-gray-900 p-5 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -103,7 +98,6 @@ export const Layout = ({ children }) => {
             <X size={18} className="text-gray-600 dark:text-gray-300" />
           </button>
         </div>
-        {/* Business Info Section */}
         <div className="space-y-2">
           {ownerName && (
             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
@@ -152,7 +146,6 @@ export const Layout = ({ children }) => {
 
       {/* 3. FOOTER (Theme Toggle + Logout) */}
       <div className="p-4 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex-shrink-0 space-y-3">
-        {/* Theme Toggle */}
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
@@ -170,7 +163,6 @@ export const Layout = ({ children }) => {
           </div>
         </button>
 
-        {/* 👇 NEW: Logout Button */}
         <button
           onClick={handleLogout}
           className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/40 text-red-600 dark:text-red-400 font-semibold text-sm hover:bg-red-100 dark:hover:bg-red-900/30 transition active:scale-[0.98]"
@@ -183,7 +175,7 @@ export const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Desktop Sidebar */}
+      {/* Desktop Sidebar (starts below the TopBar) */}
       <aside
         className="hidden lg:flex lg:flex-col lg:w-72 bg-gray-50 dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 fixed inset-y-0 left-0 z-40"
         style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }}
@@ -191,20 +183,23 @@ export const Layout = ({ children }) => {
         <SidebarContent />
       </aside>
 
-      {/* Mobile Sidebar Overlay */}
+      {/* 👇 Mobile Drawer — now slides ABOVE the TopBar (z-60/z-70), full height, safe-area aware */}
       {isMenuOpen && (
         <>
           <div
-            className="lg:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
+            className="lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-[60]"
             onClick={() => setIsMenuOpen(false)}
           />
-          <aside className="lg:hidden fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-gray-50 dark:bg-gray-950 z-50 shadow-2xl animate-in slide-in-from-left duration-300">
+          <aside
+            className="lg:hidden fixed inset-y-0 left-0 w-80 max-w-[85vw] bg-gray-50 dark:bg-gray-950 z-[70] shadow-2xl animate-in slide-in-from-left duration-300"
+            style={{ paddingTop: 'env(safe-area-inset-top)' }}
+          >
             <SidebarContent />
           </aside>
         </>
       )}
 
-      {/* Main Content Area — NO nested scroll container (keeps Android scrolling smooth) */}
+      {/* Main Content Area — native document scrolling */}
       <main className="flex-1 lg:ml-72 w-full max-w-full">
         {children}
       </main>

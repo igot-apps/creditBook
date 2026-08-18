@@ -643,6 +643,7 @@ export const CustomerProfilePage = () => {
         onClose={() => setIsEditModalOpen(false)}
         customer={customerData}
         onSaved={() => {
+          // Instantly refresh the profile data after editing
           CustomerService.getById(customerData.id).then(setCustomerData);
         }}
       />

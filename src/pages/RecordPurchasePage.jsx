@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Search, Plus, Truck, Package, Check, X, RotateCcw, Pause, Loader2 } from "lucide-react";
+import { Search, Plus, Truck, Package, Check, X, RotateCcw, Pause, Loader2, Percent } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { SupplierService } from "../services/SupplierService";
@@ -33,6 +33,8 @@ export const RecordPurchasePage = () => {
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [note, setNote] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
+  // 👇 NEW: Supplier discount on the invoice
+  const [discount, setDiscount] = useState("");
 
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [showAddProductModal, setShowAddProductModal] = useState(false);
@@ -46,14 +48,12 @@ export const RecordPurchasePage = () => {
   const [undoData, setUndoData] = useState(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
   const [suspendedId, setSuspendedId] = useState(null);
-  // 👇 NEW: Double-tap protection locks
   const [isSaving, setIsSaving] = useState(false);
   const [isSuspending, setIsSuspending] = useState(false);
 
   // Load Draft on Mount
   useEffect(() => { useStore.getState().loadDraft('purchase'); }, []);
 
-  // Load Suppliers (full list) & Products
   useEffect(() => {
     if (currentStore?.id) {
       SupplierService.getAll({ fetchAll: true }).then(res => setSuppliers(Array.isArray(res) ? res : [])).catch(() => setSuppliers([]));
@@ -75,6 +75,7 @@ export const RecordPurchasePage = () => {
           setInvoiceItems(susp.items || []);
           setTransactionType(susp.type === 'payment' ? 'payment' : 'purchase');
           setAmountPaid((susp.paid || 0).toString());
+          setDiscount((susp.discount || 0).toString()); // 👈 restore discount
           setNote(susp.note || "");
           setSuspendedId(susp.id);
           setMode("existing");
@@ -98,6 +99,7 @@ export const RecordPurchasePage = () => {
           });
           setInvoiceItems(susp.items || []);
           setAmountPaid((susp.paid || 0).toString());
+          setDiscount((susp.discount || 0).toString());
           setNote(susp.note || "");
           setSuspendedId(susp.id);
         }
@@ -105,7 +107,6 @@ export const RecordPurchasePage = () => {
     }
   }, [selectedSupplier?.id, mode, isFixing, transactionType, currentStore?.id, suspendedId, showToast]);
 
-  // Handle Prefill from Supplier Profile
   useEffect(() => {
     if (prefillTransaction && prefillTransaction.supplierId) {
       const supplier = suppliers.find(s => s.id === prefillTransaction.supplierId) || {
@@ -122,7 +123,7 @@ export const RecordPurchasePage = () => {
     }
   }, [prefillTransaction, suppliers, setPrefillTransaction, clearAutoDraft]);
 
-  // 👇 Handle Fix Transaction (snake_case-safe + fetches REAL supplier name)
+  // Handle Fix Transaction (snake_case-safe + fetches REAL supplier name)
   useEffect(() => {
     if (!fixTransaction || !fixTransaction.id) return;
 
@@ -134,6 +135,7 @@ export const RecordPurchasePage = () => {
       setInvoiceItems(fixTransaction.items || []);
       setNote(fixTransaction.note || '');
       setAmountPaid(fixTransaction.paid?.toString() || '');
+      setDiscount(fixTransaction.discount?.toString() || ''); // 👈 restore discount
       setOriginalAmount(parseFloat(fixTransaction.amount) || 0);
       setFixReason(fixTransaction.fixReason || "");
       setMode("existing");
@@ -160,6 +162,7 @@ export const RecordPurchasePage = () => {
     setMode("search");
     setSelectedSupplier(null);
     setAmountPaid("");
+    setDiscount("");
     setInvoiceItems([]);
     setNote("");
     clearAutoDraft('purchase');
@@ -178,6 +181,7 @@ export const RecordPurchasePage = () => {
       setInvoiceItems(autoDraft.invoiceItems || []);
       setNote(autoDraft.note || '');
       setAmountPaid(autoDraft.amountPaid || '');
+      setDiscount(autoDraft.discount || ''); // 👈 restore discount
       setMode("existing");
     }
   }, [autoDraft, suppliers, selectedSupplier, prefillTransaction, isFixing]);
@@ -193,12 +197,13 @@ export const RecordPurchasePage = () => {
         invoiceItems,
         note,
         amountPaid,
+        discount, // 👈 include discount
         draftType: 'purchase'
       };
       const timeoutId = setTimeout(() => { saveDraft(draftData, true); }, 500);
       return () => clearTimeout(timeoutId);
     }
-  }, [selectedSupplier, transactionType, invoiceItems, note, amountPaid, mode, saveDraft, isFixing]);
+  }, [selectedSupplier, transactionType, invoiceItems, note, amountPaid, discount, mode, saveDraft, isFixing]);
 
   const filteredSuppliers = useMemo(() => {
     if (!Array.isArray(suppliers)) return [];
@@ -322,7 +327,10 @@ export const RecordPurchasePage = () => {
     return invoiceItems.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0);
   }, [invoiceItems]);
 
-  // Suspend (locked against double-taps)
+  // 👇 NEW: discount-aware totals
+  const discountValue = parseFloat(discount) || 0;
+  const netTotal = Math.max(0, totalAmount - discountValue);
+
   const handleSuspendPurchase = async () => {
     if (isSuspending || isSaving) return;
     if (!selectedSupplier) { showToast("⚠️ Select a supplier first"); return; }
@@ -339,8 +347,9 @@ export const RecordPurchasePage = () => {
         contactName: selectedSupplier.name,
         contactPhone: selectedSupplier.phone,
         items: invoiceItems,
-        amount: totalAmount,
+        amount: netTotal, // 👈 save net total
         paid: parseFloat(amountPaid) || 0,
+        discount: discountValue, // 👈 save discount
         note: note
       };
       const newId = await SuspendedTransactionService.suspendTransaction(data);
@@ -376,19 +385,25 @@ export const RecordPurchasePage = () => {
     }
   };
 
-  // Save (locked against double-taps)
   const handleSavePurchase = async () => {
     if (isSaving || isSuspending) return;
     if (!selectedSupplier) return;
     const finalPaid = parseFloat(amountPaid) || 0;
-    const finalTotal = transactionType === "payment" ? 0 : totalAmount;
+    const finalTotal = transactionType === "payment" ? 0 : netTotal;
 
+    if (transactionType === "purchase" && discountValue > totalAmount) {
+      showToast("⚠️ Discount cannot be more than the total purchase."); return;
+    }
     if (finalTotal === 0 && finalPaid === 0 && !note.trim() && invoiceItems.length === 0) {
       showToast("⚠️ Please add items, a payment amount, or a note."); return;
     }
     setIsSaving(true);
     try {
-      const extraData = { contactName: selectedSupplier.name, contactPhone: selectedSupplier.phone };
+      const extraData = {
+        contactName: selectedSupplier.name,
+        contactPhone: selectedSupplier.phone,
+        discount: discountValue // 👈 persist the discount
+      };
 
       if (isFixing && fixingOldId) {
         extraData.correctsTransactionId = fixingOldId;
@@ -434,7 +449,7 @@ export const RecordPurchasePage = () => {
     }
   };
 
-  const currentTotal = transactionType === "payment" ? 0 : totalAmount;
+  const currentTotal = transactionType === "payment" ? 0 : netTotal;
   const difference = currentTotal - originalAmount;
 
   return (
@@ -498,7 +513,6 @@ export const RecordPurchasePage = () => {
                 <p className="text-xs text-indigo-600 dark:text-indigo-400 uppercase font-bold">{isFixing ? "Correcting" : (transactionType === "purchase" ? "Buying from" : "Paying to")}</p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedSupplier.name || "Unknown Supplier"}</p>
               </div>
-              {/* Change button: swaps ONLY the supplier, keeps invoice items */}
               {!isFixing && (
                 <button
                   onClick={() => {
@@ -549,8 +563,35 @@ export const RecordPurchasePage = () => {
             )}
             <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
               {transactionType === "purchase" && invoiceItems.length > 0 && (
-                <div className="flex justify-between items-center text-lg font-bold"><span className="text-gray-700 dark:text-gray-300">Total Purchase:</span><span className="text-indigo-600 dark:text-indigo-400">{formatCurrency(totalAmount, currency)}</span></div>
+                <div className="flex justify-between items-center text-lg font-bold">
+                  <span className="text-gray-700 dark:text-gray-300">Total Purchase:</span>
+                  <span className="text-indigo-600 dark:text-indigo-400">{formatCurrency(totalAmount, currency)}</span>
+                </div>
               )}
+
+              {/* 👇 NEW: Supplier Discount input */}
+              {transactionType === "purchase" && (
+                <div>
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block flex items-center gap-1">
+                    <Percent size={12} /> Supplier Discount (Optional)
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={discount}
+                    onChange={e => setDiscount(e.target.value)}
+                    placeholder="0.00"
+                    className={`w-full text-lg font-bold text-purple-700 dark:text-purple-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`}
+                  />
+                  {discountValue > 0 && (
+                    <div className="flex justify-between items-center mt-2 text-sm font-bold">
+                      <span className="text-gray-600 dark:text-gray-300">Net Total (after discount):</span>
+                      <span className="text-green-600 dark:text-green-400">{formatCurrency(netTotal, currency)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">{transactionType === "purchase" ? "Money Paid Upfront" : "Payment Amount"}</label>
                 <input type="number" inputMode="decimal" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="0.00" className={`w-full text-xl font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`} autoFocus={transactionType === "payment"} />
