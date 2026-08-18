@@ -140,4 +140,27 @@ export const TransactionService = {
     if (error) throw error;
     return data.id;
   },
+// 6. Record a debt forgiveness (write-off) with a reason
+recordWriteOff: async (storeId, contactId, amount, reason) => {
+  const { data, error } = await supabase
+    .from('transactions')
+    .insert([
+      {
+        store_id: storeId,
+        contact_id: contactId,
+        type: 'payment', // 👈 Uses existing valid type (bypasses ENUM errors)
+        amount: 0,
+        paid: parseFloat(amount) || 0,
+        discount: 0,
+        note: `[FORGIVEN] ${reason || ''}`, // 👈 Special marker for the UI
+        payment_method: 'write_off', 
+        items: [],
+        status: 'active',
+      }
+    ])
+    .select()
+    .single();
+  if (error) throw error;
+  return data.id;
+},
 };
