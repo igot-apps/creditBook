@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Phone, Edit3, Ban, Clock, AlertTriangle, FileText, X, Check, ArrowRight, ChevronDown, ChevronUp, Plus, Banknote, Smartphone, CreditCard, Share2, Truck } from "lucide-react";
+import { Phone, Edit3, Ban, Clock, AlertTriangle, FileText, X, Check, ArrowRight, ChevronDown, ChevronUp, Plus, Banknote, Smartphone, CreditCard, Share2, Truck, Trash2 } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openWhatsApp, openDialer } from "../utils/communication";
@@ -8,6 +8,7 @@ import { TransactionService } from "../services/TransactionService";
 import { AccountShareService } from "../services/AccountShareService";
 import { ShareAccountModal } from "../components/ShareAccountModal";
 import { AddSupplierModal } from "../components/supplier/AddSupplierModal";
+import { DeleteContactModal } from "../components/DeleteContactModal";
 import { TopBar } from "../components/TopBar";
 
 // ==========================================
@@ -35,7 +36,7 @@ const isActive = (tx) => tx.status === 'active' || !tx.status;
 // ==========================================
 const SupplierHeader = ({ supplier, daysSinceLastActive, onEdit }) => (
   <div className="flex items-center gap-4">
-    <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full flex items-center justify-center text-2xl font-bold flex-shrink-0">
+    <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:bg-indigo-400 rounded-full flex items-center justify-center text-2xl font-bold flex-shrink-0">
       {(supplier.name || "?").charAt(0)}
     </div>
     <div className="flex-1 min-w-0">
@@ -123,8 +124,10 @@ const OutstandingInvoices = ({ invoices, onView, currency }) => {
   );
 };
 
-const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setViewingTransaction, currency }) => {
-  const visibleHistory = history.filter(tx => !tx.replacedByTransactionId);
+// ==========================================
+// 👇 PAGINATED HISTORY (10 per page + Load More)
+// ==========================================
+const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setViewingTransaction, currency, hasMore, onLoadMore, shownCount, totalCount }) => {
   const getTimelineIcon = (tx) => {
     if (tx.status === 'being_corrected') return <Edit3 size={16} className="text-yellow-600" />;
     if (tx.status === 'cancelled') return <Ban size={16} className="text-red-500" />;
@@ -134,14 +137,15 @@ const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setVi
   };
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-      <div className="p-4 border-b border-gray-100 dark:border-gray-700 font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-        <Clock size={18} /> Recent Activity
+      <div className="p-4 border-b border-gray-100 dark:border-gray-700 font-bold text-gray-700 dark:text-gray-300 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2"><Clock size={18} /> Recent Activity</span>
+        <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">{shownCount} of {totalCount}</span>
       </div>
       <div className="p-4 space-y-3">
-        {visibleHistory.length === 0 ? (
+        {history.length === 0 ? (
           <p className="text-center text-gray-400 py-6 text-sm">No transaction history yet</p>
         ) : (
-          visibleHistory.slice(0, 10).map((tx) => {
+          history.map((tx) => {
             const isBeingCorrected = tx.status === 'being_corrected';
             const isCancelled = tx.status === 'cancelled';
             const isInvalid = isBeingCorrected || isCancelled;
@@ -193,6 +197,16 @@ const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setVi
             );
           })
         )}
+
+        {/* 👇 LOAD MORE BUTTON */}
+        {hasMore && (
+          <button
+            onClick={onLoadMore}
+            className="w-full py-3 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-gray-800/50 active:scale-[0.98] transition flex items-center justify-center gap-2"
+          >
+            <ChevronDown size={16} /> Load More Transactions
+          </button>
+        )}
       </div>
     </div>
   );
@@ -218,7 +232,7 @@ const MoreInformation = ({ totalPurchases, totalPayments, historyLength, created
 };
 
 // ==========================================
-// 👇 UPGRADED DETAILED PURCHASE RECEIPT (with itemized products)
+// DETAILED PURCHASE RECEIPT (itemized products)
 // ==========================================
 const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, currency }) => {
   if (!tx) return null;
@@ -390,7 +404,9 @@ const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, cu
   );
 };
 
-// Android-safe reason modals (no blur, no autoFocus, explicit colors)
+// ==========================================
+// REASON MODALS (Android-safe)
+// ==========================================
 const FixReasonModal = ({ isOpen, onClose, onConfirm, fixReason, setFixReason }) => {
   if (!isOpen) return null;
   return (
@@ -459,6 +475,9 @@ export const SupplierProfilePage = () => {
   const [txToFix, setTxToFix] = useState(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  // 👇 NEW: pagination for the history list (10 per page)
+  const [visibleCount, setVisibleCount] = useState(10);
 
   useEffect(() => {
     if (selectedSupplier?.id) {
@@ -467,21 +486,23 @@ export const SupplierProfilePage = () => {
     }
   }, [selectedSupplier?.id]);
 
+  // Reset pagination when switching suppliers
+  useEffect(() => {
+    setVisibleCount(10);
+  }, [selectedSupplier?.id]);
+
   if (!supplierData) return null;
 
   // ==========================================
-  // CALCULATIONS
+  // CALCULATIONS (always use the FULL history for accurate math)
   // ==========================================
   const getTrueOutstanding = (purchase) => Math.max(0, (parseFloat(purchase.amount) || 0) - (parseFloat(purchase.paid) || 0));
-
   const lastPayment = useMemo(() => history.find(tx => (parseFloat(tx.paid) || 0) > 0 && isActive(tx)), [history]);
-
   const outstandingInvoices = useMemo(() =>
     history
       .filter(tx => tx.type === 'purchase' && isActive(tx) && getTrueOutstanding(tx) > 0)
       .map(tx => ({ ...tx, trueOutstanding: getTrueOutstanding(tx) })),
     [history]);
-
   const trueBalance = useMemo(() => {
     let bal = 0;
     history.forEach(t => {
@@ -493,9 +514,12 @@ export const SupplierProfilePage = () => {
     });
     return bal;
   }, [history]);
-
   const totalPurchases = history.reduce((sum, t) => sum + ((parseFloat(t.amount) || 0) > 0 && t.type === 'purchase' && isActive(t) ? (parseFloat(t.amount) || 0) : 0), 0);
   const totalPayments = history.reduce((sum, t) => sum + ((parseFloat(t.paid) || 0) > 0 && isActive(t) ? (parseFloat(t.paid) || 0) : 0), 0);
+
+  // 👇 NEW: paginated display list (replaced transactions hidden)
+  const visibleHistory = useMemo(() => history.filter(tx => !tx.replacedByTransactionId), [history]);
+  const pagedHistory = useMemo(() => visibleHistory.slice(0, visibleCount), [visibleHistory, visibleCount]);
 
   const daysSinceLastActive = useMemo(() => {
     const last = supplierData.lastActivity || supplierData.last_activity;
@@ -525,7 +549,6 @@ export const SupplierProfilePage = () => {
       await AccountShareService.logShare({
         storeId: currentStore.id,
         contactId: supplierData.id,
-        contactName: supplierData.name,
         channel: shareData.channel,
         scope: shareData.scope,
         reference
@@ -561,7 +584,6 @@ export const SupplierProfilePage = () => {
     try {
       await TransactionService.cancelTransaction(viewingTransaction.id, cancelReason);
 
-      // Recalculate supplier balance from remaining active transactions
       const updatedHistory = await TransactionService.getHistory(supplierData.id);
       let bal = 0;
       (Array.isArray(updatedHistory) ? updatedHistory : []).forEach(t => {
@@ -594,6 +616,20 @@ export const SupplierProfilePage = () => {
     }
   };
 
+  // 👇 NEW: Delete supplier (type-yes-to-confirm)
+  const handleDeleteSupplier = async () => {
+    try {
+      await SupplierService.delete(supplierData.id);
+      showToast(`🗑️ ${supplierData.name} deleted`);
+      setSelectedSupplier(null);
+      setView("suppliers");
+    } catch (error) {
+      console.error(error);
+      showToast("❌ Failed to delete supplier");
+      throw error;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <TopBar title="Supplier Profile" showBack={true} onBack={() => { setView("suppliers"); setSelectedSupplier(null); }} />
@@ -607,8 +643,28 @@ export const SupplierProfilePage = () => {
           onShare={() => setShowShareModal(true)}
         />
         <OutstandingInvoices invoices={outstandingInvoices} onView={setViewingTransaction} currency={currency} />
-        <TransactionHistory history={history} onView={setViewingTransaction} onToggleOld={toggleOldReceipt} expandedOldTx={expandedOldTx} setViewingTransaction={setViewingTransaction} currency={currency} />
-        <MoreInformation totalPurchases={totalPurchases} totalPayments={totalPayments} historyLength={history.filter(tx => !tx.replacedByTransactionId).length} createdAt={supplierData.created_at || supplierData.createdAt} currency={currency} />
+        <TransactionHistory
+          history={pagedHistory}
+          onView={setViewingTransaction}
+          onToggleOld={toggleOldReceipt}
+          expandedOldTx={expandedOldTx}
+          setViewingTransaction={setViewingTransaction}
+          currency={currency}
+          hasMore={visibleHistory.length > visibleCount}
+          onLoadMore={() => setVisibleCount(c => c + 10)}
+          shownCount={pagedHistory.length}
+          totalCount={visibleHistory.length}
+        />
+        <MoreInformation totalPurchases={totalPurchases} totalPayments={totalPayments} historyLength={visibleHistory.length} createdAt={supplierData.created_at || supplierData.createdAt} currency={currency} />
+
+        <div className="pt-2">
+          <button
+            onClick={() => setShowDeleteModal(true)}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 text-sm font-semibold hover:bg-red-50 dark:hover:bg-red-900/10 active:scale-95 transition"
+          >
+            <Trash2 size={16} /> Delete this supplier
+          </button>
+        </div>
       </div>
 
       {/* Receipt unmounts while a reason modal is open (Android typing fix) */}
@@ -640,6 +696,15 @@ export const SupplierProfilePage = () => {
         onSaved={() => {
           SupplierService.getById(supplierData.id).then(setSupplierData);
         }}
+      />
+      <DeleteContactModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleDeleteSupplier}
+        contact={supplierData}
+        type="supplier"
+        transactions={history}
+        currency={currency}
       />
     </div>
   );
