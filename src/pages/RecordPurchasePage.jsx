@@ -572,7 +572,7 @@ export const RecordPurchasePage = () => {
               {/* 👇 NEW: Supplier Discount input */}
               {transactionType === "purchase" && (
                 <div>
-                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block flex items-center gap-1">
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 flex items-center gap-1">
                     <Percent size={12} /> Supplier Discount (Optional)
                   </label>
                   <input

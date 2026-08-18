@@ -102,15 +102,34 @@ const QuickActions = ({ onSale, onPayment, onCall, onShare }) => (
   </div>
 );
 
-const OutstandingInvoices = ({ invoices, onView, currency }) => {
+// ==========================================
+// 👇 UNPAID INVOICES WITH "SEE MORE" PAGINATION (5 per page)
+// ==========================================
+const OutstandingInvoices = ({ invoices, onView, currency, title = "Unpaid Invoices" }) => {
+  const [visibleCount, setVisibleCount] = useState(5);
+
+  // Reset pagination whenever the invoice list changes
+  useEffect(() => {
+    setVisibleCount(5);
+  }, [invoices]);
+
   if (invoices.length === 0) return null;
+
+  const visibleInvoices = invoices.slice(0, visibleCount);
+  const hasMore = invoices.length > visibleCount;
+
   return (
     <div>
-      <h3 className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1 flex items-center gap-1">
-        <AlertTriangle size={12} className="text-orange-500" /> Unpaid Invoices ({invoices.length})
+      <h3 className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1 flex items-center justify-between gap-1">
+        <span className="flex items-center gap-1">
+          <AlertTriangle size={12} className="text-orange-500" /> {title} ({invoices.length})
+        </span>
+        <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">
+          {Math.min(visibleCount, invoices.length)} of {invoices.length}
+        </span>
       </h3>
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden divide-y divide-gray-100 dark:divide-gray-700">
-        {invoices.map(tx => (
+        {visibleInvoices.map(tx => (
           <button key={tx.id} onClick={() => onView(tx)} className="w-full flex items-center justify-between p-3 active:bg-gray-50 dark:active:bg-gray-700/50 transition text-left">
             <div>
               <p className="font-semibold text-sm text-gray-900 dark:text-white">{formatCurrency(tx.trueOutstanding, currency)} unpaid</p>
@@ -120,12 +139,20 @@ const OutstandingInvoices = ({ invoices, onView, currency }) => {
           </button>
         ))}
       </div>
+      {hasMore && (
+        <button
+          onClick={() => setVisibleCount(c => c + 5)}
+          className="w-full mt-2 py-2.5 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 text-xs font-semibold hover:bg-gray-50 dark:hover:bg-gray-800/50 active:scale-[0.98] transition flex items-center justify-center gap-1.5"
+        >
+          <ChevronDown size={14} /> See More ({visibleInvoices.length} of {invoices.length})
+        </button>
+      )}
     </div>
   );
 };
 
 // ==========================================
-// 👇 PAGINATED HISTORY (10 per page + Load More)
+// 👇 HISTORY WITH "LOAD MORE" PAGINATION (10 per page)
 // ==========================================
 const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setViewingTransaction, currency, hasMore, onLoadMore, shownCount, totalCount }) => {
   const getTimelineIcon = (tx) => {
@@ -198,7 +225,7 @@ const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setVi
           })
         )}
 
-        {/* 👇 LOAD MORE BUTTON */}
+        {/* LOAD MORE BUTTON */}
         {hasMore && (
           <button
             onClick={onLoadMore}
@@ -476,7 +503,7 @@ export const CustomerProfilePage = () => {
   const [showShareModal, setShowShareModal] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  // 👇 NEW: pagination for the history list (10 per page)
+  // Pagination for the history list (10 per page)
   const [visibleCount, setVisibleCount] = useState(10);
 
   useEffect(() => {
@@ -517,7 +544,7 @@ export const CustomerProfilePage = () => {
   const totalSales = history.reduce((sum, t) => sum + ((parseFloat(t.amount) || 0) > 0 && t.type === 'sale' && isActive(t) ? (parseFloat(t.amount) || 0) : 0), 0);
   const totalPayments = history.reduce((sum, t) => sum + ((parseFloat(t.paid) || 0) > 0 && isActive(t) ? (parseFloat(t.paid) || 0) : 0), 0);
 
-  // 👇 NEW: paginated display list (replaced transactions hidden)
+  // Paginated display list (replaced transactions hidden)
   const visibleHistory = useMemo(() => history.filter(tx => !tx.replacedByTransactionId), [history]);
   const pagedHistory = useMemo(() => visibleHistory.slice(0, visibleCount), [visibleHistory, visibleCount]);
 
@@ -663,6 +690,7 @@ export const CustomerProfilePage = () => {
         </div>
       </div>
 
+      {/* Receipt unmounts while a reason modal is open (Android typing fix) */}
       {!showFixModal && !showCancelModal && (
         <ReceiptModal
           tx={viewingTransaction}
