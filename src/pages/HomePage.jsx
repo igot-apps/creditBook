@@ -24,16 +24,26 @@ const getTimeAgo = (dateString) => {
 export const HomePage = () => {
   const {
     currentStore, setView, autoDraft, showToast,
-    setSelectedCustomer, setPrefillTransaction, setResumedSuspendedId
+    setSelectedCustomer, setPrefillTransaction, setResumedSuspendedId,
+    readOnly
   } = useStore();
+
+  // 👇 VIEW-ONLY GUARD (blocks creating/resuming/discarding when subscription expired)
+  const blockIfReadOnly = () => {
+    if (readOnly) {
+      showToast("🔒 Subscription expired — please renew to continue.");
+      return true;
+    }
+    return false;
+  };
 
   const [showSearch, setShowSearch] = useState(false);
   const [todayStats, setTodayStats] = useState({ received: 0, purchases: 0, outstanding: 0 });
   const [topDebtors, setTopDebtors] = useState([]);
   const [recentCustomers, setRecentCustomers] = useState([]);
   const [suspended, setSuspended] = useState([]);
-
   const currency = currentStore?.currency || "GH₵";
+
   // Handle both snake_case (Supabase) and camelCase
   const ownerName = currentStore?.owner_name || currentStore?.ownerName || "Shop Owner";
 
@@ -50,7 +60,6 @@ export const HomePage = () => {
 
         const validCustomers = Array.isArray(customers) ? customers : [];
         const validTransactions = Array.isArray(transactions) ? transactions : [];
-
         const today = new Date().toDateString();
         let received = 0;
         let purchases = 0;
@@ -58,7 +67,6 @@ export const HomePage = () => {
         validTransactions.forEach(tx => {
           const isActive = tx.status === 'active' || !tx.status;
           if (!isActive) return;
-
           if (new Date(tx.created_at || tx.createdAt).toDateString() === today) {
             if (tx.type === 'sale' || tx.type === 'payment') received += (parseFloat(tx.paid) || 0);
             if (tx.type === 'purchase' || tx.type === 'supplier_payment') purchases += (parseFloat(tx.paid) || 0);
@@ -87,6 +95,7 @@ export const HomePage = () => {
 
   // 2. Handle "Continue Working" (Auto-Draft)
   const handleContinueDraft = () => {
+    if (blockIfReadOnly()) return;
     if (!autoDraft) return;
     if (autoDraft.draftType === 'sale') {
       setView('record');
@@ -97,28 +106,30 @@ export const HomePage = () => {
 
   // 3. Handle Quick Actions
   const handleQuickSale = () => {
+    if (blockIfReadOnly()) return;
     setPrefillTransaction(null);
     setView('record');
   };
 
   const handleQuickPurchase = () => {
+    if (blockIfReadOnly()) return;
     setPrefillTransaction(null);
     setView('recordSupplierPurchase');
   };
 
   // 4. Handle Resume Suspended Transaction
   const handleResumeSuspended = (tx) => {
+    if (blockIfReadOnly()) return;
     setResumedSuspendedId(tx.id);
     setView(tx.type === 'sale' ? 'record' : 'recordSupplierPurchase');
   };
 
   // 5. Handle Discard Suspended Transaction
   const handleDiscardSuspended = async (tx) => {
+    if (blockIfReadOnly()) return;
     const label = tx.type === 'sale' ? 'sale' : 'purchase';
     const name = tx.contactName || "Unknown";
-
     if (!window.confirm(`Discard this suspended ${label} for ${name}? This cannot be undone.`)) return;
-
     try {
       await SuspendedTransactionService.deleteSuspendedTransaction(tx.id);
       setSuspended(prev => (Array.isArray(prev) ? prev : []).filter(s => s.id !== tx.id));
@@ -321,7 +332,7 @@ export const HomePage = () => {
         )}
       </div>
 
-      {/* Universal Search Modal */}
+      {/* Universal Search Modal (works even in view-only mode — browsing is allowed) */}
       <UniversalSearchModal isOpen={showSearch} onClose={() => setShowSearch(false)} />
     </div>
   );
