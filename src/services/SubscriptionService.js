@@ -3,18 +3,20 @@ import { supabase } from '../lib/supabaseClient';
 const PAYSTACK_SECRET_KEY = import.meta.env.VITE_PAYSTACK_SECRET_KEY;
 const PAYSTACK_BASE = 'https://api.paystack.co';
 
+// 👇 Pending payments auto-disable after 1 day
+const PENDING_TTL_MS = 24 * 60 * 60 * 1000;
+
 export const PLANS = {
   monthly: { amount: 50, name: 'Monthly Plan', duration: 30 },
   yearly: { amount: 500, name: 'Yearly Plan', duration: 365 },
 };
 
 export const SubscriptionService = {
-  // 1️⃣ Create pending subscription + get Paystack payment link (directly from the app)
+  // 1️⃣ Create pending subscription + get Paystack payment link
   initializeSubscription: async ({ storeId, plan, email, phone }) => {
     const planConfig = PLANS[plan];
     if (!planConfig) throw new Error('Invalid plan');
 
-    // Create the pending subscription record in Supabase
     const { data: subscription, error: subError } = await supabase
       .from('subscriptions')
       .insert([{ store_id: storeId, plan, amount: planConfig.amount, status: 'pending', email, phone }])
@@ -22,10 +24,8 @@ export const SubscriptionService = {
       .single();
     if (subError) throw new Error(subError.message);
 
-    // 👇 Callback = wherever the app is currently running (works on any device/host)
     const callbackUrl = `${window.location.origin}${window.location.pathname}?subscription_id=${subscription.id}`;
 
-    // Call Paystack directly (no server needed)
     const response = await fetch(`${PAYSTACK_BASE}/transaction/initialize`, {
       method: 'POST',
       headers: {
@@ -34,7 +34,7 @@ export const SubscriptionService = {
       },
       body: JSON.stringify({
         email,
-        amount: planConfig.amount * 100, // pesewas
+        amount: planConfig.amount * 100,
         currency: 'GHS',
         channels: ['mobile_money', 'card'],
         callback_url: callbackUrl,
@@ -50,7 +50,7 @@ export const SubscriptionService = {
     const result = await response.json();
     if (!result.status) throw new Error(result.message || 'Failed to initialize payment');
 
-    // Save the reference for later verification
+    // Save the reference so we can verify later WITHOUT asking the user
     await supabase
       .from('subscriptions')
       .update({ paystack_reference: result.data.reference })
@@ -63,14 +63,14 @@ export const SubscriptionService = {
     };
   },
 
-  // 2️⃣ Verify with Paystack + activate the subscription in Supabase
+  // 2️⃣ Verify with Paystack + activate in Supabase
   verifySubscription: async ({ reference, subscriptionId }) => {
     const response = await fetch(`${PAYSTACK_BASE}/transaction/verify/${encodeURIComponent(reference)}`, {
       headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` },
     });
     const result = await response.json();
     if (!result.status) throw new Error(result.message || 'Verification failed');
-    if (result.data.status !== 'success') throw new Error('Payment was not successful');
+    if (result.data.status !== 'success') throw new Error('Payment not successful yet — if you paid, try again in a few minutes.');
 
     const { data: subscription, error: fetchError } = await supabase
       .from('subscriptions')
@@ -79,8 +79,7 @@ export const SubscriptionService = {
       .single();
     if (fetchError) throw new Error(fetchError.message);
 
-    // Already active? Don't double-activate
-    if (subscription.status === 'active') return subscription;
+    if (subscription.status === 'active') return subscription; // already activated
 
     const planConfig = PLANS[subscription.plan] || { duration: 30 };
     const expiresAt = new Date(Date.now() + planConfig.duration * 24 * 60 * 60 * 1000).toISOString();
@@ -91,7 +90,6 @@ export const SubscriptionService = {
       .eq('id', subscriptionId);
     if (updateError) throw new Error(updateError.message);
 
-    // Update the store's subscription status
     await supabase
       .from('stores')
       .update({ subscription_status: 'active', subscription_plan: subscription.plan, subscription_expires_at: expiresAt })
@@ -100,7 +98,7 @@ export const SubscriptionService = {
     return { ...subscription, status: 'active', expires_at: expiresAt };
   },
 
-  // 3️⃣ Current subscription status
+  // 3️⃣ Current subscription status (auto-disables pending payments older than 1 day)
   getSubscriptionStatus: async (storeId) => {
     const { data, error } = await supabase
       .from('subscriptions')
@@ -112,6 +110,20 @@ export const SubscriptionService = {
     if (error) throw new Error(error.message);
     if (!data) return { status: 'none' };
 
+    // 👇 AUTO-DISABLE: pending for more than 1 day → cancelled (assumed they won't pay)
+    if (data.status === 'pending' && data.created_at) {
+      const age = Date.now() - new Date(data.created_at).getTime();
+      if (age > PENDING_TTL_MS) {
+        supabase
+          .from('subscriptions')
+          .update({ status: 'cancelled' })
+          .eq('id', data.id)
+          .then(() => {})
+          .catch(() => {});
+        return { ...data, status: 'cancelled' };
+      }
+    }
+
     const isExpired = data.expires_at && new Date(data.expires_at) < new Date();
     return {
       id: data.id,
@@ -120,20 +132,21 @@ export const SubscriptionService = {
       amount: data.amount,
       paid_at: data.paid_at,
       expires_at: data.expires_at,
-      days_remaining: isExpired ? 0 : Math.ceil((new Date(data.expires_at) - new Date()) / 86400000),
+      created_at: data.created_at,
+      paystack_reference: data.paystack_reference,
+      days_remaining: data.expires_at
+        ? (isExpired ? 0 : Math.ceil((new Date(data.expires_at) - new Date()) / 86400000))
+        : 0,
     };
   },
 
-  // 4️⃣ ACCESS CONTROL: active → grace → locked (NO trial)
+  // 4️⃣ ACCESS CONTROL: active → grace → locked (no trial)
   checkAccess: async (store) => {
     const GRACE_DAYS = 3;
-
     const status = await SubscriptionService.getSubscriptionStatus(store.id);
 
-    // ✅ Active subscription
     if (status.status === 'active') return { ...status, access: true };
 
-    // 🕊️ Expired → 3-day grace period (app still works, with warning)
     if (status.status === 'expired' && status.expires_at) {
       const daysSinceExpiry = Math.floor((Date.now() - new Date(status.expires_at).getTime()) / 86400000);
       if (daysSinceExpiry < GRACE_DAYS) {
@@ -142,7 +155,6 @@ export const SubscriptionService = {
       return { ...status, access: false };
     }
 
-    // 🔒 No subscription → locked immediately (view-only mode)
     return { ...status, access: false };
   },
 };

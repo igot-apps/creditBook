@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Check, CreditCard, Crown, Loader2, AlertCircle, Calendar, Zap, RefreshCw } from "lucide-react";
+import { Check, CreditCard, Crown, Loader2, AlertCircle, Calendar, Zap, RefreshCw, Clock } from "lucide-react";
 import useStore from "../store/useStore";
 import { SubscriptionService, PLANS } from "../services/SubscriptionService";
 import { formatCurrency } from "../utils/helpers";
@@ -12,40 +12,54 @@ export const SubscriptionPage = () => {
   const [email, setEmail] = useState(currentStore?.email || "");
   const [phone, setPhone] = useState(currentStore?.phone || "");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
-  // 👇 Manual verification state (no-webhook fallback)
-  const [manualRef, setManualRef] = useState("");
-  const [isVerifying, setIsVerifying] = useState(false);
 
-  // Reusable loader so we can refresh after actions
   const loadSubscriptionStatus = () => {
     if (!currentStore?.id) return;
     SubscriptionService.getSubscriptionStatus(currentStore.id)
       .then(setSubscriptionStatus)
-      .catch(() => setSubscriptionStatus({ status: "none" }))
+      .catch(console.error)
       .finally(() => setLoadingStatus(false));
   };
 
-  useEffect(() => {
-    loadSubscriptionStatus();
-  }, [currentStore?.id]);
+  useEffect(() => { loadSubscriptionStatus(); }, [currentStore?.id]);
 
-  // 1️⃣ Start a new subscription payment (redirects to Paystack)
-  const handleSubscribe = async () => {
-    if (!email || !phone) {
-      showToast("⚠️ Please fill in email and phone number");
-      return;
+  // 👇 A pending payment that still has its reference (and is < 24h old — older ones are auto-cancelled by the service)
+  const pendingPayment = subscriptionStatus?.status === 'pending' && subscriptionStatus?.paystack_reference;
+
+  // 1️⃣ Verify the pending payment using the SAVED reference (no code entry needed)
+  const handleVerifyPending = async () => {
+    if (!subscriptionStatus?.paystack_reference || !subscriptionStatus?.id) return;
+    setIsVerifying(true);
+    try {
+      await SubscriptionService.verifySubscription({
+        reference: subscriptionStatus.paystack_reference,
+        subscriptionId: subscriptionStatus.id,
+      });
+      showToast("✅ Payment verified — subscription active!");
+      window.dispatchEvent(new Event("creditbook:subscription-changed"));
+      loadSubscriptionStatus();
+    } catch (error) {
+      console.error(error);
+      showToast("❌ " + (error.message || "Verification failed."));
+    } finally {
+      setIsVerifying(false);
     }
+  };
+
+  // 2️⃣ Restart the payment if it failed
+  const handlePayAgain = async () => {
+    if (!email || !phone) { showToast("⚠️ Please fill in email and phone number"); return; }
     setIsProcessing(true);
     try {
       const result = await SubscriptionService.initializeSubscription({
         storeId: currentStore.id,
-        plan: selectedPlan,
+        plan: subscriptionStatus?.plan || selectedPlan,
         email,
         phone,
       });
-      // 👇 Redirect to Paystack (they redirect back to the app with ?trxref=...)
       window.location.href = result.authorization_url;
     } catch (error) {
       console.error(error);
@@ -54,45 +68,28 @@ export const SubscriptionPage = () => {
     }
   };
 
-  // 2️⃣ Manual verification (user pastes Paystack reference)
-  const handleManualVerify = async () => {
-    if (!manualRef.trim() || !subscriptionStatus?.id) return;
-    setIsVerifying(true);
+  // 3️⃣ New subscription
+  const handleSubscribe = async () => {
+    if (!email || !phone) { showToast("⚠️ Please fill in email and phone number"); return; }
+    setIsProcessing(true);
     try {
-      await SubscriptionService.verifySubscription({
-        reference: manualRef.trim(),
-        subscriptionId: subscriptionStatus.id,
+      const result = await SubscriptionService.initializeSubscription({
+        storeId: currentStore.id,
+        plan: selectedPlan,
+        email,
+        phone,
       });
-      showToast("✅ Payment verified — subscription active!");
-      // 👇 Tell App.jsx to re-check access (unlocks the gate)
-      window.dispatchEvent(new Event("creditbook:subscription-changed"));
-      setManualRef("");
-      loadSubscriptionStatus();
+      window.location.href = result.authorization_url;
     } catch (error) {
       console.error(error);
       showToast("❌ " + error.message);
-    } finally {
-      setIsVerifying(false);
+      setIsProcessing(false);
     }
   };
 
   const plans = [
-    {
-      id: "monthly",
-      name: "Monthly",
-      price: PLANS.monthly.amount,
-      duration: "30 days",
-      features: ["Unlimited transactions", "Cloud backup", "Priority support"],
-      popular: false,
-    },
-    {
-      id: "yearly",
-      name: "Yearly",
-      price: PLANS.yearly.amount,
-      duration: "365 days",
-      features: ["Unlimited transactions", "Cloud backup", "Priority support", "2 months free"],
-      popular: true,
-    },
+    { id: "monthly", name: "Monthly", price: PLANS.monthly.amount, duration: "30 days", features: ["Unlimited transactions", "Cloud backup", "Priority support"], popular: false },
+    { id: "yearly", name: "Yearly", price: PLANS.yearly.amount, duration: "365 days", features: ["Unlimited transactions", "Cloud backup", "Priority support", "2 months free"], popular: true },
   ];
   const selectedPlanData = plans.find(p => p.id === selectedPlan);
 
@@ -109,8 +106,8 @@ export const SubscriptionPage = () => {
       <TopBar title="Subscription" showBack={true} onBack={() => setView("settings")} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-6">
 
-        {/* Current Subscription Status Card */}
-        {subscriptionStatus && subscriptionStatus.status !== 'none' && (
+        {/* Active / Expired status card */}
+        {subscriptionStatus && (subscriptionStatus.status === 'active' || subscriptionStatus.status === 'expired') && (
           <div className={`p-5 rounded-2xl shadow-sm border-2 ${
             subscriptionStatus.status === 'active'
               ? 'bg-green-50 dark:bg-green-900/10 border-green-300 dark:border-green-800'
@@ -139,28 +136,39 @@ export const SubscriptionPage = () => {
           </div>
         )}
 
-        {/* 👇 NEW: Manual Verification Card (no-webhook fallback) */}
-        {subscriptionStatus && subscriptionStatus.id && subscriptionStatus.status !== "active" && (
-          <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border-2 border-dashed border-indigo-200 dark:border-indigo-800 space-y-3">
-            <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <RefreshCw size={18} className="text-indigo-600 dark:text-indigo-400" /> Already paid?
-            </h3>
+        {/* 👇 NEW: Pending payment card (Verify / Pay Again) — disappears after 1 day */}
+        {pendingPayment && (
+          <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border-2 border-amber-300 dark:border-amber-700 space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-full bg-amber-100 dark:bg-amber-900/30">
+                <Clock size={22} className="text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-lg text-gray-900 dark:text-white">Pending Payment</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {formatCurrency(subscriptionStatus.amount || 0, "GH₵")} • {new Date(subscriptionStatus.created_at).toLocaleString()}
+                </p>
+              </div>
+            </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Paste your Paystack reference (from your MoMo confirmation SMS) to verify manually.
+              Already completed this payment? Tap <b>Verify Payment</b>. If it failed, tap <b>Pay Again</b>. Pending payments are disabled automatically after 1 day.
             </p>
-            <input
-              value={manualRef}
-              onChange={(e) => setManualRef(e.target.value)}
-              placeholder="e.g., T1234567890ABC"
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm font-mono"
-            />
-            <button
-              onClick={handleManualVerify}
-              disabled={!manualRef.trim() || isVerifying}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
-            >
-              {isVerifying ? <><Loader2 className="animate-spin" size={18} /> Verifying...</> : "Verify Payment"}
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={handleVerifyPending}
+                disabled={isVerifying}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
+              >
+                {isVerifying ? <><Loader2 className="animate-spin" size={16} /> Verifying...</> : <><RefreshCw size={16} /> Verify Payment</>}
+              </button>
+              <button
+                onClick={handlePayAgain}
+                disabled={isProcessing}
+                className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
+              >
+                {isProcessing ? <><Loader2 className="animate-spin" size={16} /> Opening...</> : <><Zap size={16} /> Pay Again</>}
+              </button>
+            </div>
           </div>
         )}
 
@@ -220,30 +228,20 @@ export const SubscriptionPage = () => {
           </h3>
           <div>
             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Email Address *</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="your@email.com"
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm"
-            />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm" />
           </div>
           <div>
             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Phone Number (MoMo) *</label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="024 123 4567"
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm"
-            />
+            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="024 123 4567"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm" />
           </div>
         </div>
 
         {/* Subscribe Button */}
         <button
           onClick={handleSubscribe}
-          disabled={isProcessing || !email || !phone}
+          disabled={isProcessing || isVerifying || !email || !phone}
           className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isProcessing ? <><Loader2 className="animate-spin" size={20} /> Processing...</> : <><Zap size={20} /> Subscribe for {formatCurrency(selectedPlanData.price, "GH₵")}</>}

@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Search, Plus, Users, Check, Loader2, Banknote, Smartphone, CreditCard } from "lucide-react";
 import useStore from "../store/useStore";
-import { formatCurrency } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
 import { TransactionService } from "../services/TransactionService";
 import { TopBar } from "../components/TopBar";
@@ -15,13 +14,15 @@ const METHODS = [
 ];
 
 export const RecordPaymentPage = () => {
-  const { currentStore, setView, prefillTransaction, setPrefillTransaction, showToast, setSelectedCustomer: setStoreSelectedCustomer, readOnly } = useStore();
-  const currency = currentStore?.currency || "GH₵";
+  const {
+    currentStore, setView, prefillTransaction, setPrefillTransaction,
+    selectedCustomer: storeCustomer, showToast, readOnly
+  } = useStore();
 
   // 👇 VIEW-ONLY GUARD
   const blockIfReadOnly = () => {
     if (readOnly) {
-      showToast("👁️ View-only mode — renew your subscription to make changes");
+      showToast("🔒 Subscription expired — please renew to continue.");
       return true;
     }
     return false;
@@ -36,25 +37,30 @@ export const RecordPaymentPage = () => {
   const [note, setNote] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
+  // Load customers for the search mode
   useEffect(() => {
     if (currentStore?.id) {
-      CustomerService.getAll({ fetchAll: true }).then(res => setCustomers(Array.isArray(res) ? res : [])).catch(() => setCustomers([]));
+      CustomerService.getAll({ fetchAll: true })
+        .then(res => setCustomers(Array.isArray(res) ? res : []))
+        .catch(() => setCustomers([]));
     }
   }, [currentStore?.id]);
 
-  // Prefill from Customer Profile
+  // 👇 AUTO-SELECT: coming from a profile means we already know the customer
   useEffect(() => {
-    if (prefillTransaction && prefillTransaction.customerId) {
-      const customer = customers.find(c => c.id === prefillTransaction.customerId) || {
+    if (prefillTransaction?.customerId) {
+      setSelectedCustomer({
         id: prefillTransaction.customerId,
         name: prefillTransaction.name || "Unknown",
         phone: prefillTransaction.phone || ""
-      };
-      setSelectedCustomer(customer);
+      });
       setMode("existing");
       setPrefillTransaction(null);
+    } else if (storeCustomer?.id && !selectedCustomer) {
+      setSelectedCustomer(storeCustomer);
+      setMode("existing");
     }
-  }, [prefillTransaction, customers, setPrefillTransaction]);
+  }, [prefillTransaction, storeCustomer, setPrefillTransaction, selectedCustomer]);
 
   const filteredCustomers = useMemo(() => {
     if (!Array.isArray(customers)) return [];
@@ -122,9 +128,12 @@ export const RecordPaymentPage = () => {
     }
   };
 
+  // Keep the store setter referenced (used after save)
+  const setStoreSelectedCustomer = (c) => useStore.setState({ selectedCustomer: c });
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      <TopBar title="Record Payment" showBack={true} onBack={() => setView("customers")} />
+      <TopBar title="Record Payment" showBack={true} onBack={() => setView("profile")} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
 
         {mode === "search" && (

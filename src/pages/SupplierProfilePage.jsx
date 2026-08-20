@@ -566,11 +566,11 @@ export const SupplierProfilePage = () => {
     setView("recordSupplierPurchase");
   };
 
-  const handleMakePayment = () => {
-    if (blockIfReadOnly()) return;
-    setSelectedSupplier(supplierData);
-    setView("recordSupplierPayment");
-  };
+const handleMakePayment = () => {
+  if (blockIfReadOnly()) return;
+  setPrefillTransaction({ supplierId: supplierData.id, name: supplierData.name, phone: supplierData.phone });
+  setView("recordSupplierPayment");
+};
 
   const handleShareAccount = async (shareData) => {
     try {

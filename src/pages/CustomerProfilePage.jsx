@@ -691,10 +691,11 @@ export const CustomerProfilePage = () => {
     setView("record");
   };
 
-  const handleReceivePayment = () => {
-    if (blockIfReadOnly()) return;
-    setView("recordPayment");
-  };
+const handleReceivePayment = () => {
+  if (blockIfReadOnly()) return;
+  setPrefillTransaction({ customerId: customerData.id, name: customerData.name, phone: customerData.phone });
+  setView("recordPayment");
+};
 
   const handleShareAccount = async (shareData) => {
     try {
