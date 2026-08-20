@@ -4,7 +4,11 @@ const useStore = create((set, get) => ({
   // --- Auth & Store State ---
   currentStore: null,
   setCurrentStore: (store) => set({ currentStore: store }),
-  
+
+  // --- 👇 NEW: Subscription Access (View-Only Mode) ---
+  readOnly: false,
+  setReadOnly: (value) => set({ readOnly: value }),
+
   // --- Navigation State ---
   view: 'home',
   setView: (view) => set({ view }),
@@ -48,7 +52,6 @@ const useStore = create((set, get) => ({
   autoDraft: null,
   saveDraft: (data, isAuto) => {
     const draft = { ...data, isAuto, updatedAt: new Date().toISOString() };
-    // 👇 Use separate keys so they don't overwrite each other
     const key = draft.draftType === 'purchase' ? 'creditbook_draft_purchase' : 'creditbook_draft_sale';
     localStorage.setItem(key, JSON.stringify(draft));
     set({ autoDraft: draft });
@@ -70,7 +73,9 @@ const useStore = create((set, get) => ({
         const parsed = JSON.parse(saved);
         set({ autoDraft: parsed });
         return parsed;
-      } catch (e) { console.error("Failed to load draft"); }
+      } catch (e) {
+        console.error("Failed to load draft");
+      }
     }
     return null;
   },

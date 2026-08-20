@@ -15,10 +15,21 @@ export const RecordSalePage = () => {
     autoDraft, saveDraft, clearAutoDraft,
     fixTransaction, setFixTransaction, lastScrollPosition, setLastScrollPosition,
     setSelectedCustomer: setStoreSelectedCustomer,
-    resumedSuspendedId, clearResumedSuspended
+    resumedSuspendedId, clearResumedSuspended,
+    readOnly
   } = useStore();
 
+  // 👇 VIEW-ONLY GUARD
+  const blockIfReadOnly = () => {
+    if (readOnly) {
+      showToast("👁️ View-only mode — renew your subscription to make changes");
+      return true;
+    }
+    return false;
+  };
+
   const currency = currentStore?.currency || "GH₵";
+
   const [mode, setMode] = useState("search");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -33,14 +44,12 @@ export const RecordSalePage = () => {
   const [undoData, setUndoData] = useState(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
   const [suspendedId, setSuspendedId] = useState(null);
-  // Double-tap protection locks
   const [isSaving, setIsSaving] = useState(false);
   const [isSuspending, setIsSuspending] = useState(false);
 
   // Load Draft on Mount
   useEffect(() => { useStore.getState().loadDraft('sale'); }, []);
 
-  // Load Customers (full list) & Products
   useEffect(() => {
     if (currentStore?.id) {
       CustomerService.getAll({ fetchAll: true }).then(res => setCustomers(Array.isArray(res) ? res : [])).catch(() => setCustomers([]));
@@ -115,7 +124,7 @@ export const RecordSalePage = () => {
     }
   }, [prefillTransaction, customers, setPrefillTransaction, clearAutoDraft]);
 
-  // 👇 Handle Fix Transaction (snake_case-safe + fetches REAL customer name)
+  // Handle Fix Transaction (snake_case-safe + fetches REAL customer name)
   useEffect(() => {
     if (!fixTransaction || !fixTransaction.id) return;
 
@@ -212,7 +221,9 @@ export const RecordSalePage = () => {
     setSearchQuery("");
   };
 
+  // 👇 GUARDED: inline customer creation
   const handleCreateCustomer = () => {
+    if (blockIfReadOnly()) return;
     const name = searchQuery.trim();
     if (name) {
       CustomerService.addCustomer(currentStore.id, name, "").then(id => {
@@ -225,8 +236,9 @@ export const RecordSalePage = () => {
     }
   };
 
-  // Suspend (locked against double-taps)
+  // 👇 GUARDED: suspend
   const handleSuspendSale = async () => {
+    if (blockIfReadOnly()) return;
     if (isSuspending || isSaving) return;
     if (!selectedCustomer) { showToast("⚠️ Select a customer first"); return; }
     if (invoiceItems.length === 0 && !tx.note.trim() && parseFloat(tx.amount) === 0) {
@@ -280,8 +292,9 @@ export const RecordSalePage = () => {
     }
   };
 
-  // Save (locked against double-taps)
+  // 👇 GUARDED: save sale
   const handleSaveInvoice = async () => {
+    if (blockIfReadOnly()) return;
     if (isSaving || isSuspending) return;
     if (!selectedCustomer) return;
     const finalAmount = parseFloat(tx.amount) || 0;
@@ -291,7 +304,11 @@ export const RecordSalePage = () => {
     }
     setIsSaving(true);
     try {
-      const extraData = { contactName: selectedCustomer.name, contactPhone: selectedCustomer.phone };
+      const extraData = {
+        contactName: selectedCustomer.name,
+        contactPhone: selectedCustomer.phone,
+        discount: parseFloat(tx.discount) || 0
+      };
       if (isFixing && fixingOldId) {
         extraData.correctsTransactionId = fixingOldId;
         extraData.fixReason = fixReason;
@@ -393,7 +410,6 @@ export const RecordSalePage = () => {
                 <p className="text-xs text-green-600 dark:text-green-400 uppercase font-bold">{isFixing ? "Correcting sale for" : "Selling to"}</p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedCustomer.name || "Unknown Customer"}</p>
               </div>
-              {/* Change button: swaps ONLY the customer, keeps invoice items */}
               {!isFixing && (
                 <button
                   onClick={() => {

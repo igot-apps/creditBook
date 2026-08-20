@@ -7,8 +7,17 @@ import { TopBar } from "../components/TopBar";
 import { CustomerService } from "../services/CustomerService";
 
 export const CustomersPage = () => {
-  const { currentStore, setSelectedCustomer, setView } = useStore();
+  const { currentStore, setSelectedCustomer, setView, showToast, readOnly } = useStore();
   const currency = currentStore?.currency || "GH₵";
+
+  // 👇 VIEW-ONLY GUARD (blocks adding customers when subscription expired)
+  const blockIfReadOnly = () => {
+    if (readOnly) {
+      showToast("👁️ View-only mode — renew your subscription to make changes");
+      return true;
+    }
+    return false;
+  };
 
   const [customers, setCustomers] = useState([]);
   const [page, setPage] = useState(0);
@@ -144,8 +153,9 @@ export const CustomersPage = () => {
               className="w-full pl-9 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 dark:text-white text-sm"
             />
           </div>
+          {/* 👇 Add button is guarded in view-only mode */}
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { if (!blockIfReadOnly()) setIsModalOpen(true); }}
             className="bg-green-600 hover:bg-green-700 text-white px-4 rounded-xl flex items-center gap-1.5 font-bold text-sm active:scale-95 transition shadow-md"
           >
             <Plus size={18} /> <span className="hidden sm:inline">Add</span>
@@ -185,7 +195,7 @@ export const CustomersPage = () => {
         </div>
       </div>
 
-      {/* Add / Edit Customer Modal — onSaved triggers instant refresh + duplicate-phone protected */}
+      {/* Add / Edit Customer Modal — onSaved triggers the instant refresh */}
       <AddCustomerModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

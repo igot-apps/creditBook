@@ -7,8 +7,17 @@ import { TopBar } from "../components/TopBar";
 import { SupplierService } from "../services/SupplierService";
 
 export const SuppliersPage = () => {
-  const { currentStore, setSelectedSupplier, setView } = useStore();
+  const { currentStore, setSelectedSupplier, setView, showToast, readOnly } = useStore();
   const currency = currentStore?.currency || "GH₵";
+
+  // 👇 VIEW-ONLY GUARD (blocks adding suppliers when subscription expired)
+  const blockIfReadOnly = () => {
+    if (readOnly) {
+      showToast("👁️ View-only mode — renew your subscription to make changes");
+      return true;
+    }
+    return false;
+  };
 
   const [suppliers, setSuppliers] = useState([]);
   const [page, setPage] = useState(0);
@@ -144,8 +153,9 @@ export const SuppliersPage = () => {
               className="w-full pl-9 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm"
             />
           </div>
+          {/* 👇 Add button is guarded in view-only mode */}
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { if (!blockIfReadOnly()) setIsModalOpen(true); }}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-xl flex items-center gap-1.5 font-bold text-sm active:scale-95 transition shadow-md"
           >
             <Plus size={18} /> <span className="hidden sm:inline">Add</span>

@@ -103,33 +103,28 @@ const QuickActions = ({ onPurchase, onPayment, onCall, onShare }) => (
 );
 
 // ==========================================
-// 👇 UNPAID PURCHASES WITH "SEE MORE" PAGINATION (5 per page)
+// UNPAID PURCHASES WITH "SEE MORE" (5 per page)
 // ==========================================
-const OutstandingInvoices = ({ invoices, onView, currency, title = "Unpaid Invoices" }) => {
+const OutstandingInvoices = ({ invoices, onView, currency }) => {
   const [visibleCount, setVisibleCount] = useState(5);
 
-  // Reset pagination whenever the invoice list changes
-  useEffect(() => {
-    setVisibleCount(5);
-  }, [invoices]);
+  useEffect(() => { setVisibleCount(5); }, [invoices]);
 
   if (invoices.length === 0) return null;
 
-  const visibleInvoices = invoices.slice(0, visibleCount);
+  const visible = invoices.slice(0, visibleCount);
   const hasMore = invoices.length > visibleCount;
 
   return (
     <div>
       <h3 className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1 flex items-center justify-between gap-1">
         <span className="flex items-center gap-1">
-          <AlertTriangle size={12} className="text-orange-500" /> {title} ({invoices.length})
+          <AlertTriangle size={12} className="text-orange-500" /> Unpaid Purchases ({invoices.length})
         </span>
-        <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">
-          {Math.min(visibleCount, invoices.length)} of {invoices.length}
-        </span>
+        <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">{Math.min(visibleCount, invoices.length)} of {invoices.length}</span>
       </h3>
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden divide-y divide-gray-100 dark:divide-gray-700">
-        {visibleInvoices.map(tx => (
+        {visible.map(tx => (
           <button key={tx.id} onClick={() => onView(tx)} className="w-full flex items-center justify-between p-3 active:bg-gray-50 dark:active:bg-gray-700/50 transition text-left">
             <div>
               <p className="font-semibold text-sm text-gray-900 dark:text-white">{formatCurrency(tx.trueOutstanding, currency)} unpaid</p>
@@ -144,7 +139,7 @@ const OutstandingInvoices = ({ invoices, onView, currency, title = "Unpaid Invoi
           onClick={() => setVisibleCount(c => c + 5)}
           className="w-full mt-2 py-2.5 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 text-xs font-semibold hover:bg-gray-50 dark:hover:bg-gray-800/50 active:scale-[0.98] transition flex items-center justify-center gap-1.5"
         >
-          <ChevronDown size={14} /> See More ({visibleInvoices.length} of {invoices.length})
+          <ChevronDown size={14} /> See More ({visible.length} of {invoices.length})
         </button>
       )}
     </div>
@@ -152,7 +147,7 @@ const OutstandingInvoices = ({ invoices, onView, currency, title = "Unpaid Invoi
 };
 
 // ==========================================
-// 👇 HISTORY WITH "LOAD MORE" PAGINATION (10 per page)
+// HISTORY WITH "LOAD MORE" (10 per page)
 // ==========================================
 const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setViewingTransaction, currency, hasMore, onLoadMore, shownCount, totalCount }) => {
   const getTimelineIcon = (tx) => {
@@ -178,7 +173,7 @@ const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setVi
             const isInvalid = isBeingCorrected || isCancelled;
             return (
               <div key={tx.id} className="space-y-2">
-                <button onClick={() => onView(tx)} className={`w-full text-left p-3 rounded-xl border transition-all active:scale-[0.98] ${
+                <div role="button" tabIndex={0} onClick={() => onView(tx)} className={`w-full text-left p-3 rounded-xl border transition-all active:scale-[0.98] cursor-pointer ${
                   isCancelled ? 'border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20' :
                   isBeingCorrected ? 'border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20' :
                   'border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
@@ -212,7 +207,7 @@ const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setVi
                       </p>
                     )}
                   </div>
-                </button>
+                </div>
                 {tx.correctsTransactionId && expandedOldTx && expandedOldTx.id === tx.correctsTransactionId && (
                   <div className="ml-6 pl-3 border-l-2 border-gray-300 dark:border-gray-700">
                     <button onClick={() => setViewingTransaction(expandedOldTx)} className="w-full text-left p-2 rounded-lg bg-red-50/30 dark:bg-red-950/10 text-xs text-red-600 dark:text-red-400">
@@ -225,7 +220,6 @@ const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setVi
           })
         )}
 
-        {/* LOAD MORE BUTTON */}
         {hasMore && (
           <button
             onClick={onLoadMore}
@@ -488,8 +482,17 @@ const CancelModal = ({ isOpen, onClose, onConfirm, cancelReason, setCancelReason
 // MAIN PAGE COMPONENT
 // ==========================================
 export const SupplierProfilePage = () => {
-  const { currentStore, selectedSupplier, setSelectedSupplier, setView, setPrefillTransaction, setFixTransaction, showToast } = useStore();
+  const { currentStore, selectedSupplier, setSelectedSupplier, setView, setPrefillTransaction, setFixTransaction, showToast, readOnly } = useStore();
   const currency = currentStore?.currency || "GH₵";
+
+  // 👇 VIEW-ONLY GUARD (new message)
+  const blockIfReadOnly = () => {
+    if (readOnly) {
+      showToast("🔒 Subscription expired — please renew to continue.");
+      return true;
+    }
+    return false;
+  };
 
   const [viewingTransaction, setViewingTransaction] = useState(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -503,7 +506,6 @@ export const SupplierProfilePage = () => {
   const [showShareModal, setShowShareModal] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  // Pagination for the history list (10 per page)
   const [visibleCount, setVisibleCount] = useState(10);
 
   useEffect(() => {
@@ -513,7 +515,6 @@ export const SupplierProfilePage = () => {
     }
   }, [selectedSupplier?.id]);
 
-  // Reset pagination when switching suppliers
   useEffect(() => {
     setVisibleCount(10);
   }, [selectedSupplier?.id]);
@@ -544,7 +545,6 @@ export const SupplierProfilePage = () => {
   const totalPurchases = history.reduce((sum, t) => sum + ((parseFloat(t.amount) || 0) > 0 && t.type === 'purchase' && isActive(t) ? (parseFloat(t.amount) || 0) : 0), 0);
   const totalPayments = history.reduce((sum, t) => sum + ((parseFloat(t.paid) || 0) > 0 && isActive(t) ? (parseFloat(t.paid) || 0) : 0), 0);
 
-  // Paginated display list (replaced transactions hidden)
   const visibleHistory = useMemo(() => history.filter(tx => !tx.replacedByTransactionId), [history]);
   const pagedHistory = useMemo(() => visibleHistory.slice(0, visibleCount), [visibleHistory, visibleCount]);
 
@@ -558,14 +558,16 @@ export const SupplierProfilePage = () => {
   }, [supplierData]);
 
   // ==========================================
-  // HANDLERS
+  // HANDLERS (all guarded for view-only mode)
   // ==========================================
   const handleRecordPurchase = () => {
+    if (blockIfReadOnly()) return;
     setPrefillTransaction({ supplierId: supplierData.id, name: supplierData.name, phone: supplierData.phone, type: "purchase", amount: "", paid: "0" });
     setView("recordSupplierPurchase");
   };
 
   const handleMakePayment = () => {
+    if (blockIfReadOnly()) return;
     setSelectedSupplier(supplierData);
     setView("recordSupplierPayment");
   };
@@ -588,6 +590,7 @@ export const SupplierProfilePage = () => {
   };
 
   const handleFixTransaction = (tx) => {
+    if (blockIfReadOnly()) return;
     setTxToFix(tx);
     setFixReason("");
     setShowFixModal(true);
@@ -601,6 +604,7 @@ export const SupplierProfilePage = () => {
   };
 
   const handleCancelTransaction = (tx) => {
+    if (blockIfReadOnly()) return;
     setCancelReason("");
     setShowCancelModal(true);
   };
@@ -644,6 +648,7 @@ export const SupplierProfilePage = () => {
   };
 
   const handleDeleteSupplier = async () => {
+    if (blockIfReadOnly()) return;
     try {
       await SupplierService.delete(supplierData.id);
       showToast(`🗑️ ${supplierData.name} deleted`);
@@ -660,7 +665,7 @@ export const SupplierProfilePage = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <TopBar title="Supplier Profile" showBack={true} onBack={() => { setView("suppliers"); setSelectedSupplier(null); }} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
-        <SupplierHeader supplier={supplierData} daysSinceLastActive={daysSinceLastActive} onEdit={() => setIsEditModalOpen(true)} />
+        <SupplierHeader supplier={supplierData} daysSinceLastActive={daysSinceLastActive} onEdit={() => { if (!blockIfReadOnly()) setIsEditModalOpen(true); }} />
         <BalanceCard balance={trueBalance} lastPayment={lastPayment} currency={currency} />
         <QuickActions
           onPurchase={handleRecordPurchase}
@@ -668,7 +673,7 @@ export const SupplierProfilePage = () => {
           onCall={() => openDialer(supplierData.phone)}
           onShare={() => setShowShareModal(true)}
         />
-        <OutstandingInvoices invoices={outstandingInvoices} onView={setViewingTransaction} currency={currency} title="Unpaid Purchases" />
+        <OutstandingInvoices invoices={outstandingInvoices} onView={setViewingTransaction} currency={currency} />
         <TransactionHistory
           history={pagedHistory}
           onView={setViewingTransaction}
@@ -685,7 +690,7 @@ export const SupplierProfilePage = () => {
 
         <div className="pt-2">
           <button
-            onClick={() => setShowDeleteModal(true)}
+            onClick={() => { if (!blockIfReadOnly()) setShowDeleteModal(true); }}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 text-sm font-semibold hover:bg-red-50 dark:hover:bg-red-900/10 active:scale-95 transition"
           >
             <Trash2 size={16} /> Delete this supplier
@@ -693,7 +698,6 @@ export const SupplierProfilePage = () => {
         </div>
       </div>
 
-      {/* Receipt unmounts while a reason modal is open (Android typing fix) */}
       {!showFixModal && !showCancelModal && (
         <ReceiptModal
           tx={viewingTransaction}

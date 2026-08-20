@@ -30,6 +30,7 @@ const normalizeTx = (tx) => {
 const normalizeList = (list) => (Array.isArray(list) ? list : []).map(normalizeTx);
 const txDate = (tx) => tx.createdAt || tx.created_at || tx.date;
 const isActive = (tx) => tx.status === 'active' || !tx.status;
+const isWriteOffTx = (tx) => tx.type === 'payment' && (tx.note || '').startsWith('[FORGIVEN]');
 
 // ==========================================
 // SUB-COMPONENTS
@@ -103,32 +104,28 @@ const QuickActions = ({ onSale, onPayment, onCall, onShare }) => (
 );
 
 // ==========================================
-// UNPAID INVOICES WITH "SEE MORE" PAGINATION (5 per page)
+// UNPAID INVOICES WITH "SEE MORE" (5 per page)
 // ==========================================
-const OutstandingInvoices = ({ invoices, onView, currency, title = "Unpaid Invoices" }) => {
+const OutstandingInvoices = ({ invoices, onView, currency }) => {
   const [visibleCount, setVisibleCount] = useState(5);
 
-  useEffect(() => {
-    setVisibleCount(5);
-  }, [invoices]);
+  useEffect(() => { setVisibleCount(5); }, [invoices]);
 
   if (invoices.length === 0) return null;
 
-  const visibleInvoices = invoices.slice(0, visibleCount);
+  const visible = invoices.slice(0, visibleCount);
   const hasMore = invoices.length > visibleCount;
 
   return (
     <div>
       <h3 className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1 flex items-center justify-between gap-1">
         <span className="flex items-center gap-1">
-          <AlertTriangle size={12} className="text-orange-500" /> {title} ({invoices.length})
+          <AlertTriangle size={12} className="text-orange-500" /> Unpaid Invoices ({invoices.length})
         </span>
-        <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">
-          {Math.min(visibleCount, invoices.length)} of {invoices.length}
-        </span>
+        <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">{Math.min(visibleCount, invoices.length)} of {invoices.length}</span>
       </h3>
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden divide-y divide-gray-100 dark:divide-gray-700">
-        {visibleInvoices.map(tx => (
+        {visible.map(tx => (
           <button key={tx.id} onClick={() => onView(tx)} className="w-full flex items-center justify-between p-3 active:bg-gray-50 dark:active:bg-gray-700/50 transition text-left">
             <div>
               <p className="font-semibold text-sm text-gray-900 dark:text-white">{formatCurrency(tx.trueOutstanding, currency)} unpaid</p>
@@ -143,7 +140,7 @@ const OutstandingInvoices = ({ invoices, onView, currency, title = "Unpaid Invoi
           onClick={() => setVisibleCount(c => c + 5)}
           className="w-full mt-2 py-2.5 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 text-xs font-semibold hover:bg-gray-50 dark:hover:bg-gray-800/50 active:scale-[0.98] transition flex items-center justify-center gap-1.5"
         >
-          <ChevronDown size={14} /> See More ({visibleInvoices.length} of {invoices.length})
+          <ChevronDown size={14} /> See More ({visible.length} of {invoices.length})
         </button>
       )}
     </div>
@@ -151,13 +148,13 @@ const OutstandingInvoices = ({ invoices, onView, currency, title = "Unpaid Invoi
 };
 
 // ==========================================
-// HISTORY WITH "LOAD MORE" PAGINATION (10 per page)
+// HISTORY WITH "LOAD MORE" (10 per page) + forgiveness badges
 // ==========================================
 const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setViewingTransaction, currency, hasMore, onLoadMore, shownCount, totalCount }) => {
   const getTimelineIcon = (tx) => {
     if (tx.status === 'being_corrected') return <Edit3 size={16} className="text-yellow-600" />;
     if (tx.status === 'cancelled') return <Ban size={16} className="text-red-500" />;
-    if (tx.type === 'payment' && tx.note?.startsWith('[FORGIVEN]')) return <HeartHandshake size={16} className="text-purple-600" />;
+    if (isWriteOffTx(tx)) return <HeartHandshake size={16} className="text-purple-600" />;
     if (tx.type === 'payment') return <Check size={16} className="text-green-500" />;
     if ((parseFloat(tx.amount) || 0) > 0 && (parseFloat(tx.paid) || 0) === 0) return <FileText size={16} className="text-orange-500" />;
     return <FileText size={16} className="text-green-500" />;
@@ -176,23 +173,23 @@ const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setVi
             const isBeingCorrected = tx.status === 'being_corrected';
             const isCancelled = tx.status === 'cancelled';
             const isInvalid = isBeingCorrected || isCancelled;
-            const isWriteOff = tx.type === 'payment' && tx.note?.startsWith('[FORGIVEN]');
+            const forgiven = isWriteOffTx(tx);
             return (
               <div key={tx.id} className="space-y-2">
                 <div role="button" tabIndex={0} onClick={() => onView(tx)} className={`w-full text-left p-3 rounded-xl border transition-all active:scale-[0.98] cursor-pointer ${
                   isCancelled ? 'border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20' :
                   isBeingCorrected ? 'border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20' :
-                  isWriteOff ? 'border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20' :
+                  forgiven ? 'border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20' :
                   'border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
                 }`}>
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
-                      <div className={`p-1 rounded-full ${isInvalid ? (isCancelled ? 'bg-red-100 dark:bg-red-900/40' : 'bg-yellow-100 dark:bg-yellow-900/40') : isWriteOff ? 'bg-purple-100 dark:bg-purple-900/30' : 'bg-green-100 dark:bg-green-900/30'}`}>
+                      <div className={`p-1 rounded-full ${isInvalid ? (isCancelled ? 'bg-red-100 dark:bg-red-900/40' : 'bg-yellow-100 dark:bg-yellow-900/40') : forgiven ? 'bg-purple-100 dark:bg-purple-900/30' : 'bg-green-100 dark:bg-green-900/30'}`}>
                         {getTimelineIcon(tx)}
                       </div>
                       <div>
-                        <p className={`font-bold text-sm ${isInvalid ? 'text-gray-500 line-through' : isWriteOff ? 'text-purple-700 dark:text-purple-400' : 'text-gray-900 dark:text-white'}`}>
-                          {isWriteOff ? 'Debt Forgiven' : tx.type === 'payment' ? 'Payment' : tx.type === 'purchase' ? 'Purchase' : 'Sale'}
+                        <p className={`font-bold text-sm ${isInvalid ? 'text-gray-500 line-through' : forgiven ? 'text-purple-700 dark:text-purple-400' : 'text-gray-900 dark:text-white'}`}>
+                          {forgiven ? 'Debt Forgiven' : tx.type === 'payment' ? 'Payment' : tx.type === 'purchase' ? 'Purchase' : 'Sale'}
                         </p>
                         <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDate(txDate(tx)).split(',')[0]}</p>
                       </div>
@@ -260,7 +257,7 @@ const MoreInformation = ({ totalSales, totalPayments, historyLength, createdAt, 
 };
 
 // ==========================================
-// DETAILED RECEIPT MODAL (itemized products + forgiveness view)
+// DETAILED RECEIPT MODAL (itemized + forgiveness view)
 // ==========================================
 const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, currency }) => {
   if (!tx) return null;
@@ -272,8 +269,8 @@ const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, cu
   const outstanding = Math.max(0, totalSale - paid);
   const receiptNo = (tx.id || "000000").slice(-6).toUpperCase();
   const isPayment = tx.type === 'payment';
-  const isWriteOff = tx.type === 'payment' && tx.note?.startsWith('[FORGIVEN]');
-  const forgiveReason = isWriteOff ? tx.note.replace('[FORGIVEN] ', '') : tx.note;
+  const forgiven = isWriteOffTx(tx);
+  const forgiveReason = forgiven ? (tx.note || '').replace('[FORGIVEN] ', '') : tx.note;
   const method = tx.paymentMethod;
 
   const handleShare = () => {
@@ -286,7 +283,7 @@ const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, cu
     L.push(`Date: ${formatDate(txDate(tx))}`);
     L.push(`Customer: ${customer?.name || "Walk-in"}`);
     L.push("──────────────────────");
-    if (isWriteOff) {
+    if (forgiven) {
       L.push(`🤝 DEBT FORGIVEN: ${formatCurrency(paid, currency)}`);
       if (forgiveReason) L.push(`Reason: ${forgiveReason}`);
     } else if (isPayment) {
@@ -309,7 +306,7 @@ const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, cu
       L.push(`PAID: ${formatCurrency(paid, currency)}`);
       L.push(`OUTSTANDING: ${formatCurrency(outstanding, currency)}`);
     }
-    if (forgiveReason && !isWriteOff) L.push(`Note: ${forgiveReason}`);
+    if (forgiveReason && !forgiven) L.push(`Note: ${forgiveReason}`);
     if (tx.status === 'cancelled') L.push(`🚫 CANCELLED: ${tx.cancel_reason || tx.cancelReason || ""}`);
     L.push("");
     L.push("Thank you for your business! 🙏");
@@ -321,8 +318,8 @@ const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, cu
       <div className="bg-gray-50 dark:bg-gray-950 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
           <h3 className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2">
-            <FileText size={20} className={isWriteOff ? "text-purple-600" : isPayment ? "text-blue-600" : "text-green-600"} />
-            {isWriteOff ? "Debt Forgiveness" : isPayment ? "Payment Receipt" : "Sale Receipt"}
+            <FileText size={20} className={forgiven ? "text-purple-600" : isPayment ? "text-blue-600" : "text-green-600"} />
+            {forgiven ? "Debt Forgiveness" : isPayment ? "Payment Receipt" : "Sale Receipt"}
           </h3>
           <button onClick={onClose} className="p-2 bg-gray-200 dark:bg-gray-800 rounded-full"><X size={18} className="text-gray-600 dark:text-gray-300" /></button>
         </div>
@@ -357,7 +354,7 @@ const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, cu
 
           <div className="border-t-2 border-dashed border-gray-300 dark:border-gray-700" />
 
-          {isWriteOff ? (
+          {forgiven ? (
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-purple-200 dark:border-purple-800 p-4 space-y-3">
               <div className="flex justify-between text-lg font-bold">
                 <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2"><HeartHandshake size={18} className="text-purple-600" /> Amount Forgiven</span>
@@ -422,7 +419,7 @@ const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, cu
             </>
           )}
 
-          {forgiveReason && !isWriteOff && (
+          {forgiveReason && !forgiven && (
             <div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-100 dark:border-yellow-900/30 rounded-xl p-3">
               <p className="text-[10px] font-bold text-yellow-700 dark:text-yellow-400 uppercase mb-1">Note</p>
               <p className="text-sm text-gray-700 dark:text-gray-300">{forgiveReason}</p>
@@ -433,13 +430,13 @@ const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, cu
         </div>
 
         <div className="p-4 pt-3 border-t border-gray-200 dark:border-gray-800 flex-shrink-0 space-y-2">
-          {customer?.phone && !isWriteOff && (
+          {customer?.phone && !forgiven && (
             <button onClick={handleShare} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
               <Share2 size={18} /> Share Receipt (WhatsApp)
             </button>
           )}
           {isActive(tx) && (
-            isWriteOff ? (
+            forgiven ? (
               <button onClick={() => onCancel(tx)} className="w-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
                 <Ban size={18} /> Cancel Forgiveness
               </button>
@@ -609,8 +606,17 @@ const CancelModal = ({ isOpen, onClose, onConfirm, cancelReason, setCancelReason
 // MAIN PAGE COMPONENT
 // ==========================================
 export const CustomerProfilePage = () => {
-  const { currentStore, selectedCustomer, setSelectedCustomer, setView, setPrefillTransaction, setFixTransaction, showToast } = useStore();
+  const { currentStore, selectedCustomer, setSelectedCustomer, setView, setPrefillTransaction, setFixTransaction, showToast, readOnly } = useStore();
   const currency = currentStore?.currency || "GH₵";
+
+  // 👇 VIEW-ONLY GUARD (new message)
+  const blockIfReadOnly = () => {
+    if (readOnly) {
+      showToast("🔒 Subscription expired — please renew to continue.");
+      return true;
+    }
+    return false;
+  };
 
   const [viewingTransaction, setViewingTransaction] = useState(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -641,10 +647,10 @@ export const CustomerProfilePage = () => {
   if (!customerData) return null;
 
   // ==========================================
-  // CALCULATIONS (write_off reduces the balance)
+  // CALCULATIONS (forgiveness reduces the balance)
   // ==========================================
   const getTrueOutstanding = (sale) => Math.max(0, (parseFloat(sale.amount) || 0) - (parseFloat(sale.paid) || 0));
-  const lastPayment = useMemo(() => history.find(tx => (parseFloat(tx.paid) || 0) > 0 && (tx.type === 'payment' || tx.type === 'sale') && isActive(tx)), [history]);
+  const lastPayment = useMemo(() => history.find(tx => (parseFloat(tx.paid) || 0) > 0 && (tx.type === 'payment' || tx.type === 'sale') && !isWriteOffTx(tx) && isActive(tx)), [history]);
   const outstandingInvoices = useMemo(() =>
     history
       .filter(tx => tx.type === 'sale' && isActive(tx) && getTrueOutstanding(tx) > 0)
@@ -657,12 +663,12 @@ export const CustomerProfilePage = () => {
       const amt = parseFloat(t.amount) || 0;
       const pd = parseFloat(t.paid) || 0;
       if (t.type === 'sale') bal += amt - pd;
-      else if (t.type === 'payment') bal -= pd;
+      else if (t.type === 'payment') bal -= pd; // includes [FORGIVEN] write-offs
     });
     return bal;
   }, [history]);
   const totalSales = history.reduce((sum, t) => sum + ((parseFloat(t.amount) || 0) > 0 && t.type === 'sale' && isActive(t) ? (parseFloat(t.amount) || 0) : 0), 0);
-  const totalPayments = history.reduce((sum, t) => sum + ((parseFloat(t.paid) || 0) > 0 && t.type !== 'payment' || !tx.note?.startsWith('[FORGIVEN]') && isActive(t) ? (parseFloat(t.paid) || 0) : 0), 0);
+  const totalPayments = history.reduce((sum, t) => sum + ((parseFloat(t.paid) || 0) > 0 && !isWriteOffTx(t) && isActive(t) ? (parseFloat(t.paid) || 0) : 0), 0);
 
   const visibleHistory = useMemo(() => history.filter(tx => !tx.replacedByTransactionId), [history]);
   const pagedHistory = useMemo(() => visibleHistory.slice(0, visibleCount), [visibleHistory, visibleCount]);
@@ -677,14 +683,18 @@ export const CustomerProfilePage = () => {
   }, [customerData]);
 
   // ==========================================
-  // HANDLERS
+  // HANDLERS (all guarded for view-only mode)
   // ==========================================
   const handleRecordSale = () => {
+    if (blockIfReadOnly()) return;
     setPrefillTransaction({ customerId: customerData.id, name: customerData.name, phone: customerData.phone, amount: "", paid: "0" });
     setView("record");
   };
 
-  const handleReceivePayment = () => setView("recordPayment");
+  const handleReceivePayment = () => {
+    if (blockIfReadOnly()) return;
+    setView("recordPayment");
+  };
 
   const handleShareAccount = async (shareData) => {
     try {
@@ -704,6 +714,7 @@ export const CustomerProfilePage = () => {
   };
 
   const handleFixTransaction = (tx) => {
+    if (blockIfReadOnly()) return;
     setTxToFix(tx);
     setFixReason("");
     setShowFixModal(true);
@@ -717,6 +728,7 @@ export const CustomerProfilePage = () => {
   };
 
   const handleCancelTransaction = (tx) => {
+    if (blockIfReadOnly()) return;
     setCancelReason("");
     setShowCancelModal(true);
   };
@@ -751,6 +763,7 @@ export const CustomerProfilePage = () => {
   };
 
   const executeForgiveDebt = async (amount, reason) => {
+    if (blockIfReadOnly()) return;
     try {
       await TransactionService.recordWriteOff(currentStore.id, customerData.id, amount, reason);
 
@@ -787,6 +800,7 @@ export const CustomerProfilePage = () => {
   };
 
   const handleDeleteCustomer = async () => {
+    if (blockIfReadOnly()) return;
     try {
       await CustomerService.delete(customerData.id);
       showToast(`🗑️ ${customerData.name} deleted`);
@@ -803,12 +817,12 @@ export const CustomerProfilePage = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <TopBar title="Customer Profile" showBack={true} onBack={() => { setView("customers"); setSelectedCustomer(null); }} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
-        <CustomerHeader customer={customerData} daysSinceLastActive={daysSinceLastActive} onEdit={() => setIsEditModalOpen(true)} />
+        <CustomerHeader customer={customerData} daysSinceLastActive={daysSinceLastActive} onEdit={() => { if (!blockIfReadOnly()) setIsEditModalOpen(true); }} />
         <BalanceCard balance={trueBalance} lastPayment={lastPayment} currency={currency} />
 
         {trueBalance > 0 && (
           <button
-            onClick={() => setShowForgiveModal(true)}
+            onClick={() => { if (!blockIfReadOnly()) setShowForgiveModal(true); }}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-purple-200 dark:border-purple-900/40 text-purple-600 dark:text-purple-400 text-sm font-semibold hover:bg-purple-50 dark:hover:bg-purple-900/10 active:scale-95 transition"
           >
             <HeartHandshake size={16} /> Forgive Debt (Write Off)
@@ -838,7 +852,7 @@ export const CustomerProfilePage = () => {
 
         <div className="pt-2">
           <button
-            onClick={() => setShowDeleteModal(true)}
+            onClick={() => { if (!blockIfReadOnly()) setShowDeleteModal(true); }}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 text-sm font-semibold hover:bg-red-50 dark:hover:bg-red-900/10 active:scale-95 transition"
           >
             <Trash2 size={16} /> Delete this customer
