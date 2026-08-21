@@ -1,11 +1,21 @@
 import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Truck, Check, Loader2, Banknote, Smartphone, CreditCard } from "lucide-react";
+import { Search, Plus, Truck, Check, Loader2, Banknote, Smartphone, CreditCard, Link2 } from "lucide-react";
 import useStore from "../store/useStore";
+import { formatCurrency } from "../utils/helpers";
 import { SupplierService } from "../services/SupplierService";
 import { TransactionService } from "../services/TransactionService";
+import { AllocationService } from "../services/AllocationService";
 import { TopBar } from "../components/TopBar";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+
+const normalizeList = (list) => (Array.isArray(list) ? list : []).map(tx => ({
+  ...tx,
+  createdAt: tx.created_at || tx.createdAt,
+  contactId: tx.contact_id || tx.contactId,
+}));
+
+const isActiveTx = (tx) => tx.status === 'active' || !tx.status;
 
 const METHODS = [
   { id: "cash", label: "Cash", icon: Banknote },
@@ -14,12 +24,15 @@ const METHODS = [
 ];
 
 export const RecordSupplierPaymentPage = () => {
-  const { currentStore, setView, prefillTransaction, setPrefillTransaction, showToast, setSelectedSupplier: setStoreSelectedSupplier, readOnly } = useStore();
+  const {
+    currentStore, setView, prefillTransaction, setPrefillTransaction,
+    selectedSupplier: storeSupplier, showToast, readOnly
+  } = useStore();
+  const currency = currentStore?.currency || "GH₵";
 
-  // 👇 VIEW-ONLY GUARD
   const blockIfReadOnly = () => {
     if (readOnly) {
-      showToast("👁️ View-only mode — renew your subscription to make changes");
+      showToast("🔒 Subscription expired — please renew to continue.");
       return true;
     }
     return false;
@@ -29,6 +42,8 @@ export const RecordSupplierPaymentPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [suppliers, setSuppliers] = useState([]);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [allocations, setAllocations] = useState([]);
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("cash");
   const [note, setNote] = useState("");
@@ -36,30 +51,93 @@ export const RecordSupplierPaymentPage = () => {
 
   useEffect(() => {
     if (currentStore?.id) {
-      SupplierService.getAll({ fetchAll: true }).then(res => setSuppliers(Array.isArray(res) ? res : [])).catch(() => setSuppliers([]));
+      SupplierService.getAll({ fetchAll: true })
+        .then(res => setSuppliers(Array.isArray(res) ? res : []))
+        .catch(() => setSuppliers([]));
     }
   }, [currentStore?.id]);
 
-  // Prefill from Supplier Profile
+  // Auto-select when coming from a supplier profile
   useEffect(() => {
-    if (prefillTransaction && prefillTransaction.supplierId) {
-      const supplier = suppliers.find(s => s.id === prefillTransaction.supplierId) || {
+    if (prefillTransaction?.supplierId) {
+      setSelectedSupplier({
         id: prefillTransaction.supplierId,
-        name: prefillTransaction.name || "Unknown Supplier",
+        name: prefillTransaction.name || "Unknown",
         phone: prefillTransaction.phone || ""
-      };
-      setSelectedSupplier(supplier);
+      });
       setMode("existing");
       setPrefillTransaction(null);
+    } else if (storeSupplier?.id && !selectedSupplier) {
+      setSelectedSupplier(storeSupplier);
+      setMode("existing");
     }
-  }, [prefillTransaction, suppliers, setPrefillTransaction]);
+  }, [prefillTransaction, storeSupplier, setPrefillTransaction, selectedSupplier]);
+
+  // Load history + allocations for the selected supplier
+  useEffect(() => {
+    if (selectedSupplier?.id) {
+      Promise.all([
+        TransactionService.getHistory(selectedSupplier.id).then(res => normalizeList(res)).catch(() => []),
+        AllocationService.getByContact(selectedSupplier.id).catch(() => []),
+      ]).then(([h, a]) => { setHistory(h); setAllocations(a); });
+    } else {
+      setHistory([]);
+      setAllocations([]);
+    }
+  }, [selectedSupplier?.id]);
+
+  // 👇 Open purchases computed LOCALLY — always real numbers
+  const openInvoices = useMemo(() => {
+    const activePayIds = new Set(
+      (Array.isArray(history) ? history : [])
+        .filter(t => t.type === 'supplier_payment' && isActiveTx(t))
+        .map(t => t.id)
+    );
+    const map = {};
+    (Array.isArray(allocations) ? allocations : []).forEach(a => {
+      if (activePayIds.has(a.payment_id) && a.sale_id) {
+        map[a.sale_id] = (map[a.sale_id] || 0) + (parseFloat(a.amount) || 0);
+      }
+    });
+    return (Array.isArray(history) ? history : [])
+      .filter(tx => tx.type === 'purchase' && isActiveTx(tx) && !tx.replacedByTransactionId)
+      .map(tx => {
+        const remaining = Math.max(
+          0,
+          (parseFloat(tx.amount) || 0) - (parseFloat(tx.paid) || 0) - (map[tx.id] || 0)
+        );
+        return {
+          id: tx.id,
+          name: "Purchase #" + String(tx.id || "").slice(-6).toUpperCase(),
+          remaining: remaining,
+          date: tx.created_at || tx.createdAt,
+        };
+      })
+      .filter(x => x.remaining > 0.009)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+  }, [history, allocations]);
+
+  // 👇 FIFO preview — only real rows (name + amount), NaN-proof
+  const preview = useMemo(() => {
+    let left = parseFloat(amount) || 0;
+    const rows = [];
+    for (const inv of openInvoices) {
+      if (left <= 0) break;
+      const apply = Math.min(inv.remaining, left);
+      if (apply > 0) {
+        rows.push({ sale_id: inv.id, name: inv.name, amount: apply });
+      }
+      left = left - apply;
+    }
+    return { rows: rows, leftover: left };
+  }, [openInvoices, amount]);
 
   const filteredSuppliers = useMemo(() => {
     if (!Array.isArray(suppliers)) return [];
     if (!searchQuery.trim()) return suppliers;
     const q = searchQuery.toLowerCase();
     return suppliers.filter(s => s.name.toLowerCase().includes(q) || (s.phone && s.phone.includes(q)));
-  }, [suppliers, searchQuery]);
+  }, [suppliers]);
 
   const handleSelectSupplier = (supplier) => {
     setSelectedSupplier(supplier);
@@ -67,13 +145,12 @@ export const RecordSupplierPaymentPage = () => {
     setSearchQuery("");
   };
 
-  // 👇 GUARDED: inline supplier creation
   const handleCreateSupplier = () => {
     if (blockIfReadOnly()) return;
     const name = searchQuery.trim();
     if (name) {
       SupplierService.addSupplier(currentStore.id, name, "").then(id => {
-        setSelectedSupplier({ id, name, phone: "", balance: 0 });
+        setSelectedSupplier({ id: id, name: name, phone: "", balance: 0 });
         setMode("existing");
         setSearchQuery("");
         showToast("✅ Supplier created!");
@@ -82,7 +159,6 @@ export const RecordSupplierPaymentPage = () => {
     }
   };
 
-  // 👇 GUARDED: save supplier payment
   const handleSavePayment = async () => {
     if (blockIfReadOnly()) return;
     if (isSaving) return;
@@ -91,16 +167,28 @@ export const RecordSupplierPaymentPage = () => {
     if (amt <= 0) { showToast("⚠️ Enter a payment amount"); return; }
     setIsSaving(true);
     try {
-      await TransactionService.recordSupplierPayment(currentStore.id, selectedSupplier.id, amt, note, {
+      const paymentId = await TransactionService.recordSupplierPayment(currentStore.id, selectedSupplier.id, amt, note, {
         paymentMethod: method,
         contactName: selectedSupplier.name,
-        contactPhone: selectedSupplier.phone
+        contactPhone: selectedSupplier.phone,
       });
 
-      // Recalculate the supplier's balance from active transactions
-      const history = await TransactionService.getHistory(selectedSupplier.id);
+      // Persist the FIFO allocations (upsert — can never duplicate)
+      if (paymentId && preview.rows.length > 0) {
+        await AllocationService.createMany(
+          preview.rows.map(r => ({
+            payment_id: paymentId,
+            sale_id: r.sale_id,
+            contact_id: selectedSupplier.id,
+            amount: r.amount,
+          }))
+        );
+      }
+
+      // Recalculate aggregate balance (single source of truth)
+      const fresh = await TransactionService.getHistory(selectedSupplier.id);
       let bal = 0;
-      (Array.isArray(history) ? history : []).forEach(t => {
+      (Array.isArray(fresh) ? fresh : []).forEach(t => {
         if (t.status && t.status !== 'active') return;
         const a = parseFloat(t.amount) || 0;
         const p = parseFloat(t.paid) || 0;
@@ -109,8 +197,8 @@ export const RecordSupplierPaymentPage = () => {
       });
       await SupplierService.updateBalance(selectedSupplier.id, bal);
 
-      showToast("✅ Payment recorded!");
-      setStoreSelectedSupplier(selectedSupplier);
+      showToast("✅ Payment recorded & applied to purchases!");
+      useStore.setState({ selectedSupplier: selectedSupplier });
       setView("supplierProfile");
     } catch (error) {
       console.error(error);
@@ -122,7 +210,7 @@ export const RecordSupplierPaymentPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-      <TopBar title="Pay Supplier" showBack={true} onBack={() => setView("suppliers")} />
+      <TopBar title="Pay Supplier" showBack={true} onBack={() => setView("supplierProfile")} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
 
         {mode === "search" && (
@@ -133,7 +221,7 @@ export const RecordSupplierPaymentPage = () => {
               <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search suppliers..." className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white" autoFocus />
             </div>
             <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
-              {Array.isArray(filteredSuppliers) && filteredSuppliers.map(s => (
+              {filteredSuppliers.map(s => (
                 <button key={s.id} onClick={() => handleSelectSupplier(s)} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition text-left">
                   <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full flex items-center justify-center font-bold flex-shrink-0">{(s.name || "?").charAt(0)}</div>
                   <div className="flex-1 min-w-0">
@@ -165,10 +253,7 @@ export const RecordSupplierPaymentPage = () => {
                 <p className="text-xs text-indigo-600 dark:text-indigo-400 uppercase font-bold">Paying to</p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedSupplier.name || "Unknown Supplier"}</p>
               </div>
-              <button
-                onClick={() => { setMode("search"); setSelectedSupplier(null); }}
-                className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
-              >
+              <button onClick={() => { setMode("search"); setSelectedSupplier(null); }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">
                 Change
               </button>
             </div>
@@ -189,6 +274,29 @@ export const RecordSupplierPaymentPage = () => {
                 autoFocus
               />
             </div>
+
+            {(parseFloat(amount) || 0) > 0 && (
+              <div className="bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl p-3 space-y-1.5">
+                <p className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400 uppercase flex items-center gap-1">
+                  <Link2 size={11} /> Payment will be applied to (oldest first)
+                </p>
+                {preview.rows.length === 0 && (
+                  <p className="text-xs text-gray-600 dark:text-gray-300">No unpaid purchases — full amount becomes supplier credit.</p>
+                )}
+                {preview.rows.map((a, i) => (
+                  <div key={i} className="flex justify-between text-xs">
+                    <span className="text-gray-600 dark:text-gray-300">{a.name}</span>
+                    <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(a.amount, currency)}</span>
+                  </div>
+                ))}
+                {preview.leftover > 0 && (
+                  <div className="flex justify-between text-xs pt-1 border-t border-indigo-100 dark:border-indigo-900/30">
+                    <span className="text-gray-600 dark:text-gray-300">Left as supplier credit</span>
+                    <span className="font-bold text-green-600 dark:text-green-400">{formatCurrency(preview.leftover, currency)}</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div>
               <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Payment Method</label>

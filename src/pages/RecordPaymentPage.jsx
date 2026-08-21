@@ -1,11 +1,21 @@
 import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Users, Check, Loader2, Banknote, Smartphone, CreditCard } from "lucide-react";
+import { Search, Plus, Users, Check, Loader2, Banknote, Smartphone, CreditCard, Link2, Edit3 } from "lucide-react";
 import useStore from "../store/useStore";
+import { formatCurrency } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
 import { TransactionService } from "../services/TransactionService";
+import { AllocationService } from "../services/AllocationService";
 import { TopBar } from "../components/TopBar";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+
+const normalizeList = (list) => (Array.isArray(list) ? list : []).map(tx => ({
+  ...tx,
+  createdAt: tx.created_at || tx.createdAt,
+  contactId: tx.contact_id || tx.contactId,
+}));
+
+const isActiveTx = (tx) => tx.status === 'active' || !tx.status;
 
 const METHODS = [
   { id: "cash", label: "Cash", icon: Banknote },
@@ -18,11 +28,11 @@ export const RecordPaymentPage = () => {
     currentStore, setView, prefillTransaction, setPrefillTransaction,
     selectedCustomer: storeCustomer, showToast, readOnly
   } = useStore();
+  const currency = currentStore?.currency || "GH₵";
 
-  // 👇 VIEW-ONLY GUARD
   const blockIfReadOnly = () => {
     if (readOnly) {
-      showToast("🔒 Subscription expired — please renew to continue.");
+      showToast(" Subscription expired — please renew to continue.");
       return true;
     }
     return false;
@@ -32,12 +42,17 @@ export const RecordPaymentPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [allocations, setAllocations] = useState([]);
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("cash");
   const [note, setNote] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Load customers for the search mode
+  // 👇 NEW: Manual Allocation State
+  const [manualMode, setManualMode] = useState(false);
+  const [manualAllocations, setManualAllocations] = useState({});
+
   useEffect(() => {
     if (currentStore?.id) {
       CustomerService.getAll({ fetchAll: true })
@@ -46,7 +61,7 @@ export const RecordPaymentPage = () => {
     }
   }, [currentStore?.id]);
 
-  // 👇 AUTO-SELECT: coming from a profile means we already know the customer
+  // Auto-select when coming from a profile
   useEffect(() => {
     if (prefillTransaction?.customerId) {
       setSelectedCustomer({
@@ -62,26 +77,103 @@ export const RecordPaymentPage = () => {
     }
   }, [prefillTransaction, storeCustomer, setPrefillTransaction, selectedCustomer]);
 
+  // Load history + allocations for the selected customer
+  useEffect(() => {
+    if (selectedCustomer?.id) {
+      Promise.all([
+        TransactionService.getHistory(selectedCustomer.id).then(res => normalizeList(res)).catch(() => []),
+        AllocationService.getByContact(selectedCustomer.id).catch(() => []),
+      ]).then(([h, a]) => { setHistory(h); setAllocations(a); });
+    } else {
+      setHistory([]);
+      setAllocations([]);
+    }
+  }, [selectedCustomer?.id]);
+
+  //  Open invoices computed LOCALLY (no external util) — always real numbers
+  const openInvoices = useMemo(() => {
+    const activePayIds = new Set(
+      (Array.isArray(history) ? history : [])
+        .filter(t => t.type === 'payment' && isActiveTx(t))
+        .map(t => t.id)
+    );
+    const map = {};
+    (Array.isArray(allocations) ? allocations : []).forEach(a => {
+      if (activePayIds.has(a.payment_id) && a.sale_id) {
+        map[a.sale_id] = (map[a.sale_id] || 0) + (parseFloat(a.amount) || 0);
+      }
+    });
+    return (Array.isArray(history) ? history : [])
+      .filter(tx => tx.type === 'sale' && isActiveTx(tx) && !tx.replacedByTransactionId)
+      .map(tx => {
+        const remaining = Math.max(
+          0,
+          (parseFloat(tx.amount) || 0) - (parseFloat(tx.paid) || 0) - (map[tx.id] || 0)
+        );
+        return {
+          id: tx.id,
+          name: "Sale #" + String(tx.id || "").slice(-6).toUpperCase(),
+          remaining: remaining,
+          date: tx.created_at || tx.createdAt,
+        };
+      })
+      .filter(x => x.remaining > 0.009)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+  }, [history, allocations]);
+
+  //  FIFO preview — only real rows (name + amount), NaN-proof
+  const preview = useMemo(() => {
+    let left = parseFloat(amount) || 0;
+    const rows = [];
+    for (const inv of openInvoices) {
+      if (left <= 0) break;
+      const apply = Math.min(inv.remaining, left);
+      if (apply > 0) {
+        rows.push({ sale_id: inv.id, name: inv.name, amount: apply });
+      }
+      left = left - apply;
+    }
+    return { rows: rows, leftover: left };
+  }, [openInvoices, amount]);
+
+  // 👇 Toggle Manual Mode (pre-fills with FIFO amounts for easy tweaking)
+  const toggleManualMode = () => {
+    if (!manualMode && preview.rows.length > 0) {
+      const prefill = {};
+      preview.rows.forEach(r => { prefill[r.sale_id] = r.amount; });
+      setManualAllocations(prefill);
+    } else {
+      setManualAllocations({});
+    }
+    setManualMode(!manualMode);
+  };
+
+  // Calculate total manually allocated
+  const manualTotal = useMemo(() => {
+    return Object.values(manualAllocations).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+  }, [manualAllocations]);
+
   const filteredCustomers = useMemo(() => {
     if (!Array.isArray(customers)) return [];
     if (!searchQuery.trim()) return customers;
     const q = searchQuery.toLowerCase();
     return customers.filter(c => c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)));
-  }, [customers, searchQuery]);
+  }, [customers]);
 
   const handleSelectCustomer = (customer) => {
     setSelectedCustomer(customer);
     setMode("existing");
     setSearchQuery("");
+    setManualMode(false); // Reset manual mode on customer change
+    setManualAllocations({});
   };
 
-  // 👇 GUARDED: inline customer creation
   const handleCreateCustomer = () => {
     if (blockIfReadOnly()) return;
     const name = searchQuery.trim();
     if (name) {
       CustomerService.addCustomer(currentStore.id, name, "").then(id => {
-        setSelectedCustomer({ id, name, phone: "", balance: 0 });
+        setSelectedCustomer({ id: id, name: name, phone: "", balance: 0 });
         setMode("existing");
         setSearchQuery("");
         showToast("✅ Customer created!");
@@ -90,25 +182,55 @@ export const RecordPaymentPage = () => {
     }
   };
 
-  // 👇 GUARDED: save payment
   const handleSavePayment = async () => {
     if (blockIfReadOnly()) return;
     if (isSaving) return;
     if (!selectedCustomer) { showToast("⚠️ Select a customer first"); return; }
     const amt = parseFloat(amount) || 0;
     if (amt <= 0) { showToast("⚠️ Enter a payment amount"); return; }
+
+    // Validation for manual mode
+    if (manualMode && manualTotal > amt) {
+      showToast(`⚠️ Allocated amount (${formatCurrency(manualTotal, currency)}) exceeds payment (${formatCurrency(amt, currency)})`);
+      return;
+    }
+
     setIsSaving(true);
     try {
-      await TransactionService.recordPayment(currentStore.id, selectedCustomer.id, amt, note, {
+      const paymentId = await TransactionService.recordPayment(currentStore.id, selectedCustomer.id, amt, note, {
         paymentMethod: method,
         contactName: selectedCustomer.name,
-        contactPhone: selectedCustomer.phone
+        contactPhone: selectedCustomer.phone,
       });
 
-      // Recalculate the customer's balance from active transactions
-      const history = await TransactionService.getHistory(selectedCustomer.id);
+      // Persist allocations (Manual or FIFO)
+      let rowsToSave = [];
+      if (manualMode) {
+        rowsToSave = Object.entries(manualAllocations)
+          .filter(([_, val]) => parseFloat(val) > 0)
+          .map(([sale_id, amount]) => ({
+            payment_id: paymentId,
+            sale_id,
+            contact_id: selectedCustomer.id,
+            amount: parseFloat(amount)
+          }));
+      } else {
+        rowsToSave = preview.rows.map(r => ({
+          payment_id: paymentId,
+          sale_id: r.sale_id,
+          contact_id: selectedCustomer.id,
+          amount: r.amount
+        }));
+      }
+
+      if (paymentId && rowsToSave.length > 0) {
+        await AllocationService.createMany(rowsToSave);
+      }
+
+      // Recalculate aggregate balance (single source of truth)
+      const fresh = await TransactionService.getHistory(selectedCustomer.id);
       let bal = 0;
-      (Array.isArray(history) ? history : []).forEach(t => {
+      (Array.isArray(fresh) ? fresh : []).forEach(t => {
         if (t.status && t.status !== 'active') return;
         const a = parseFloat(t.amount) || 0;
         const p = parseFloat(t.paid) || 0;
@@ -117,19 +239,16 @@ export const RecordPaymentPage = () => {
       });
       await CustomerService.updateBalance(selectedCustomer.id, bal);
 
-      showToast("✅ Payment recorded!");
-      setStoreSelectedCustomer(selectedCustomer);
+      showToast("✅ Payment recorded & applied to invoices!");
+      useStore.setState({ selectedCustomer: selectedCustomer });
       setView("profile");
     } catch (error) {
       console.error(error);
-      showToast("❌ Failed to record payment.");
+      showToast(" Failed to record payment.");
     } finally {
       setIsSaving(false);
     }
   };
-
-  // Keep the store setter referenced (used after save)
-  const setStoreSelectedCustomer = (c) => useStore.setState({ selectedCustomer: c });
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
@@ -144,7 +263,7 @@ export const RecordPaymentPage = () => {
               <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search customers..." className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 dark:text-white" autoFocus />
             </div>
             <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
-              {Array.isArray(filteredCustomers) && filteredCustomers.map(c => (
+              {filteredCustomers.map(c => (
                 <button key={c.id} onClick={() => handleSelectCustomer(c)} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition text-left">
                   <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full flex items-center justify-center font-bold flex-shrink-0">{(c.name || "?").charAt(0)}</div>
                   <div className="flex-1 min-w-0">
@@ -176,10 +295,7 @@ export const RecordPaymentPage = () => {
                 <p className="text-xs text-blue-600 dark:text-blue-400 uppercase font-bold">Receiving payment from</p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedCustomer.name || "Unknown Customer"}</p>
               </div>
-              <button
-                onClick={() => { setMode("search"); setSelectedCustomer(null); }}
-                className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
-              >
+              <button onClick={() => { setMode("search"); setSelectedCustomer(null); setManualMode(false); setManualAllocations({}); }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">
                 Change
               </button>
             </div>
@@ -200,6 +316,95 @@ export const RecordPaymentPage = () => {
                 autoFocus
               />
             </div>
+
+            {(parseFloat(amount) || 0) > 0 && (
+              <div className="space-y-3">
+                {/* Toggle Button */}
+                <button
+                  onClick={toggleManualMode}
+                  className="w-full text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 py-2 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition"
+                >
+                  {manualMode ? (
+                    <> <Link2 size={12} /> Switch back to Auto-apply (FIFO) </>
+                  ) : (
+                    <> <Edit3 size={12} /> Choose specific invoices manually </>
+                  )}
+                </button>
+
+                {/* AUTO MODE (Existing FIFO logic) */}
+                {!manualMode && (
+                  <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl p-3 space-y-1.5">
+                    <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase flex items-center gap-1">
+                      <Link2 size={11} /> Payment will be applied to (oldest first)
+                    </p>
+                    {preview.rows.length === 0 && (
+                      <p className="text-xs text-gray-600 dark:text-gray-300">No unpaid invoices — full amount becomes customer credit.</p>
+                    )}
+                    {preview.rows.map((a, i) => (
+                      <div key={i} className="flex justify-between text-xs">
+                        <span className="text-gray-600 dark:text-gray-300">{a.name}</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(a.amount, currency)}</span>
+                      </div>
+                    ))}
+                    {preview.leftover > 0 && (
+                      <div className="flex justify-between text-xs pt-1 border-t border-blue-100 dark:border-blue-900/30">
+                        <span className="text-gray-600 dark:text-gray-300">Left as customer credit</span>
+                        <span className="font-bold text-green-600 dark:text-green-400">{formatCurrency(preview.leftover, currency)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* MANUAL MODE (New feature) */}
+                {manualMode && (
+                  <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-2">
+                    <p className="text-[10px] font-bold text-gray-700 dark:text-gray-300 uppercase flex items-center gap-1">
+                      <Edit3 size={11} /> Select invoices and enter amounts
+                    </p>
+                    {openInvoices.length === 0 && (
+                      <p className="text-xs text-gray-600 dark:text-gray-300">No unpaid invoices available.</p>
+                    )}
+                    {openInvoices.map(inv => {
+                      const isChecked = manualAllocations[inv.id] !== undefined;
+                      const val = manualAllocations[inv.id] || '';
+                      return (
+                        <div key={inv.id} className="flex items-center gap-3 p-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) setManualAllocations(prev => ({ ...prev, [inv.id]: inv.remaining }));
+                              else { const n = { ...manualAllocations }; delete n[inv.id]; setManualAllocations(n); }
+                            }}
+                            className="w-4 h-4 text-blue-600 rounded"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-xs text-gray-900 dark:text-white truncate">{inv.name}</p>
+                            <p className="text-[10px] text-gray-500">Due: {formatCurrency(inv.remaining, currency)}</p>
+                          </div>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            value={val}
+                            onChange={(e) => setManualAllocations(prev => ({ ...prev, [inv.id]: parseFloat(e.target.value) || 0 }))}
+                            placeholder="0.00"
+                            className="w-20 px-2 py-1 text-right text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                          />
+                        </div>
+                      );
+                    })}
+                    {manualTotal > 0 && (
+                      <div className="flex justify-between text-xs pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <span className="font-bold text-gray-600 dark:text-gray-300">Total Allocated:</span>
+                        <span className={`font-bold ${manualTotal > parseFloat(amount) ? 'text-red-600' : 'text-green-600 dark:text-green-400'}`}>
+                          {formatCurrency(manualTotal, currency)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div>
               <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Payment Method</label>

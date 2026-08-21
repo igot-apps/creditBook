@@ -1,10 +1,12 @@
-import { useState, useEffect, useMemo } from "react";
-import { Phone, Edit3, Ban, Clock, AlertTriangle, FileText, X, Check, ArrowRight, ChevronDown, ChevronUp, Plus, Banknote, Smartphone, CreditCard, Share2, Trash2, HeartHandshake, Loader2 } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Phone, Edit3, Ban, Clock, AlertTriangle, FileText, X, Check, ArrowRight, ChevronDown, ChevronUp, Plus, Banknote, Smartphone, CreditCard, Share2, Trash2, HeartHandshake, Loader2, Link2 } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openWhatsApp, openDialer } from "../utils/communication";
+import { buildAllocationMap, saleRemaining, computeRetroAllocations } from "../utils/allocation";
 import { CustomerService } from "../services/CustomerService";
 import { TransactionService } from "../services/TransactionService";
+import { AllocationService } from "../services/AllocationService";
 import { AccountShareService } from "../services/AccountShareService";
 import { ShareAccountModal } from "../components/ShareAccountModal";
 import { AddCustomerModal } from "../components/customer/AddCustomerModal";
@@ -12,7 +14,7 @@ import { DeleteContactModal } from "../components/DeleteContactModal";
 import { TopBar } from "../components/TopBar";
 
 // ==========================================
-// HELPERS — normalize Supabase snake_case -> camelCase
+// HELPERS
 // ==========================================
 const normalizeTx = (tx) => {
   if (!tx) return tx;
@@ -31,6 +33,7 @@ const normalizeList = (list) => (Array.isArray(list) ? list : []).map(normalizeT
 const txDate = (tx) => tx.createdAt || tx.created_at || tx.date;
 const isActive = (tx) => tx.status === 'active' || !tx.status;
 const isWriteOffTx = (tx) => tx.type === 'payment' && (tx.note || '').startsWith('[FORGIVEN]');
+const saleLabel = (tx) => `Sale #${(tx.id || "").slice(-6).toUpperCase()}`;
 
 // ==========================================
 // SUB-COMPONENTS
@@ -104,7 +107,7 @@ const QuickActions = ({ onSale, onPayment, onCall, onShare }) => (
 );
 
 // ==========================================
-// UNPAID INVOICES WITH "SEE MORE" (5 per page)
+// UNPAID INVOICES — allocation-aware + "See More"
 // ==========================================
 const OutstandingInvoices = ({ invoices, onView, currency }) => {
   const [visibleCount, setVisibleCount] = useState(5);
@@ -129,7 +132,10 @@ const OutstandingInvoices = ({ invoices, onView, currency }) => {
           <button key={tx.id} onClick={() => onView(tx)} className="w-full flex items-center justify-between p-3 active:bg-gray-50 dark:active:bg-gray-700/50 transition text-left">
             <div>
               <p className="font-semibold text-sm text-gray-900 dark:text-white">{formatCurrency(tx.trueOutstanding, currency)} unpaid</p>
-              <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDate(txDate(tx)).split(',')[0]}</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                {formatDate(txDate(tx)).split(',')[0]}
+                {tx.allocated > 0 && <span className="ml-1 text-green-600 dark:text-green-400 font-bold">• partially paid</span>}
+              </p>
             </div>
             <ArrowRight size={16} className="text-gray-400" />
           </button>
@@ -148,7 +154,7 @@ const OutstandingInvoices = ({ invoices, onView, currency }) => {
 };
 
 // ==========================================
-// HISTORY WITH "LOAD MORE" (10 per page) + forgiveness badges
+// HISTORY — "Load More" + forgiveness badges
 // ==========================================
 const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setViewingTransaction, currency, hasMore, onLoadMore, shownCount, totalCount }) => {
   const getTimelineIcon = (tx) => {
@@ -257,21 +263,33 @@ const MoreInformation = ({ totalSales, totalPayments, historyLength, createdAt, 
 };
 
 // ==========================================
-// DETAILED RECEIPT MODAL (itemized + forgiveness view)
+// RECEIPT MODAL — allocation-aware + forgiveness view
 // ==========================================
-const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, currency }) => {
+const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, currency, history, allocations }) => {
   if (!tx) return null;
 
   const items = Array.isArray(tx.items) ? tx.items : [];
   const totalSale = parseFloat(tx.amount) || 0;
   const discount = parseFloat(tx.discount) || 0;
   const paid = parseFloat(tx.paid) || 0;
-  const outstanding = Math.max(0, totalSale - paid);
   const receiptNo = (tx.id || "000000").slice(-6).toUpperCase();
   const isPayment = tx.type === 'payment';
   const forgiven = isWriteOffTx(tx);
   const forgiveReason = forgiven ? (tx.note || '').replace('[FORGIVEN] ', '') : tx.note;
   const method = tx.paymentMethod;
+
+  const payById = (id) => (Array.isArray(history) ? history : []).find(p => p.id === id);
+  const saleById = (id) => (Array.isArray(history) ? history : []).find(s => s.id === id);
+
+  // 👇 Allocation truth from the payment_allocations table
+  const appliedToThisSale = !isPayment
+    ? (Array.isArray(allocations) ? allocations : []).filter(a => a.sale_id === tx.id && isActive(payById(a.payment_id) || {}))
+    : [];
+  const appliedByThisPayment = isPayment
+    ? (Array.isArray(allocations) ? allocations : []).filter(a => a.payment_id === tx.id)
+    : [];
+  const appliedTotal = appliedToThisSale.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+  const trueOutstanding = Math.max(0, totalSale - paid - appliedTotal);
 
   const handleShare = () => {
     const L = [];
@@ -289,6 +307,12 @@ const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, cu
     } else if (isPayment) {
       L.push(`PAYMENT RECEIVED: ${formatCurrency(paid, currency)}`);
       if (method) L.push(`Method: ${method}`);
+      if (appliedByThisPayment.length > 0) {
+        appliedByThisPayment.forEach(a => {
+          const s = saleById(a.sale_id);
+          L.push(`  → ${s ? saleLabel(s) : "Invoice"}: ${formatCurrency(parseFloat(a.amount) || 0, currency)}`);
+        });
+      }
     } else {
       if (items.length > 0) {
         items.forEach(i => {
@@ -303,8 +327,9 @@ const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, cu
       L.push("──────────────────────");
       L.push(`TOTAL: ${formatCurrency(totalSale, currency)}`);
       if (discount > 0) L.push(`Discount: ${formatCurrency(discount, currency)}`);
-      L.push(`PAID: ${formatCurrency(paid, currency)}`);
-      L.push(`OUTSTANDING: ${formatCurrency(outstanding, currency)}`);
+      L.push(`PAID UPFRONT: ${formatCurrency(paid, currency)}`);
+      if (appliedTotal > 0) L.push(`PAID VIA PAYMENTS: ${formatCurrency(appliedTotal, currency)}`);
+      L.push(`OUTSTANDING: ${formatCurrency(trueOutstanding, currency)}`);
     }
     if (forgiveReason && !forgiven) L.push(`Note: ${forgiveReason}`);
     if (tx.status === 'cancelled') L.push(`🚫 CANCELLED: ${tx.cancel_reason || tx.cancelReason || ""}`);
@@ -369,6 +394,42 @@ const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, cu
             </div>
           ) : (
             <>
+              {/* 👇 Payment receipt: which invoices this payment covered */}
+              {isPayment && appliedByThisPayment.length > 0 && (
+                <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl p-3 space-y-1.5">
+                  <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase flex items-center gap-1">
+                    <Link2 size={11} /> Applied to
+                  </p>
+                  {appliedByThisPayment.map((a, i) => {
+                    const s = saleById(a.sale_id);
+                    return (
+                      <div key={i} className="flex justify-between text-xs">
+                        <span className="text-gray-600 dark:text-gray-300">{s ? saleLabel(s) : "Invoice"}</span>
+                        <span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(parseFloat(a.amount) || 0, currency)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* 👇 Sale receipt: payments applied to THIS invoice */}
+              {!isPayment && appliedToThisSale.length > 0 && (
+                <div className="bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/30 rounded-xl p-3 space-y-1.5">
+                  <p className="text-[10px] font-bold text-green-700 dark:text-green-400 uppercase flex items-center gap-1">
+                    <Link2 size={11} /> Payments applied to this invoice
+                  </p>
+                  {appliedToThisSale.map((a, i) => {
+                    const p = payById(a.payment_id);
+                    return (
+                      <div key={i} className="flex justify-between text-xs">
+                        <span className="text-gray-600 dark:text-gray-300">{p ? formatDate(txDate(p)).split(',')[0] : "Payment"}{p?.paymentMethod ? ` • ${p.paymentMethod}` : ""}</span>
+                        <span className="font-semibold text-green-700 dark:text-green-400">-{formatCurrency(parseFloat(a.amount) || 0, currency)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {!isPayment && (
                 items.length > 0 ? (
                   <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 divide-y divide-dashed divide-gray-200 dark:divide-gray-800">
@@ -408,11 +469,19 @@ const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, cu
                     {discount > 0 && (
                       <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Discount</span><span className="font-semibold text-purple-600 dark:text-purple-400">-{formatCurrency(discount, currency)}</span></div>
                     )}
-                    <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Paid Upfront</span><span className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(paid, currency)}</span></div>
+                    {paid > 0 && (
+                      <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Paid Upfront</span><span className="font-semibold text-green-600 dark:text-green-400">-{formatCurrency(paid, currency)}</span></div>
+                    )}
+                    {appliedTotal > 0 && (
+                      <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Paid via Payments</span><span className="font-semibold text-green-600 dark:text-green-400">-{formatCurrency(appliedTotal, currency)}</span></div>
+                    )}
                     <div className="flex justify-between text-base pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
                       <span className="font-bold text-gray-700 dark:text-gray-200">Outstanding</span>
-                      <span className={`font-bold ${outstanding > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-green-600 dark:text-green-400'}`}>{formatCurrency(outstanding, currency)}</span>
+                      <span className={`font-bold ${trueOutstanding > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-green-600 dark:text-green-400'}`}>{formatCurrency(trueOutstanding, currency)}</span>
                     </div>
+                    {trueOutstanding === 0 && (
+                      <p className="text-center text-[10px] font-bold text-green-600 dark:text-green-400 uppercase pt-1">✅ Fully Paid</p>
+                    )}
                   </>
                 )}
               </div>
@@ -458,7 +527,7 @@ const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, cu
 };
 
 // ==========================================
-// FORGIVE DEBT MODAL (reason required)
+// FORGIVE DEBT MODAL
 // ==========================================
 const ForgiveDebtModal = ({ isOpen, onClose, onConfirm, balance, currency, customerName }) => {
   const [amount, setAmount] = useState("");
@@ -609,7 +678,6 @@ export const CustomerProfilePage = () => {
   const { currentStore, selectedCustomer, setSelectedCustomer, setView, setPrefillTransaction, setFixTransaction, showToast, readOnly } = useStore();
   const currency = currentStore?.currency || "GH₵";
 
-  // 👇 VIEW-ONLY GUARD (new message)
   const blockIfReadOnly = () => {
     if (readOnly) {
       showToast("🔒 Subscription expired — please renew to continue.");
@@ -623,6 +691,7 @@ export const CustomerProfilePage = () => {
   const [cancelReason, setCancelReason] = useState("");
   const [customerData, setCustomerData] = useState(selectedCustomer);
   const [history, setHistory] = useState([]);
+  const [allocations, setAllocations] = useState([]);
   const [expandedOldTx, setExpandedOldTx] = useState(null);
   const [showFixModal, setShowFixModal] = useState(false);
   const [fixReason, setFixReason] = useState("");
@@ -633,10 +702,14 @@ export const CustomerProfilePage = () => {
   const [showForgiveModal, setShowForgiveModal] = useState(false);
   const [visibleCount, setVisibleCount] = useState(10);
 
+  // Load history + allocations together
   useEffect(() => {
     if (selectedCustomer?.id) {
       CustomerService.getById(selectedCustomer.id).then(setCustomerData);
-      TransactionService.getHistory(selectedCustomer.id).then(res => setHistory(normalizeList(res)));
+      Promise.all([
+        TransactionService.getHistory(selectedCustomer.id).then(res => normalizeList(res)).catch(() => []),
+        AllocationService.getByContact(selectedCustomer.id).catch(() => []),
+      ]).then(([h, a]) => { setHistory(h); setAllocations(a); });
     }
   }, [selectedCustomer?.id]);
 
@@ -644,18 +717,49 @@ export const CustomerProfilePage = () => {
     setVisibleCount(10);
   }, [selectedCustomer?.id]);
 
+  // 👇 AUTOMATIC healing — guarded so it can NEVER run twice at the same time
+  const healRunning = useRef(false);
+  useEffect(() => {
+    if (!selectedCustomer?.id || history.length === 0) return;
+    if (healRunning.current) return; // another heal is already in flight
+    healRunning.current = true;
+    (async () => {
+      try {
+        const rows = computeRetroAllocations(history, allocations);
+        if (rows.length > 0) {
+          await AllocationService.createMany(rows);
+          const fresh = await AllocationService.getByContact(selectedCustomer.id);
+          setAllocations(fresh);
+        }
+      } catch (error) {
+        console.error("Auto-match failed:", error);
+      } finally {
+        healRunning.current = false;
+      }
+    })();
+  }, [history, allocations, selectedCustomer?.id]);
+
   if (!customerData) return null;
 
   // ==========================================
-  // CALCULATIONS (forgiveness reduces the balance)
+  // CALCULATIONS — allocation-aware
   // ==========================================
   const getTrueOutstanding = (sale) => Math.max(0, (parseFloat(sale.amount) || 0) - (parseFloat(sale.paid) || 0));
+  const allocationMap = useMemo(() => buildAllocationMap(allocations, history), [allocations, history]);
   const lastPayment = useMemo(() => history.find(tx => (parseFloat(tx.paid) || 0) > 0 && (tx.type === 'payment' || tx.type === 'sale') && !isWriteOffTx(tx) && isActive(tx)), [history]);
+
+  // 👇 Invoices subtract allocated payments → fully-paid invoices disappear
   const outstandingInvoices = useMemo(() =>
     history
-      .filter(tx => tx.type === 'sale' && isActive(tx) && getTrueOutstanding(tx) > 0)
-      .map(tx => ({ ...tx, trueOutstanding: getTrueOutstanding(tx) })),
-    [history]);
+      .filter(tx => tx.type === 'sale' && isActive(tx) && !tx.replacedByTransactionId)
+      .map(tx => {
+        const original = getTrueOutstanding(tx);
+        const remaining = saleRemaining(tx, allocationMap);
+        return { ...tx, trueOutstanding: remaining, originalOutstanding: original, allocated: original - remaining };
+      })
+      .filter(tx => tx.trueOutstanding > 0),
+    [history, allocationMap]);
+
   const trueBalance = useMemo(() => {
     let bal = 0;
     history.forEach(t => {
@@ -663,10 +767,11 @@ export const CustomerProfilePage = () => {
       const amt = parseFloat(t.amount) || 0;
       const pd = parseFloat(t.paid) || 0;
       if (t.type === 'sale') bal += amt - pd;
-      else if (t.type === 'payment') bal -= pd; // includes [FORGIVEN] write-offs
+      else if (t.type === 'payment') bal -= pd;
     });
     return bal;
   }, [history]);
+
   const totalSales = history.reduce((sum, t) => sum + ((parseFloat(t.amount) || 0) > 0 && t.type === 'sale' && isActive(t) ? (parseFloat(t.amount) || 0) : 0), 0);
   const totalPayments = history.reduce((sum, t) => sum + ((parseFloat(t.paid) || 0) > 0 && !isWriteOffTx(t) && isActive(t) ? (parseFloat(t.paid) || 0) : 0), 0);
 
@@ -683,7 +788,7 @@ export const CustomerProfilePage = () => {
   }, [customerData]);
 
   // ==========================================
-  // HANDLERS (all guarded for view-only mode)
+  // HANDLERS (all guarded)
   // ==========================================
   const handleRecordSale = () => {
     if (blockIfReadOnly()) return;
@@ -691,11 +796,11 @@ export const CustomerProfilePage = () => {
     setView("record");
   };
 
-const handleReceivePayment = () => {
-  if (blockIfReadOnly()) return;
-  setPrefillTransaction({ customerId: customerData.id, name: customerData.name, phone: customerData.phone });
-  setView("recordPayment");
-};
+  const handleReceivePayment = () => {
+    if (blockIfReadOnly()) return;
+    setPrefillTransaction({ customerId: customerData.id, name: customerData.name, phone: customerData.phone });
+    setView("recordPayment");
+  };
 
   const handleShareAccount = async (shareData) => {
     try {
@@ -836,6 +941,7 @@ const handleReceivePayment = () => {
           onCall={() => openDialer(customerData.phone)}
           onShare={() => setShowShareModal(true)}
         />
+
         <OutstandingInvoices invoices={outstandingInvoices} onView={setViewingTransaction} currency={currency} />
         <TransactionHistory
           history={pagedHistory}
@@ -870,6 +976,8 @@ const handleReceivePayment = () => {
           onFix={handleFixTransaction}
           onCancel={handleCancelTransaction}
           currency={currency}
+          history={history}
+          allocations={allocations}
         />
       )}
       <FixReasonModal isOpen={showFixModal} onClose={() => setShowFixModal(false)} onConfirm={confirmFix} fixReason={fixReason} setFixReason={setFixReason} />

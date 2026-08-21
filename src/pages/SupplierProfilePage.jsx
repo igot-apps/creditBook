@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
-import { Phone, Edit3, Ban, Clock, AlertTriangle, FileText, X, Check, ArrowRight, ChevronDown, ChevronUp, Plus, Banknote, Smartphone, CreditCard, Share2, Truck, Trash2 } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Phone, Edit3, Ban, Clock, AlertTriangle, FileText, X, Check, ArrowRight, ChevronDown, ChevronUp, Plus, Banknote, Smartphone, CreditCard, Share2, Truck, Trash2, Link2 } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { openWhatsApp, openDialer } from "../utils/communication";
 import { SupplierService } from "../services/SupplierService";
 import { TransactionService } from "../services/TransactionService";
+import { AllocationService } from "../services/AllocationService";
 import { AccountShareService } from "../services/AccountShareService";
 import { ShareAccountModal } from "../components/ShareAccountModal";
 import { AddSupplierModal } from "../components/supplier/AddSupplierModal";
@@ -12,7 +13,7 @@ import { DeleteContactModal } from "../components/DeleteContactModal";
 import { TopBar } from "../components/TopBar";
 
 // ==========================================
-// HELPERS — normalize Supabase snake_case -> camelCase
+// HELPERS
 // ==========================================
 const normalizeTx = (tx) => {
   if (!tx) return tx;
@@ -30,6 +31,60 @@ const normalizeTx = (tx) => {
 const normalizeList = (list) => (Array.isArray(list) ? list : []).map(normalizeTx);
 const txDate = (tx) => tx.createdAt || tx.created_at || tx.date;
 const isActive = (tx) => tx.status === 'active' || !tx.status;
+const purchaseLabel = (tx) => `Purchase #${(tx.id || "").slice(-6).toUpperCase()}`;
+
+// ==========================================
+// LOCAL ALLOCATION HELPERS (supplier side — no external util)
+// ==========================================
+const activePaymentIds = (history) =>
+  new Set((Array.isArray(history) ? history : []).filter(t => t.type === 'supplier_payment' && isActive(t)).map(t => t.id));
+
+const buildAllocMap = (allocs, history) => {
+  const ids = activePaymentIds(history);
+  const map = {};
+  (Array.isArray(allocs) ? allocs : []).forEach(a => {
+    if (ids.has(a.payment_id) && a.sale_id) map[a.sale_id] = (map[a.sale_id] || 0) + (parseFloat(a.amount) || 0);
+  });
+  return map;
+};
+
+const retroRows = (history, allocs) => {
+  const map = buildAllocMap(allocs, history);
+  const open = (Array.isArray(history) ? history : [])
+    .filter(tx => tx.type === 'purchase' && isActive(tx) && !tx.replacedByTransactionId)
+    .map(tx => ({
+      id: tx.id,
+      remaining: Math.max(0, (parseFloat(tx.amount) || 0) - (parseFloat(tx.paid) || 0) - (map[tx.id] || 0)),
+      date: tx.created_at || tx.createdAt,
+    }))
+    .filter(x => x.remaining > 0.009)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const ids = activePaymentIds(history);
+  const per = {};
+  (Array.isArray(allocs) ? allocs : []).forEach(a => {
+    if (ids.has(a.payment_id)) per[a.payment_id] = (per[a.payment_id] || 0) + (parseFloat(a.amount) || 0);
+  });
+
+  let idx = 0;
+  const rows = [];
+  (Array.isArray(history) ? history : [])
+    .filter(t => t.type === 'supplier_payment' && isActive(t))
+    .sort((a, b) => new Date(a.created_at || a.createdAt) - new Date(b.created_at || b.createdAt))
+    .forEach(p => {
+      let avail = (parseFloat(p.paid) || 0) - (per[p.id] || 0);
+      if (avail <= 0.009) return;
+      while (avail > 0.009 && idx < open.length) {
+        const inv = open[idx];
+        const apply = Math.min(inv.remaining, avail);
+        rows.push({ payment_id: p.id, sale_id: inv.id, contact_id: p.contactId || p.contact_id || null, amount: apply });
+        inv.remaining -= apply;
+        avail -= apply;
+        if (inv.remaining <= 0.009) idx++;
+      }
+    });
+  return rows;
+};
 
 // ==========================================
 // SUB-COMPONENTS
@@ -103,7 +158,7 @@ const QuickActions = ({ onPurchase, onPayment, onCall, onShare }) => (
 );
 
 // ==========================================
-// UNPAID PURCHASES WITH "SEE MORE" (5 per page)
+// UNPAID PURCHASES — allocation-aware + "See More"
 // ==========================================
 const OutstandingInvoices = ({ invoices, onView, currency }) => {
   const [visibleCount, setVisibleCount] = useState(5);
@@ -128,7 +183,10 @@ const OutstandingInvoices = ({ invoices, onView, currency }) => {
           <button key={tx.id} onClick={() => onView(tx)} className="w-full flex items-center justify-between p-3 active:bg-gray-50 dark:active:bg-gray-700/50 transition text-left">
             <div>
               <p className="font-semibold text-sm text-gray-900 dark:text-white">{formatCurrency(tx.trueOutstanding, currency)} unpaid</p>
-              <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDate(txDate(tx)).split(',')[0]}</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                {formatDate(txDate(tx)).split(',')[0]}
+                {tx.allocated > 0 && <span className="ml-1 text-green-600 dark:text-green-400 font-bold">• partially paid</span>}
+              </p>
             </div>
             <ArrowRight size={16} className="text-gray-400" />
           </button>
@@ -147,7 +205,7 @@ const OutstandingInvoices = ({ invoices, onView, currency }) => {
 };
 
 // ==========================================
-// HISTORY WITH "LOAD MORE" (10 per page)
+// HISTORY — "Load More"
 // ==========================================
 const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setViewingTransaction, currency, hasMore, onLoadMore, shownCount, totalCount }) => {
   const getTimelineIcon = (tx) => {
@@ -253,19 +311,30 @@ const MoreInformation = ({ totalPurchases, totalPayments, historyLength, created
 };
 
 // ==========================================
-// DETAILED PURCHASE RECEIPT (itemized products)
+// RECEIPT MODAL — allocation-aware
 // ==========================================
-const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, currency }) => {
+const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, currency, history, allocations }) => {
   if (!tx) return null;
 
   const items = Array.isArray(tx.items) ? tx.items : [];
   const totalPurchase = parseFloat(tx.amount) || 0;
   const discount = parseFloat(tx.discount) || 0;
   const paid = parseFloat(tx.paid) || 0;
-  const outstanding = Math.max(0, totalPurchase - paid);
   const receiptNo = (tx.id || "000000").slice(-6).toUpperCase();
   const isPayment = tx.type === 'supplier_payment';
   const method = tx.paymentMethod;
+
+  const payById = (id) => (Array.isArray(history) ? history : []).find(p => p.id === id);
+  const purchaseById = (id) => (Array.isArray(history) ? history : []).find(s => s.id === id);
+
+  const appliedToThisPurchase = !isPayment
+    ? (Array.isArray(allocations) ? allocations : []).filter(a => a.sale_id === tx.id && isActive(payById(a.payment_id) || {}))
+    : [];
+  const appliedByThisPayment = isPayment
+    ? (Array.isArray(allocations) ? allocations : []).filter(a => a.payment_id === tx.id)
+    : [];
+  const appliedTotal = appliedToThisPurchase.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+  const trueOutstanding = Math.max(0, totalPurchase - paid - appliedTotal);
 
   const handleShare = () => {
     const L = [];
@@ -280,6 +349,12 @@ const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, cu
     if (isPayment) {
       L.push(`PAYMENT MADE: ${formatCurrency(paid, currency)}`);
       if (method) L.push(`Method: ${method}`);
+      if (appliedByThisPayment.length > 0) {
+        appliedByThisPayment.forEach(a => {
+          const s = purchaseById(a.sale_id);
+          L.push(`  → ${s ? purchaseLabel(s) : "Invoice"}: ${formatCurrency(parseFloat(a.amount) || 0, currency)}`);
+        });
+      }
     } else {
       if (items.length > 0) {
         items.forEach(i => {
@@ -294,8 +369,9 @@ const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, cu
       L.push("──────────────────────");
       L.push(`TOTAL: ${formatCurrency(totalPurchase, currency)}`);
       if (discount > 0) L.push(`Discount: ${formatCurrency(discount, currency)}`);
-      L.push(`PAID: ${formatCurrency(paid, currency)}`);
-      L.push(`OUTSTANDING: ${formatCurrency(outstanding, currency)}`);
+      L.push(`PAID UPFRONT: ${formatCurrency(paid, currency)}`);
+      if (appliedTotal > 0) L.push(`PAID VIA PAYMENTS: ${formatCurrency(appliedTotal, currency)}`);
+      L.push(`OUTSTANDING: ${formatCurrency(trueOutstanding, currency)}`);
     }
     if (tx.note) L.push(`Note: ${tx.note}`);
     if (tx.status === 'cancelled') L.push(`🚫 CANCELLED: ${tx.cancel_reason || tx.cancelReason || ""}`);
@@ -345,6 +421,40 @@ const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, cu
 
           <div className="border-t-2 border-dashed border-gray-300 dark:border-gray-700" />
 
+          {isPayment && appliedByThisPayment.length > 0 && (
+            <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl p-3 space-y-1.5">
+              <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase flex items-center gap-1">
+                <Link2 size={11} /> Applied to
+              </p>
+              {appliedByThisPayment.map((a, i) => {
+                const s = purchaseById(a.sale_id);
+                return (
+                  <div key={i} className="flex justify-between text-xs">
+                    <span className="text-gray-600 dark:text-gray-300">{s ? purchaseLabel(s) : "Invoice"}</span>
+                    <span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(parseFloat(a.amount) || 0, currency)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {!isPayment && appliedToThisPurchase.length > 0 && (
+            <div className="bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/30 rounded-xl p-3 space-y-1.5">
+              <p className="text-[10px] font-bold text-green-700 dark:text-green-400 uppercase flex items-center gap-1">
+                <Link2 size={11} /> Payments applied to this purchase
+              </p>
+              {appliedToThisPurchase.map((a, i) => {
+                const p = payById(a.payment_id);
+                return (
+                  <div key={i} className="flex justify-between text-xs">
+                    <span className="text-gray-600 dark:text-gray-300">{p ? formatDate(txDate(p)).split(',')[0] : "Payment"}{p?.paymentMethod ? ` • ${p.paymentMethod}` : ""}</span>
+                    <span className="font-semibold text-green-700 dark:text-green-400">-{formatCurrency(parseFloat(a.amount) || 0, currency)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {!isPayment && (
             items.length > 0 ? (
               <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 divide-y divide-dashed divide-gray-200 dark:divide-gray-800">
@@ -384,11 +494,19 @@ const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, cu
                 {discount > 0 && (
                   <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Discount</span><span className="font-semibold text-purple-600 dark:text-purple-400">-{formatCurrency(discount, currency)}</span></div>
                 )}
-                <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Paid Upfront</span><span className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(paid, currency)}</span></div>
+                {paid > 0 && (
+                  <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Paid Upfront</span><span className="font-semibold text-green-600 dark:text-green-400">-{formatCurrency(paid, currency)}</span></div>
+                )}
+                {appliedTotal > 0 && (
+                  <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Paid via Payments</span><span className="font-semibold text-green-600 dark:text-green-400">-{formatCurrency(appliedTotal, currency)}</span></div>
+                )}
                 <div className="flex justify-between text-base pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
                   <span className="font-bold text-gray-700 dark:text-gray-200">Outstanding</span>
-                  <span className={`font-bold ${outstanding > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-green-600 dark:text-green-400'}`}>{formatCurrency(outstanding, currency)}</span>
+                  <span className={`font-bold ${trueOutstanding > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-green-600 dark:text-green-400'}`}>{formatCurrency(trueOutstanding, currency)}</span>
                 </div>
+                {trueOutstanding === 0 && (
+                  <p className="text-center text-[10px] font-bold text-green-600 dark:text-green-400 uppercase pt-1">✅ Fully Paid</p>
+                )}
               </>
             )}
           </div>
@@ -426,7 +544,7 @@ const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, cu
 };
 
 // ==========================================
-// REASON MODALS (Android-safe)
+// REASON MODALS
 // ==========================================
 const FixReasonModal = ({ isOpen, onClose, onConfirm, fixReason, setFixReason }) => {
   if (!isOpen) return null;
@@ -437,13 +555,7 @@ const FixReasonModal = ({ isOpen, onClose, onConfirm, fixReason, setFixReason })
           <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full"><Edit3 size={20} className="text-blue-600 dark:text-blue-400" /></div>
           <h3 className="font-bold text-xl text-gray-900 dark:text-white">Reason for Fix</h3>
         </div>
-        <textarea
-          value={fixReason}
-          onChange={(e) => setFixReason(e.target.value)}
-          placeholder="e.g., Recorded wrong price..."
-          className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 caret-blue-600 dark:caret-blue-400 mb-4 text-sm"
-          rows="3"
-        />
+        <textarea value={fixReason} onChange={(e) => setFixReason(e.target.value)} placeholder="e.g., Recorded wrong price..." className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 caret-blue-600 dark:caret-blue-400 mb-4 text-sm" rows="3" />
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Cancel</button>
           <button onClick={onConfirm} className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-xl active:scale-95 transition">Continue</button>
@@ -462,13 +574,7 @@ const CancelModal = ({ isOpen, onClose, onConfirm, cancelReason, setCancelReason
           <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full"><AlertTriangle size={20} className="text-red-600 dark:text-red-400" /></div>
           <h3 className="font-bold text-xl text-gray-900 dark:text-white">Cancel {type === 'supplier_payment' ? 'Payment' : 'Purchase'}?</h3>
         </div>
-        <textarea
-          value={cancelReason}
-          onChange={(e) => setCancelReason(e.target.value)}
-          placeholder="Type the reason here..."
-          className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-red-500 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 caret-red-600 dark:caret-red-400 mb-4 text-sm"
-          rows="3"
-        />
+        <textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Type the reason here..." className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-red-500 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 caret-red-600 dark:caret-red-400 mb-4 text-sm" rows="3" />
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Go Back</button>
           <button onClick={onConfirm} disabled={!cancelReason.trim()} className="flex-1 bg-red-600 text-white font-bold py-3 rounded-xl disabled:opacity-50 active:scale-95 transition">Yes, Cancel</button>
@@ -483,12 +589,11 @@ const CancelModal = ({ isOpen, onClose, onConfirm, cancelReason, setCancelReason
 // ==========================================
 export const SupplierProfilePage = () => {
   const { currentStore, selectedSupplier, setSelectedSupplier, setView, setPrefillTransaction, setFixTransaction, showToast, readOnly } = useStore();
-  const currency = currentStore?.currency || "GH₵";
+  const currency = currentStore?.currency || "GH";
 
-  // 👇 VIEW-ONLY GUARD (new message)
   const blockIfReadOnly = () => {
     if (readOnly) {
-      showToast("🔒 Subscription expired — please renew to continue.");
+      showToast(" Subscription expired — please renew to continue.");
       return true;
     }
     return false;
@@ -499,6 +604,7 @@ export const SupplierProfilePage = () => {
   const [cancelReason, setCancelReason] = useState("");
   const [supplierData, setSupplierData] = useState(selectedSupplier);
   const [history, setHistory] = useState([]);
+  const [allocations, setAllocations] = useState([]);
   const [expandedOldTx, setExpandedOldTx] = useState(null);
   const [showFixModal, setShowFixModal] = useState(false);
   const [fixReason, setFixReason] = useState("");
@@ -508,10 +614,14 @@ export const SupplierProfilePage = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [visibleCount, setVisibleCount] = useState(10);
 
+  // Load history + allocations together
   useEffect(() => {
     if (selectedSupplier?.id) {
       SupplierService.getById(selectedSupplier.id).then(setSupplierData);
-      TransactionService.getHistory(selectedSupplier.id).then(res => setHistory(normalizeList(res)));
+      Promise.all([
+        TransactionService.getHistory(selectedSupplier.id).then(res => normalizeList(res)).catch(() => []),
+        AllocationService.getByContact(selectedSupplier.id).catch(() => []),
+      ]).then(([h, a]) => { setHistory(h); setAllocations(a); });
     }
   }, [selectedSupplier?.id]);
 
@@ -519,18 +629,50 @@ export const SupplierProfilePage = () => {
     setVisibleCount(10);
   }, [selectedSupplier?.id]);
 
+  // 👇 AUTOMATIC healing — guarded so it can NEVER run twice
+  const healRunning = useRef(false);
+  useEffect(() => {
+    if (!selectedSupplier?.id || history.length === 0) return;
+    if (healRunning.current) return;
+    healRunning.current = true;
+    (async () => {
+      try {
+        const rows = retroRows(history, allocations);
+        if (rows.length > 0) {
+          await AllocationService.createMany(rows);
+          const fresh = await AllocationService.getByContact(selectedSupplier.id);
+          setAllocations(fresh);
+        }
+      } catch (error) {
+        console.error("Auto-match failed:", error);
+      } finally {
+        healRunning.current = false;
+      }
+    })();
+  }, [history, allocations, selectedSupplier?.id]);
+
   if (!supplierData) return null;
 
   // ==========================================
-  // CALCULATIONS (always use the FULL history for accurate math)
+  // CALCULATIONS — allocation-aware
   // ==========================================
   const getTrueOutstanding = (purchase) => Math.max(0, (parseFloat(purchase.amount) || 0) - (parseFloat(purchase.paid) || 0));
-  const lastPayment = useMemo(() => history.find(tx => (parseFloat(tx.paid) || 0) > 0 && isActive(tx)), [history]);
+  const allocationMap = useMemo(() => buildAllocMap(allocations, history), [allocations, history]);
+  const lastPayment = useMemo(() => history.find(tx => (parseFloat(tx.paid) || 0) > 0 && tx.type === 'supplier_payment' && isActive(tx)), [history]);
+
+  // 👇 Purchases subtract allocated payments → fully-paid purchases disappear
   const outstandingInvoices = useMemo(() =>
     history
-      .filter(tx => tx.type === 'purchase' && isActive(tx) && getTrueOutstanding(tx) > 0)
-      .map(tx => ({ ...tx, trueOutstanding: getTrueOutstanding(tx) })),
-    [history]);
+      .filter(tx => tx.type === 'purchase' && isActive(tx) && !tx.replacedByTransactionId)
+      .map(tx => {
+        const original = getTrueOutstanding(tx);
+        const allocated = allocationMap[tx.id] || 0;
+        const remaining = Math.max(0, original - allocated);
+        return { ...tx, trueOutstanding: remaining, originalOutstanding: original, allocated: original - remaining };
+      })
+      .filter(tx => tx.trueOutstanding > 0),
+    [history, allocationMap]);
+
   const trueBalance = useMemo(() => {
     let bal = 0;
     history.forEach(t => {
@@ -542,8 +684,9 @@ export const SupplierProfilePage = () => {
     });
     return bal;
   }, [history]);
+
   const totalPurchases = history.reduce((sum, t) => sum + ((parseFloat(t.amount) || 0) > 0 && t.type === 'purchase' && isActive(t) ? (parseFloat(t.amount) || 0) : 0), 0);
-  const totalPayments = history.reduce((sum, t) => sum + ((parseFloat(t.paid) || 0) > 0 && isActive(t) ? (parseFloat(t.paid) || 0) : 0), 0);
+  const totalPayments = history.reduce((sum, t) => sum + ((parseFloat(t.paid) || 0) > 0 && t.type === 'supplier_payment' && isActive(t) ? (parseFloat(t.paid) || 0) : 0), 0);
 
   const visibleHistory = useMemo(() => history.filter(tx => !tx.replacedByTransactionId), [history]);
   const pagedHistory = useMemo(() => visibleHistory.slice(0, visibleCount), [visibleHistory, visibleCount]);
@@ -558,7 +701,7 @@ export const SupplierProfilePage = () => {
   }, [supplierData]);
 
   // ==========================================
-  // HANDLERS (all guarded for view-only mode)
+  // HANDLERS (all guarded)
   // ==========================================
   const handleRecordPurchase = () => {
     if (blockIfReadOnly()) return;
@@ -566,11 +709,11 @@ export const SupplierProfilePage = () => {
     setView("recordSupplierPurchase");
   };
 
-const handleMakePayment = () => {
-  if (blockIfReadOnly()) return;
-  setPrefillTransaction({ supplierId: supplierData.id, name: supplierData.name, phone: supplierData.phone });
-  setView("recordSupplierPayment");
-};
+  const handleMakePayment = () => {
+    if (blockIfReadOnly()) return;
+    setPrefillTransaction({ supplierId: supplierData.id, name: supplierData.name, phone: supplierData.phone });
+    setView("recordSupplierPayment");
+  };
 
   const handleShareAccount = async (shareData) => {
     try {
@@ -610,7 +753,7 @@ const handleMakePayment = () => {
   };
 
   const executeCancelTransaction = async () => {
-    if (!cancelReason.trim()) { showToast("⚠️ Please provide a reason."); return; }
+    if (!cancelReason.trim()) { showToast("️ Please provide a reason."); return; }
     setShowCancelModal(false);
     try {
       await TransactionService.cancelTransaction(viewingTransaction.id, cancelReason);
@@ -707,6 +850,8 @@ const handleMakePayment = () => {
           onFix={handleFixTransaction}
           onCancel={handleCancelTransaction}
           currency={currency}
+          history={history}
+          allocations={allocations}
         />
       )}
       <FixReasonModal isOpen={showFixModal} onClose={() => setShowFixModal(false)} onConfirm={confirmFix} fixReason={fixReason} setFixReason={setFixReason} />
