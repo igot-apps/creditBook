@@ -9,18 +9,15 @@ export const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  
   const { setCurrentStore, setView } = useStore();
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
-
     try {
       const { user } = await AuthService.signIn(email, password);
       const store = await AuthService.getStore(user.id);
-      
       setCurrentStore(store);
       setView("home"); // Navigate to home using Zustand
     } catch (err) {
@@ -81,6 +78,16 @@ export const LoginPage = () => {
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            {/* 👇 NEW: Forgot Password Link */}
+            <div className="flex justify-end mt-2">
+              <button
+                type="button"
+                onClick={() => setView("forgotPassword")}
+                className="text-sm text-blue-600 dark:text-blue-400 font-semibold hover:underline"
+              >
+                Forgot Password?
               </button>
             </div>
           </div>

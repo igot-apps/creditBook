@@ -4,9 +4,13 @@ import useStore from "./store/useStore";
 import { BottomNav } from "./components/BottomNav";
 import { Toast } from "./components/Toast";
 import { Layout } from "./components/Layout";
+
 // Auth Pages
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+
 // Customer Pages
 import { HomePage } from "./pages/HomePage";
 import { CustomersPage } from "./pages/CustomersPage";
@@ -14,19 +18,23 @@ import { CustomerProfilePage } from "./pages/CustomerProfilePage";
 import { RecordSalePage } from "./pages/RecordSalePage";
 import { RecordPaymentPage } from "./pages/RecordPaymentPage";
 import { CustomerFollowUpsPage } from "./pages/CustomerFollowUpsPage";
+
 // Product & Utility Pages
 import { ProductsPage } from "./pages/ProductsPage";
 import { VisibilityManagerPage } from "./pages/VisibilityManagerPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+
 // Supplier Pages
 import { SuppliersPage } from "./pages/SuppliersPage";
 import { SupplierProfilePage } from "./pages/SupplierProfilePage";
 import { RecordPurchasePage } from "./pages/RecordPurchasePage";
 import { RecordSupplierPaymentPage } from "./pages/RecordSupplierPaymentPage";
+
 // Subscription Pages
 import { SubscriptionPage } from "./pages/SubscriptionPage";
 import { SubscriptionVerifyPage } from "./pages/SubscriptionVerifyPage";
+
 import { AuthService } from "./services/AuthService";
 import { SubscriptionService } from "./services/SubscriptionService";
 import { supabase } from "./lib/supabaseClient";
@@ -45,7 +53,6 @@ const ReadOnlyBanner = () => {
     setDismissed(true);
   };
 
-  // If the subscription becomes active again, allow the banner on any future expiry
   useEffect(() => {
     if (!readOnly) {
       sessionStorage.removeItem("creditbook_banner_dismissed");
@@ -53,7 +60,6 @@ const ReadOnlyBanner = () => {
     }
   }, [readOnly]);
 
-  // Auto-hide after 8 seconds (Renew stays available in Settings → Subscription)
   useEffect(() => {
     if (readOnly && !dismissed) {
       const t = setTimeout(handleDismiss, 8000);
@@ -125,7 +131,7 @@ const AppRouter = () => {
   }, [setCurrentStore]);
 
   // ==========================================
-  // 2. SUBSCRIPTION ACCESS → VIEW-ONLY MODE (no trial, no hard lock)
+  // 2. SUBSCRIPTION ACCESS → VIEW-ONLY MODE
   // ==========================================
   useEffect(() => {
     let cancelled = false;
@@ -134,16 +140,16 @@ const AppRouter = () => {
       try {
         const access = await SubscriptionService.checkAccess(currentStore);
         if (cancelled) return;
-        setReadOnly(!access.access); // 👈 the whole app respects this flag
-
+        setReadOnly(!access.access);
+        
         if (access.access && access.grace) {
-          showToast(`⚠️ Subscription expired — ${access.grace_days_left} grace day(s) left. Renew now.`);
+          showToast(`️ Subscription expired — ${access.grace_days_left} grace day(s) left. Renew now.`);
         } else if (access.status === "active" && (access.days_remaining ?? 99) <= 5) {
           showToast(`⚠️ Your plan expires in ${access.days_remaining} day(s). Renew soon.`);
         }
       } catch (error) {
         console.error("Subscription check failed:", error);
-        if (!cancelled) setReadOnly(false); // never punish the user for a network glitch
+        if (!cancelled) setReadOnly(false);
       }
     };
 
@@ -157,7 +163,7 @@ const AppRouter = () => {
   }, [isAuthenticated, currentStore, showToast, setReadOnly]);
 
   // ==========================================
-  // 3. DETECT PAYSTACK REDIRECT-BACK → auto-open the verify screen
+  // 3. DETECT PAYSTACK REDIRECT-BACK
   // ==========================================
   useEffect(() => {
     if (isAuthenticated && currentStore) {
@@ -171,7 +177,22 @@ const AppRouter = () => {
   }, [isAuthenticated, currentStore, setView]);
 
   // ==========================================
-  // 4. THEME (Dark / Light)
+  // 4. DETECT SUPABASE RECOVERY LINK REDIRECT
+  // ==========================================
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = params.get('view');
+    
+    // If URL has ?view=resetPassword, sync it to Zustand
+    if (viewParam === 'resetPassword') {
+      setView('resetPassword');
+      // Clean up the URL so it doesn't persist
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [setView]);
+
+  // ==========================================
+  // 5. THEME (Dark / Light)
   // ==========================================
   useEffect(() => {
     if (theme === "dark") document.documentElement.classList.add("dark");
@@ -187,14 +208,18 @@ const AppRouter = () => {
     );
   }
 
-  // If not authenticated, show Login or Register page
+  // ==========================================
+  // 6. UNAUTHENTICATED ROUTES (Includes Password Reset flows)
+  // ==========================================
   if (!isAuthenticated) {
     if (view === "register") return <RegisterPage />;
+    if (view === "forgotPassword") return <ForgotPasswordPage />;
+    if (view === "resetPassword") return <ResetPasswordPage />;
     return <LoginPage />;
   }
 
   // ==========================================
-  // ROUTER
+  // 7. AUTHENTICATED ROUTER
   // ==========================================
   const renderPage = () => {
     switch (view) {
@@ -214,6 +239,9 @@ const AppRouter = () => {
       case "recordSupplierPayment": return <RecordSupplierPaymentPage key={pageKey} />;
       case "subscription": return <SubscriptionPage key={pageKey} />;
       case "subscriptionVerify": return <SubscriptionVerifyPage key={pageKey} />;
+      // Fallback for auth pages if accessed while logged in
+      case "forgotPassword": return <ForgotPasswordPage />;
+      case "resetPassword": return <ResetPasswordPage />;
       default: return <HomePage key={pageKey} />;
     }
   };
