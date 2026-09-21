@@ -26,10 +26,10 @@ export const SubscriptionPage = () => {
 
   useEffect(() => { loadSubscriptionStatus(); }, [currentStore?.id]);
 
-  // 👇 A pending payment that still has its reference (and is < 24h old — older ones are auto-cancelled by the service)
+  // 👇 A pending payment that still has its reference (and is < 24h old)
   const pendingPayment = subscriptionStatus?.status === 'pending' && subscriptionStatus?.paystack_reference;
 
-  // 1️⃣ Verify the pending payment using the SAVED reference (no code entry needed)
+  // 1️⃣ Verify the pending payment using the SAVED reference
   const handleVerifyPending = async () => {
     if (!subscriptionStatus?.paystack_reference || !subscriptionStatus?.id) return;
     setIsVerifying(true);
@@ -70,7 +70,7 @@ export const SubscriptionPage = () => {
 
   // 3️⃣ New subscription
   const handleSubscribe = async () => {
-    if (!email || !phone) { showToast("⚠️ Please fill in email and phone number"); return; }
+    if (!email || !phone) { showToast("️ Please fill in email and phone number"); return; }
     setIsProcessing(true);
     try {
       const result = await SubscriptionService.initializeSubscription({
@@ -88,8 +88,22 @@ export const SubscriptionPage = () => {
   };
 
   const plans = [
-    { id: "monthly", name: "Monthly", price: PLANS.monthly.amount, duration: "30 days", features: ["Unlimited transactions", "Cloud backup", "Priority support"], popular: false },
-    { id: "yearly", name: "Yearly", price: PLANS.yearly.amount, duration: "365 days", features: ["Unlimited transactions", "Cloud backup", "Priority support", "2 months free"], popular: true },
+    { 
+      id: "monthly", 
+      name: "Monthly", 
+      price: PLANS.monthly.amount, 
+      duration: "30 days", 
+      features: ["Unlimited transactions", "Cloud backup", "Priority support"], 
+      popular: false 
+    },
+    { 
+      id: "yearly", 
+      name: "Yearly", 
+      price: PLANS.yearly.amount, 
+      duration: "365 days", 
+      features: ["Unlimited transactions", "Cloud backup", "Priority support", "2 months free"], 
+      popular: true 
+    },
   ];
   const selectedPlanData = plans.find(p => p.id === selectedPlan);
 
@@ -136,7 +150,7 @@ export const SubscriptionPage = () => {
           </div>
         )}
 
-        {/* 👇 NEW: Pending payment card (Verify / Pay Again) — disappears after 1 day */}
+        {/*  Pending payment card (Verify / Pay Again) */}
         {pendingPayment && (
           <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border-2 border-amber-300 dark:border-amber-700 space-y-3">
             <div className="flex items-center gap-3">

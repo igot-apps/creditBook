@@ -6,13 +6,14 @@ const PAYSTACK_BASE = 'https://api.paystack.co';
 // 👇 Pending payments auto-disable after 1 day
 const PENDING_TTL_MS = 24 * 60 * 60 * 1000;
 
+// 👇 UPDATED PRICING: 30 GHS/month, 300 GHS/year (2 months free!)
 export const PLANS = {
-  monthly: { amount: 50, name: 'Monthly Plan', duration: 30 },
-  yearly: { amount: 500, name: 'Yearly Plan', duration: 365 },
+  monthly: { amount: 30, name: 'Monthly Plan', duration: 30 },
+  yearly: { amount: 300, name: 'Yearly Plan', duration: 365 },
 };
 
 export const SubscriptionService = {
-  // 1️⃣ Create pending subscription + get Paystack payment link
+  // 1️ Create pending subscription + get Paystack payment link
   initializeSubscription: async ({ storeId, plan, email, phone }) => {
     const planConfig = PLANS[plan];
     if (!planConfig) throw new Error('Invalid plan');
@@ -34,7 +35,7 @@ export const SubscriptionService = {
       },
       body: JSON.stringify({
         email,
-        amount: planConfig.amount * 100,
+        amount: planConfig.amount * 100, // Paystack expects amount in pesewas (30 * 100 = 3000)
         currency: 'GHS',
         channels: ['mobile_money', 'card'],
         callback_url: callbackUrl,
@@ -143,10 +144,13 @@ export const SubscriptionService = {
   // 4️⃣ ACCESS CONTROL: active → grace → locked (no trial)
   checkAccess: async (store) => {
     const GRACE_DAYS = 3;
+
     const status = await SubscriptionService.getSubscriptionStatus(store.id);
 
+    // ✅ Active subscription
     if (status.status === 'active') return { ...status, access: true };
 
+    // 🕊️ Expired → 3-day grace period (app still works, with warning)
     if (status.status === 'expired' && status.expires_at) {
       const daysSinceExpiry = Math.floor((Date.now() - new Date(status.expires_at).getTime()) / 86400000);
       if (daysSinceExpiry < GRACE_DAYS) {
@@ -155,6 +159,7 @@ export const SubscriptionService = {
       return { ...status, access: false };
     }
 
+    //  No subscription → locked immediately (view-only mode)
     return { ...status, access: false };
   },
 };
