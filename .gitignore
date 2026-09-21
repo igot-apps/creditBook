@@ -24,3 +24,4 @@ gitzen1.js
 *.njsproj
 *.sln
 *.sw?
+.env
