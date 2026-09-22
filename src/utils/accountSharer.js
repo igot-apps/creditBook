@@ -1,24 +1,39 @@
 import { formatCurrency } from "./helpers";
 
-export const generateAccountShare = ({ channel, scope, contact, transactions, store }) => {
+export const generateAccountShare = ({ channel, scope, contact, transactions, store, customDateRange }) => {
   const currency = store?.currency || "GH₵";
   const storeName = store?.name || "Store";
-  
+
   // 1. Filter only active transactions
   const activeTx = (Array.isArray(transactions) ? transactions : [])
     .filter(tx => tx.status === 'active' || !tx.status);
 
   // 2. Sort chronologically (oldest first, like a real bank statement)
-  const sortedTx = [...activeTx].sort((a, b) => 
+  const sortedTx = [...activeTx].sort((a, b) =>
     new Date(a.created_at || a.createdAt || 0) - new Date(b.created_at || b.createdAt || 0)
   );
 
   // 3. Apply the selected Scope limit
   let scopedTx = sortedTx;
-  if (scope === 'last5') {
+  
+  if (scope === 'last1') {
+    scopedTx = sortedTx.slice(-1); // Take the 1 most recent
+  } else if (scope === 'last3') {
+    scopedTx = sortedTx.slice(-3); // Take the 3 most recent
+  } else if (scope === 'last5') {
     scopedTx = sortedTx.slice(-5); // Take the 5 most recent
   } else if (scope === 'last10') {
     scopedTx = sortedTx.slice(-10); // Take the 10 most recent
+  } else if (scope === 'custom' && customDateRange) {
+    // Filter by custom date range
+    const startDate = new Date(customDateRange.startDate);
+    const endDate = new Date(customDateRange.endDate);
+    endDate.setHours(23, 59, 59, 999); // Include the entire end day
+    
+    scopedTx = sortedTx.filter(tx => {
+      const txDate = new Date(tx.created_at || tx.createdAt);
+      return txDate >= startDate && txDate <= endDate;
+    });
   } else if (scope === 'balance') {
     scopedTx = []; // No individual transactions, just the summary
   }
@@ -52,40 +67,43 @@ export const generateAccountShare = ({ channel, scope, contact, transactions, st
 
   // Itemized Transactions
   if (scope !== 'balance') {
-    scopedTx.forEach(tx => {
-      const date = new Date(tx.created_at || tx.createdAt || Date.now()).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' });
-      
-      if (tx.type === 'sale' || tx.type === 'purchase') {
-        L.push(`🛒 *${tx.type === 'sale' ? 'SALE' : 'PURCHASE'} — ${date}*`);
-        const items = Array.isArray(tx.items) ? tx.items : [];
+    if (scopedTx.length === 0) {
+      L.push("📭 No transactions found for the selected period.");
+      L.push("");
+    } else {
+      scopedTx.forEach(tx => {
+        const date = new Date(tx.created_at || tx.createdAt || Date.now()).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' });
         
-        if (items.length > 0) {
-          items.forEach(i => {
-            const qty = parseFloat(i.quantity) || 0;
-            const price = parseFloat(i.price) || 0;
-            const unit = i.unitName || "unit";
-            const brand = i.brand ? ` (${i.brand})` : "";
-            // Two-line format per item for clean mobile reading
-            L.push(`• *${i.name}*${brand}`);
-            L.push(`  ${qty} ${unit} × ${formatCurrency(price, currency)} = ${formatCurrency(qty * price, currency)}`);
-          });
-        } else {
-          L.push(`• (No item breakdown recorded)`);
+        if (tx.type === 'sale' || tx.type === 'purchase') {
+          L.push(`🛒 *${tx.type === 'sale' ? 'SALE' : 'PURCHASE'} — ${date}*`);
+          const items = Array.isArray(tx.items) ? tx.items : [];
+          if (items.length > 0) {
+            items.forEach(i => {
+              const qty = parseFloat(i.quantity) || 0;
+              const price = parseFloat(i.price) || 0;
+              const unit = i.unitName || "unit";
+              const brand = i.brand ? ` (${i.brand})` : "";
+              // Two-line format per item for clean mobile reading
+              L.push(`• *${i.name}*${brand}`);
+              L.push(`  ${qty} ${unit} × ${formatCurrency(price, currency)} = ${formatCurrency(qty * price, currency)}`);
+            });
+          } else {
+            L.push(`• (No item breakdown recorded)`);
+          }
+          const amt = parseFloat(tx.amount) || 0;
+          const pd = parseFloat(tx.paid) || 0;
+          L.push(`Total: ${formatCurrency(amt, currency)} | Paid: ${formatCurrency(pd, currency)} | Balance: ${formatCurrency(Math.max(0, amt - pd), currency)}`);
+          if (tx.note) L.push(`📝 ${tx.note}`);
+          L.push("");
+        } else if (tx.type === 'payment' || tx.type === 'supplier_payment') {
+          const method = tx.payment_method || tx.paymentMethod || "Cash";
+          L.push(`💵 *PAYMENT — ${date}*`);
+          L.push(`Received: ${formatCurrency(parseFloat(tx.paid) || 0, currency)} (${method})`);
+          L.push("");
         }
-        
-        const amt = parseFloat(tx.amount) || 0;
-        const pd = parseFloat(tx.paid) || 0;
-        L.push(`Total: ${formatCurrency(amt, currency)} | Paid: ${formatCurrency(pd, currency)} | Balance: ${formatCurrency(Math.max(0, amt - pd), currency)}`);
-        if (tx.note) L.push(`📝 ${tx.note}`);
-        L.push("");
-      } else if (tx.type === 'payment' || tx.type === 'supplier_payment') {
-        const method = tx.payment_method || tx.paymentMethod || "Cash";
-        L.push(`💵 *PAYMENT — ${date}*`);
-        L.push(`Received: ${formatCurrency(parseFloat(tx.paid) || 0, currency)} (${method})`);
-        L.push("");
-      }
-    });
-    L.push("──────────────────");
+      });
+      L.push("──────────────────");
+    }
   }
 
   // Summary (Always included)

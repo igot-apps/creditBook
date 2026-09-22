@@ -118,7 +118,12 @@ const AppRouter = () => {
     };
     checkAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // 👇 NEW: Intercept password recovery and force the reset screen
+      if (event === 'PASSWORD_RECOVERY') {
+        setView('resetPassword');
+      }
+
       if (session?.user) {
         setIsAuthenticated(true);
         AuthService.getStore(session.user.id).then(setCurrentStore);
@@ -128,10 +133,10 @@ const AppRouter = () => {
       }
     });
     return () => subscription.unsubscribe();
-  }, [setCurrentStore]);
+  }, [setCurrentStore, setView]);
 
   // ==========================================
-  // 2. SUBSCRIPTION ACCESS → VIEW-ONLY MODE
+  // 2. SUBSCRIPTION ACCESS → VIEW-ONLY MODE & TRIAL WELCOME
   // ==========================================
   useEffect(() => {
     let cancelled = false;
@@ -140,16 +145,23 @@ const AppRouter = () => {
       try {
         const access = await SubscriptionService.checkAccess(currentStore);
         if (cancelled) return;
-        setReadOnly(!access.access);
-        
-        if (access.access && access.grace) {
-          showToast(`️ Subscription expired — ${access.grace_days_left} grace day(s) left. Renew now.`);
+        setReadOnly(!access.access); // 👈 the whole app respects this flag
+
+        // 👇 NEW: One-time welcome message for new users on the 30-day trial
+        if (access.status === 'trial') {
+          const welcomeKey = `creditbook_trial_welcome_${currentStore.id}`;
+          if (!localStorage.getItem(welcomeKey)) {
+            showToast("🎉 Welcome! Enjoy your 30-day free trial.");
+            localStorage.setItem(welcomeKey, 'true');
+          }
+        } else if (access.access && access.grace) {
+          showToast(`⚠️ Subscription expired — ${access.grace_days_left} grace day(s) left. Renew now.`);
         } else if (access.status === "active" && (access.days_remaining ?? 99) <= 5) {
           showToast(`⚠️ Your plan expires in ${access.days_remaining} day(s). Renew soon.`);
         }
       } catch (error) {
         console.error("Subscription check failed:", error);
-        if (!cancelled) setReadOnly(false);
+        if (!cancelled) setReadOnly(false); // never punish the user for a network glitch
       }
     };
 
@@ -163,7 +175,7 @@ const AppRouter = () => {
   }, [isAuthenticated, currentStore, showToast, setReadOnly]);
 
   // ==========================================
-  // 3. DETECT PAYSTACK REDIRECT-BACK
+  // 3. DETECT PAYSTACK REDIRECT-BACK → auto-open the verify screen
   // ==========================================
   useEffect(() => {
     if (isAuthenticated && currentStore) {
@@ -177,16 +189,13 @@ const AppRouter = () => {
   }, [isAuthenticated, currentStore, setView]);
 
   // ==========================================
-  // 4. DETECT SUPABASE RECOVERY LINK REDIRECT
+  // 4. DETECT SUPABASE RECOVERY LINK REDIRECT (Fallback)
   // ==========================================
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const viewParam = params.get('view');
-    
-    // If URL has ?view=resetPassword, sync it to Zustand
     if (viewParam === 'resetPassword') {
       setView('resetPassword');
-      // Clean up the URL so it doesn't persist
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [setView]);

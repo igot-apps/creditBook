@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Check, CreditCard, Crown, Loader2, AlertCircle, Calendar, Zap, RefreshCw, Clock } from "lucide-react";
+import { Check, CreditCard, Crown, Loader2, AlertCircle, Calendar, Zap, RefreshCw, Clock, Gift } from "lucide-react";
 import useStore from "../store/useStore";
 import { SubscriptionService, PLANS } from "../services/SubscriptionService";
 import { formatCurrency } from "../utils/helpers";
@@ -70,7 +70,7 @@ export const SubscriptionPage = () => {
 
   // 3️⃣ New subscription
   const handleSubscribe = async () => {
-    if (!email || !phone) { showToast("️ Please fill in email and phone number"); return; }
+    if (!email || !phone) { showToast("⚠️ Please fill in email and phone number"); return; }
     setIsProcessing(true);
     try {
       const result = await SubscriptionService.initializeSubscription({
@@ -88,21 +88,21 @@ export const SubscriptionPage = () => {
   };
 
   const plans = [
-    { 
-      id: "monthly", 
-      name: "Monthly", 
-      price: PLANS.monthly.amount, 
-      duration: "30 days", 
-      features: ["Unlimited transactions", "Cloud backup", "Priority support"], 
-      popular: false 
+    {
+      id: "monthly",
+      name: "Monthly",
+      price: PLANS.monthly.amount,
+      duration: "30 days",
+      features: ["Unlimited transactions", "Cloud backup", "Priority support"],
+      popular: false
     },
-    { 
-      id: "yearly", 
-      name: "Yearly", 
-      price: PLANS.yearly.amount, 
-      duration: "365 days", 
-      features: ["Unlimited transactions", "Cloud backup", "Priority support", "2 months free"], 
-      popular: true 
+    {
+      id: "yearly",
+      name: "Yearly",
+      price: PLANS.yearly.amount,
+      duration: "365 days",
+      features: ["Unlimited transactions", "Cloud backup", "Priority support", "2 months free"],
+      popular: true
     },
   ];
   const selectedPlanData = plans.find(p => p.id === selectedPlan);
@@ -120,37 +120,63 @@ export const SubscriptionPage = () => {
       <TopBar title="Subscription" showBack={true} onBack={() => setView("settings")} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-6">
 
-        {/* Active / Expired status card */}
-        {subscriptionStatus && (subscriptionStatus.status === 'active' || subscriptionStatus.status === 'expired') && (
+        {/* Active / Expired / Trial status card */}
+        {subscriptionStatus && (subscriptionStatus.status === 'active' || subscriptionStatus.status === 'expired' || subscriptionStatus.status === 'trial') && (
           <div className={`p-5 rounded-2xl shadow-sm border-2 ${
             subscriptionStatus.status === 'active'
               ? 'bg-green-50 dark:bg-green-900/10 border-green-300 dark:border-green-800'
+              : subscriptionStatus.status === 'trial'
+              ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-300 dark:border-blue-800'
               : 'bg-red-50 dark:bg-red-900/10 border-red-300 dark:border-red-800'
           }`}>
             <div className="flex items-start gap-3">
-              <div className={`p-2 rounded-full ${subscriptionStatus.status === 'active' ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
-                {subscriptionStatus.status === 'active' ? <Crown className="text-green-600 dark:text-green-400" size={24} /> : <AlertCircle className="text-red-600 dark:text-red-400" size={24} />}
+              <div className={`p-2 rounded-full ${
+                subscriptionStatus.status === 'active' ? 'bg-green-100 dark:bg-green-900/30' :
+                subscriptionStatus.status === 'trial' ? 'bg-blue-100 dark:bg-blue-900/30' :
+                'bg-red-100 dark:bg-red-900/30'
+              }`}>
+                {subscriptionStatus.status === 'active' ? (
+                  <Crown className="text-green-600 dark:text-green-400" size={24} />
+                ) : subscriptionStatus.status === 'trial' ? (
+                  <Gift className="text-blue-600 dark:text-blue-400" size={24} />
+                ) : (
+                  <AlertCircle className="text-red-600 dark:text-red-400" size={24} />
+                )}
               </div>
               <div className="flex-1">
                 <h3 className="font-bold text-lg text-gray-900 dark:text-white">
-                  {subscriptionStatus.status === 'active' ? 'Active Subscription' : 'Subscription Expired'}
+                  {subscriptionStatus.status === 'active' ? 'Active Subscription' : 
+                   subscriptionStatus.status === 'trial' ? 'Free Trial Active' : 'Subscription Expired'}
                 </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 capitalize">{subscriptionStatus.plan} Plan</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 capitalize">
+                  {subscriptionStatus.plan === 'trial' ? '30-Day Free Trial' : `${subscriptionStatus.plan} Plan`}
+                </p>
+                
+                {subscriptionStatus.status === 'trial' && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <Calendar size={14} className="text-gray-500" />
+                    <span className="text-xs text-gray-600 dark:text-gray-400">
+                      {subscriptionStatus.days_remaining} days remaining • Ends {new Date(subscriptionStatus.expires_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                )}
+                
                 {subscriptionStatus.status === 'active' && (
                   <div className="flex items-center gap-2 mt-2">
                     <Calendar size={14} className="text-gray-500" />
                     <span className="text-xs text-gray-600 dark:text-gray-400">{subscriptionStatus.days_remaining} days remaining</span>
                   </div>
                 )}
-                {subscriptionStatus.expires_at && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Expires: {new Date(subscriptionStatus.expires_at).toLocaleDateString()}</p>
+                
+                {subscriptionStatus.expires_at && subscriptionStatus.status !== 'trial' && subscriptionStatus.status !== 'active' && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Expired: {new Date(subscriptionStatus.expires_at).toLocaleDateString()}</p>
                 )}
               </div>
             </div>
           </div>
         )}
 
-        {/*  Pending payment card (Verify / Pay Again) */}
+        {/* Pending payment card (Verify / Pay Again) */}
         {pendingPayment && (
           <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border-2 border-amber-300 dark:border-amber-700 space-y-3">
             <div className="flex items-center gap-3">

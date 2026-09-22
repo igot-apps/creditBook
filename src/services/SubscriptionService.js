@@ -6,14 +6,13 @@ const PAYSTACK_BASE = 'https://api.paystack.co';
 // 👇 Pending payments auto-disable after 1 day
 const PENDING_TTL_MS = 24 * 60 * 60 * 1000;
 
-// 👇 UPDATED PRICING: 30 GHS/month, 300 GHS/year (2 months free!)
 export const PLANS = {
   monthly: { amount: 30, name: 'Monthly Plan', duration: 30 },
   yearly: { amount: 300, name: 'Yearly Plan', duration: 365 },
 };
 
 export const SubscriptionService = {
-  // 1️ Create pending subscription + get Paystack payment link
+  // 1️⃣ Create pending subscription + get Paystack payment link
   initializeSubscription: async ({ storeId, plan, email, phone }) => {
     const planConfig = PLANS[plan];
     if (!planConfig) throw new Error('Invalid plan');
@@ -35,7 +34,7 @@ export const SubscriptionService = {
       },
       body: JSON.stringify({
         email,
-        amount: planConfig.amount * 100, // Paystack expects amount in pesewas (30 * 100 = 3000)
+        amount: planConfig.amount * 100,
         currency: 'GHS',
         channels: ['mobile_money', 'card'],
         callback_url: callbackUrl,
@@ -51,7 +50,6 @@ export const SubscriptionService = {
     const result = await response.json();
     if (!result.status) throw new Error(result.message || 'Failed to initialize payment');
 
-    // Save the reference so we can verify later WITHOUT asking the user
     await supabase
       .from('subscriptions')
       .update({ paystack_reference: result.data.reference })
@@ -80,7 +78,7 @@ export const SubscriptionService = {
       .single();
     if (fetchError) throw new Error(fetchError.message);
 
-    if (subscription.status === 'active') return subscription; // already activated
+    if (subscription.status === 'active') return subscription;
 
     const planConfig = PLANS[subscription.plan] || { duration: 30 };
     const expiresAt = new Date(Date.now() + planConfig.duration * 24 * 60 * 60 * 1000).toISOString();
@@ -99,33 +97,54 @@ export const SubscriptionService = {
     return { ...subscription, status: 'active', expires_at: expiresAt };
   },
 
-  // 3️⃣ Current subscription status (auto-disables pending payments older than 1 day)
+  // 3️⃣ Current subscription status (with 30-day trial for brand new users)
   getSubscriptionStatus: async (storeId) => {
-    const { data, error } = await supabase
-      .from('subscriptions')
-      .select('*')
-      .eq('store_id', storeId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!data) return { status: 'none' };
+    // Get store creation date for trial calculation
+    const { data: store } = await supabase
+      .from('stores')
+      .select('created_at')
+      .eq('id', storeId)
+      .single();
 
-    // 👇 AUTO-DISABLE: pending for more than 1 day → cancelled (assumed they won't pay)
+    // Check for ANY subscription history (prevents infinite trial loops)
+    const { data: allSubs, error: subsError } = await supabase
+      .from('subscriptions')
+      .select('status, created_at, expires_at, plan, amount, paid_at, paystack_reference')
+      .eq('store_id', storeId)
+      .order('created_at', { ascending: false });
+
+    if (subsError) throw new Error(subsError.message);
+
+    // 🎁 If absolutely no subscription records exist, grant a 30-day trial
+    if (!allSubs || allSubs.length === 0) {
+      const trialStart = store?.created_at ? new Date(store.created_at) : new Date();
+      const trialEnd = new Date(trialStart.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const daysRemaining = Math.max(0, Math.ceil((trialEnd - new Date()) / 86400000));
+
+      return {
+        status: daysRemaining > 0 ? 'trial' : 'expired',
+        plan: 'trial',
+        amount: 0,
+        days_remaining: daysRemaining,
+        expires_at: trialEnd.toISOString(),
+        access: daysRemaining > 0
+      };
+    }
+
+    // If subscriptions exist, evaluate the latest one
+    const data = allSubs[0];
+
+    // Auto-disable pending payments older than 1 day
     if (data.status === 'pending' && data.created_at) {
       const age = Date.now() - new Date(data.created_at).getTime();
       if (age > PENDING_TTL_MS) {
-        supabase
-          .from('subscriptions')
-          .update({ status: 'cancelled' })
-          .eq('id', data.id)
-          .then(() => {})
-          .catch(() => {});
-        return { ...data, status: 'cancelled' };
+        supabase.from('subscriptions').update({ status: 'cancelled' }).eq('id', data.id).catch(() => {});
+        return { ...data, status: 'cancelled', access: false };
       }
     }
 
     const isExpired = data.expires_at && new Date(data.expires_at) < new Date();
+    
     return {
       id: data.id,
       status: isExpired ? 'expired' : data.status,
@@ -141,16 +160,17 @@ export const SubscriptionService = {
     };
   },
 
-  // 4️⃣ ACCESS CONTROL: active → grace → locked (no trial)
+  // 4️⃣ ACCESS CONTROL: active/trial → grace → locked
   checkAccess: async (store) => {
     const GRACE_DAYS = 3;
-
     const status = await SubscriptionService.getSubscriptionStatus(store.id);
 
-    // ✅ Active subscription
-    if (status.status === 'active') return { ...status, access: true };
+    // Active paid plans OR active trials get full access
+    if (status.status === 'active' || status.status === 'trial') {
+      return { ...status, access: true };
+    }
 
-    // 🕊️ Expired → 3-day grace period (app still works, with warning)
+    // Expired plans get a 3-day grace period
     if (status.status === 'expired' && status.expires_at) {
       const daysSinceExpiry = Math.floor((Date.now() - new Date(status.expires_at).getTime()) / 86400000);
       if (daysSinceExpiry < GRACE_DAYS) {
@@ -159,7 +179,6 @@ export const SubscriptionService = {
       return { ...status, access: false };
     }
 
-    //  No subscription → locked immediately (view-only mode)
     return { ...status, access: false };
   },
 };
