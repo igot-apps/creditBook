@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { X, ArrowLeft, Copy, Share2, MessageCircle, Smartphone, Check, Radio, Circle, Calendar } from "lucide-react";
+import { X, ArrowLeft, Copy, Share2, MessageCircle, Smartphone, Check, Circle } from "lucide-react";
 import { generateAccountShare } from "../utils/accountSharer";
 import { openWhatsApp, openSMS } from "../utils/communication";
+import { AllocationService } from "../services/AllocationService";
 import useStore from "../store/useStore";
 
 export const ShareAccountModal = ({
@@ -9,6 +10,7 @@ export const ShareAccountModal = ({
   onClose,
   contact,
   transactions = [],
+  allocations: allocationsProp, // optional: parent may pass fresh allocations
   store,
   onShared // Callback to log the internal event
 }) => {
@@ -18,12 +20,20 @@ export const ShareAccountModal = ({
   const [scope, setScope] = useState('last5');
   const [channel, setChannel] = useState(null);
   const [message, setMessage] = useState('');
-  
-  // Custom date range state
-  const [customDateRange, setCustomDateRange] = useState({
-    startDate: '',
-    endDate: ''
-  });
+  const [fetchedAllocations, setFetchedAllocations] = useState([]);
+
+  // 👇 If the parent didn't pass allocations, load them so the statement
+  //    always agrees with the profile page & receipts (allocation-aware).
+  useEffect(() => {
+    if (!isOpen || allocationsProp || !contact?.id) return;
+    let cancelled = false;
+    AllocationService.getByContact(contact.id)
+      .then(rows => { if (!cancelled) setFetchedAllocations(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (!cancelled) setFetchedAllocations([]); });
+    return () => { cancelled = true; };
+  }, [isOpen, contact?.id, allocationsProp]);
+
+  const allocations = allocationsProp || fetchedAllocations;
 
   // Generate message when moving to preview step
   useEffect(() => {
@@ -34,18 +44,14 @@ export const ShareAccountModal = ({
         contact,
         transactions,
         store,
-        customDateRange: scope === 'custom' ? customDateRange : null
+        allocations
       });
       setMessage(generated);
     }
-  }, [step, channel, scope, contact, transactions, store, customDateRange]);
+  }, [step, channel, scope, contact, transactions, store, allocations]);
 
   const handleContinueToPreview = () => {
     if (!channel) return;
-    if (scope === 'custom' && (!customDateRange.startDate || !customDateRange.endDate)) {
-      showToast("⚠️ Please select both start and end dates");
-      return;
-    }
     setStep('preview');
   };
 
@@ -76,7 +82,6 @@ export const ShareAccountModal = ({
     // Reset and close
     setStep('select');
     setChannel(null);
-    setCustomDateRange({ startDate: '', endDate: '' });
     onClose();
   };
 
@@ -116,58 +121,27 @@ export const ShareAccountModal = ({
                 <div className="space-y-2">
                   {[
                     { id: 'balance', label: 'Balance Only', desc: 'Just the current total' },
-                    { id: 'last1', label: 'Last Transaction', desc: 'Most recent activity' },
-                    { id: 'last3', label: 'Last 3 Transactions', desc: 'Recent summary' },
                     { id: 'last5', label: 'Last 5 Transactions', desc: 'Quick summary' },
                     { id: 'last10', label: 'Last 10 Transactions', desc: 'Recent history' },
-                    { id: 'full', label: 'Full History', desc: 'Complete account record' },
-                    { id: 'custom', label: 'Custom Date Range', desc: 'Select specific dates' }
+                    { id: 'full', label: 'Full History', desc: 'Complete account record' }
                   ].map((option) => (
                     <button
                       key={option.id}
                       onClick={() => setScope(option.id)}
                       className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition text-left ${
-                        scope === option.id 
-                          ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
+                        scope === option.id
+                          ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
                           : 'border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50'
                       }`}
                     >
                       {scope === option.id ? <Check size={18} className="text-green-600" /> : <Circle size={18} className="text-gray-400" />}
-                      <div className="flex-1">
+                      <div>
                         <p className={`font-bold text-sm ${scope === option.id ? 'text-green-700 dark:text-green-400' : 'text-gray-900 dark:text-white'}`}>{option.label}</p>
                         <p className="text-[10px] text-gray-500 dark:text-gray-400">{option.desc}</p>
                       </div>
                     </button>
                   ))}
                 </div>
-                
-                {/* Custom Date Range Inputs */}
-                {scope === 'custom' && (
-                  <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl border-2 border-green-500 dark:border-green-800 space-y-3">
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block flex items-center gap-1">
-                        <Calendar size={12} /> Start Date
-                      </label>
-                      <input
-                        type="date"
-                        value={customDateRange.startDate}
-                        onChange={(e) => setCustomDateRange(prev => ({ ...prev, startDate: e.target.value }))}
-                        className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-green-500 dark:text-white text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block flex items-center gap-1">
-                        <Calendar size={12} /> End Date
-                      </label>
-                      <input
-                        type="date"
-                        value={customDateRange.endDate}
-                        onChange={(e) => setCustomDateRange(prev => ({ ...prev, endDate: e.target.value }))}
-                        className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-green-500 dark:text-white text-sm"
-                      />
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Channel Selection */}
@@ -177,8 +151,8 @@ export const ShareAccountModal = ({
                   <button
                     onClick={() => setChannel('whatsapp')}
                     className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition ${
-                      channel === 'whatsapp' 
-                        ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
+                      channel === 'whatsapp'
+                        ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
                         : 'border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50'
                     }`}
                   >
@@ -188,8 +162,8 @@ export const ShareAccountModal = ({
                   <button
                     onClick={() => setChannel('sms')}
                     className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition ${
-                      channel === 'sms' 
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                      channel === 'sms'
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                         : 'border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50'
                     }`}
                   >
@@ -219,29 +193,29 @@ export const ShareAccountModal = ({
         {/* FOOTER ACTIONS */}
         <div className="sticky bottom-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 p-4 rounded-b-2xl space-y-2">
           {step === 'select' ? (
-            <button 
+            <button
               onClick={handleContinueToPreview}
-              disabled={!channel || (scope === 'custom' && (!customDateRange.startDate || !customDateRange.endDate))}
+              disabled={!channel}
               className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
             >
               Continue
             </button>
           ) : (
             <>
-              <button 
+              <button
                 onClick={handleShare}
                 className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg"
               >
                 <Share2 size={18} /> Share via {channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}
               </button>
               <div className="grid grid-cols-2 gap-2">
-                <button 
+                <button
                   onClick={handleCopy}
                   className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"
                 >
                   <Copy size={16} /> Copy
                 </button>
-                <button 
+                <button
                   onClick={() => setStep('select')}
                   className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"
                 >

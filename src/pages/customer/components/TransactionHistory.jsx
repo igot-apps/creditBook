@@ -1,4 +1,4 @@
-import { Edit3, Ban, HeartHandshake, Check, FileText, ChevronDown, ChevronUp, ArrowRight, Clock } from "lucide-react";
+import { Edit3, Ban, HeartHandshake, Check, FileText, ChevronDown, ChevronUp, ArrowRight } from "lucide-react";
 import { formatCurrency, formatDate } from "../../../utils/helpers";
 import { txDate, isWriteOffTx } from "../utils/helpers";
 
@@ -15,7 +15,7 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
       <div className="p-4 border-b border-gray-100 dark:border-gray-700 font-bold text-gray-700 dark:text-gray-300 flex items-center justify-between gap-2">
-        <span className="flex items-center gap-2"><Clock size={18} /> Recent Activity</span>
+        <span className="flex items-center gap-2"><Check size={18} /> Recent Activity</span>
         <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">{shownCount} of {totalCount}</span>
       </div>
       <div className="p-4 space-y-3">
@@ -27,17 +27,19 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
             const isCancelled = tx.status === 'cancelled';
             const isInvalid = isBeingCorrected || isCancelled;
             const forgiven = isWriteOffTx(tx);
+            const isCorrection = !!tx.correctsTransactionId; // 👈 this row replaced an older one
             return (
               <div key={tx.id} className="space-y-2">
                 <div role="button" tabIndex={0} onClick={() => onView(tx)} className={`w-full text-left p-3 rounded-xl border transition-all active:scale-[0.98] cursor-pointer ${
                   isCancelled ? 'border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20' :
                   isBeingCorrected ? 'border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20' :
                   forgiven ? 'border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20' :
+                  isCorrection ? 'border-amber-200 dark:border-amber-800 bg-amber-50/40 dark:bg-amber-950/10' :
                   'border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
                 }`}>
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
-                      <div className={`p-1 rounded-full ${isInvalid ? (isCancelled ? 'bg-red-100 dark:bg-red-900/40' : 'bg-yellow-100 dark:bg-yellow-900/40') : forgiven ? 'bg-purple-100 dark:bg-purple-900/30' : 'bg-green-100 dark:bg-green-900/30'}`}>
+                      <div className={`p-1 rounded-full ${isInvalid ? (isCancelled ? 'bg-red-100 dark:bg-red-900/40' : 'bg-yellow-100 dark:bg-yellow-900/40') : forgiven ? 'bg-purple-100 dark:bg-purple-900/30' : isCorrection ? 'bg-amber-100 dark:bg-amber-900/30' : 'bg-green-100 dark:bg-green-900/30'}`}>
                         {getTimelineIcon(tx)}
                       </div>
                       <div>
@@ -45,6 +47,12 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
                           {forgiven ? 'Debt Forgiven' : tx.type === 'payment' ? 'Payment' : tx.type === 'purchase' ? 'Purchase' : 'Sale'}
                         </p>
                         <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDate(txDate(tx)).split(',')[0]}</p>
+                        {/* 👇 NEW: prominent CORRECTED badge */}
+                        {isCorrection && (
+                          <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[9px] font-bold uppercase tracking-wide">
+                            <Edit3 size={9} /> Corrected
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="text-right">
@@ -76,7 +84,6 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
             );
           })
         )}
-
         {hasMore && (
           <button
             onClick={onLoadMore}

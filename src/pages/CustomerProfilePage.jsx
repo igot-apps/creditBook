@@ -3,7 +3,7 @@ import { Trash2, HeartHandshake } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { openDialer } from "../utils/communication";
-import { buildAllocationMap, saleRemaining, computeRetroAllocations } from "../utils/allocation";
+import { buildAllocationMap, saleRemaining, computeRetroAllocations, computeForgiveAllocations } from "../utils/allocation";
 import { CustomerService } from "../services/CustomerService";
 import { TransactionService } from "../services/TransactionService";
 import { AllocationService } from "../services/AllocationService";
@@ -12,7 +12,6 @@ import { ShareAccountModal } from "../components/ShareAccountModal";
 import { AddCustomerModal } from "../components/customer/AddCustomerModal";
 import { DeleteContactModal } from "../components/DeleteContactModal";
 import { TopBar } from "../components/TopBar";
-
 // Modular, allocation-aware components
 import { CustomerHeader } from "./customer/components/CustomerHeader";
 import { BalanceCard } from "./customer/components/BalanceCard";
@@ -113,7 +112,7 @@ export const CustomerProfilePage = () => {
   const allocationMap = useMemo(() => buildAllocationMap(allocations, history), [allocations, history]);
   const lastPayment = useMemo(() => history.find(tx => (parseFloat(tx.paid) || 0) > 0 && (tx.type === 'payment' || tx.type === 'sale') && !isWriteOffTx(tx) && isLive(tx)), [history]);
 
-  // Invoice-level: subtract allocated payments → fully-paid invoices disappear
+  // Invoice-level: subtract allocated payments (real + forgiven) → cleared invoices disappear
   const outstandingInvoices = useMemo(() =>
     history
       .filter(tx => tx.type === 'sale' && isLive(tx))
@@ -198,14 +197,43 @@ export const CustomerProfilePage = () => {
     setCancelReason("");
   };
 
+  // ==========================================
+  // 👇 FORGIVE DEBT — now allocates FIFO to open invoices
+  //    1) create write-off tx (returns id)
+  //    2) FIFO-allocate the forgiven amount onto open invoices
+  //    3) if allocation insert fails → cancel the write-off (compensation) & rethrow
+  //    4) refresh history + allocations + stored balance
+  // ==========================================
   const executeForgiveDebt = async (amount, reason) => {
     if (blockIfReadOnly()) return;
+    let writeOffId = null;
     try {
-      await TransactionService.recordWriteOff(currentStore.id, customerData.id, amount, reason);
+      // Step 1 — the forgiveness transaction (historical fact)
+      writeOffId = await TransactionService.recordWriteOff(currentStore.id, customerData.id, amount, reason);
+
+      // Step 2 — FIFO allocation of the forgiven amount (oldest invoice first,
+      // capped per invoice; any excess stays balance-level only)
+      const rows = computeForgiveAllocations(history, allocations, amount, writeOffId, customerData.id);
+      if (rows.length > 0) {
+        try {
+          await AllocationService.createMany(rows);
+        } catch (allocError) {
+          // Compensation: never leave a write-off without its allocations
+          console.error("Forgiveness allocation failed — rolling back write-off:", allocError);
+          await TransactionService.cancelTransaction(writeOffId, 'Forgiveness aborted: allocation failed').catch(() => {});
+          throw allocError;
+        }
+      }
+
+      // Step 3 — refresh everything so all views agree immediately
       await refreshAfterMutation();
       setShowForgiveModal(false);
       showToast(`🤝 ${formatCurrency(amount, currency)} of debt forgiven`);
-    } catch (error) { console.error(error); showToast("❌ Failed to forgive debt"); throw error; }
+    } catch (error) {
+      console.error(error);
+      showToast("❌ Failed to forgive debt");
+      throw error; // keeps ForgiveDebtModal open for retry
+    }
   };
 
   const toggleOldReceipt = async (tx) => {
