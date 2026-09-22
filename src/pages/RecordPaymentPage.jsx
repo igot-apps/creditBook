@@ -1,21 +1,15 @@
 import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Users, Check, Loader2, Banknote, Smartphone, CreditCard, Link2, Edit3 } from "lucide-react";
+import { Search, Plus, Users, Check, Loader2, Banknote, Smartphone, CreditCard, Link2 } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
+import { buildAllocationMap, computeOpenInvoices, fifoPreview } from "../utils/allocation";
+import { normalizeList, isActive } from "./customer/utils/helpers";
 import { CustomerService } from "../services/CustomerService";
 import { TransactionService } from "../services/TransactionService";
 import { AllocationService } from "../services/AllocationService";
 import { TopBar } from "../components/TopBar";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
-
-const normalizeList = (list) => (Array.isArray(list) ? list : []).map(tx => ({
-  ...tx,
-  createdAt: tx.created_at || tx.createdAt,
-  contactId: tx.contact_id || tx.contactId,
-}));
-
-const isActiveTx = (tx) => tx.status === 'active' || !tx.status;
 
 const METHODS = [
   { id: "cash", label: "Cash", icon: Banknote },
@@ -32,7 +26,7 @@ export const RecordPaymentPage = () => {
 
   const blockIfReadOnly = () => {
     if (readOnly) {
-      showToast(" Subscription expired — please renew to continue.");
+      showToast("🔒 Subscription expired — please renew to continue.");
       return true;
     }
     return false;
@@ -48,10 +42,6 @@ export const RecordPaymentPage = () => {
   const [method, setMethod] = useState("cash");
   const [note, setNote] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-
-  // 👇 NEW: Manual Allocation State
-  const [manualMode, setManualMode] = useState(false);
-  const [manualAllocations, setManualAllocations] = useState({});
 
   useEffect(() => {
     if (currentStore?.id) {
@@ -90,68 +80,18 @@ export const RecordPaymentPage = () => {
     }
   }, [selectedCustomer?.id]);
 
-  //  Open invoices computed LOCALLY (no external util) — always real numbers
-  const openInvoices = useMemo(() => {
-    const activePayIds = new Set(
-      (Array.isArray(history) ? history : [])
-        .filter(t => t.type === 'payment' && isActiveTx(t))
-        .map(t => t.id)
-    );
-    const map = {};
-    (Array.isArray(allocations) ? allocations : []).forEach(a => {
-      if (activePayIds.has(a.payment_id) && a.sale_id) {
-        map[a.sale_id] = (map[a.sale_id] || 0) + (parseFloat(a.amount) || 0);
-      }
-    });
-    return (Array.isArray(history) ? history : [])
-      .filter(tx => tx.type === 'sale' && isActiveTx(tx) && !tx.replacedByTransactionId)
-      .map(tx => {
-        const remaining = Math.max(
-          0,
-          (parseFloat(tx.amount) || 0) - (parseFloat(tx.paid) || 0) - (map[tx.id] || 0)
-        );
-        return {
-          id: tx.id,
-          name: "Sale #" + String(tx.id || "").slice(-6).toUpperCase(),
-          remaining: remaining,
-          date: tx.created_at || tx.createdAt,
-        };
-      })
-      .filter(x => x.remaining > 0.009)
-      .sort((a, b) => new Date(a.date) - new Date(b.date));
-  }, [history, allocations]);
+  // ==========================================
+  // 👇 SINGLE SOURCE OF TRUTH — shared, orphan-proof allocation utils
+  //    (ignores cancelled payments AND allocations pointing at dead/replaced sales)
+  // ==========================================
+  const allocationMap = useMemo(() => buildAllocationMap(allocations, history), [allocations, history]);
+  const openInvoices = useMemo(() => computeOpenInvoices(history, allocationMap), [history, allocationMap]);
 
-  //  FIFO preview — only real rows (name + amount), NaN-proof
+  // 👇 FIFO preview — exactly what will be persisted on save
   const preview = useMemo(() => {
-    let left = parseFloat(amount) || 0;
-    const rows = [];
-    for (const inv of openInvoices) {
-      if (left <= 0) break;
-      const apply = Math.min(inv.remaining, left);
-      if (apply > 0) {
-        rows.push({ sale_id: inv.id, name: inv.name, amount: apply });
-      }
-      left = left - apply;
-    }
-    return { rows: rows, leftover: left };
+    const { allocations: rows, leftover } = fifoPreview(openInvoices, amount);
+    return { rows, leftover };
   }, [openInvoices, amount]);
-
-  // 👇 Toggle Manual Mode (pre-fills with FIFO amounts for easy tweaking)
-  const toggleManualMode = () => {
-    if (!manualMode && preview.rows.length > 0) {
-      const prefill = {};
-      preview.rows.forEach(r => { prefill[r.sale_id] = r.amount; });
-      setManualAllocations(prefill);
-    } else {
-      setManualAllocations({});
-    }
-    setManualMode(!manualMode);
-  };
-
-  // Calculate total manually allocated
-  const manualTotal = useMemo(() => {
-    return Object.values(manualAllocations).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
-  }, [manualAllocations]);
 
   const filteredCustomers = useMemo(() => {
     if (!Array.isArray(customers)) return [];
@@ -164,8 +104,6 @@ export const RecordPaymentPage = () => {
     setSelectedCustomer(customer);
     setMode("existing");
     setSearchQuery("");
-    setManualMode(false); // Reset manual mode on customer change
-    setManualAllocations({});
   };
 
   const handleCreateCustomer = () => {
@@ -173,7 +111,7 @@ export const RecordPaymentPage = () => {
     const name = searchQuery.trim();
     if (name) {
       CustomerService.addCustomer(currentStore.id, name, "").then(id => {
-        setSelectedCustomer({ id: id, name: name, phone: "", balance: 0 });
+        setSelectedCustomer({ id, name, phone: "", balance: 0 });
         setMode("existing");
         setSearchQuery("");
         showToast("✅ Customer created!");
@@ -188,50 +126,49 @@ export const RecordPaymentPage = () => {
     if (!selectedCustomer) { showToast("⚠️ Select a customer first"); return; }
     const amt = parseFloat(amount) || 0;
     if (amt <= 0) { showToast("⚠️ Enter a payment amount"); return; }
-
-    // Validation for manual mode
-    if (manualMode && manualTotal > amt) {
-      showToast(`⚠️ Allocated amount (${formatCurrency(manualTotal, currency)}) exceeds payment (${formatCurrency(amt, currency)})`);
-      return;
-    }
-
     setIsSaving(true);
     try {
-      const paymentId = await TransactionService.recordPayment(currentStore.id, selectedCustomer.id, amt, note, {
+      // Step 1 — create the payment transaction
+      let paymentId = await TransactionService.recordPayment(currentStore.id, selectedCustomer.id, amt, note, {
         paymentMethod: method,
         contactName: selectedCustomer.name,
         contactPhone: selectedCustomer.phone,
       });
 
-      // Persist allocations (Manual or FIFO)
-      let rowsToSave = [];
-      if (manualMode) {
-        rowsToSave = Object.entries(manualAllocations)
-          .filter(([_, val]) => parseFloat(val) > 0)
-          .map(([sale_id, amount]) => ({
+      // 👇 SAFETY NET: if the service didn't hand back the new id,
+      //    recover the just-created payment from fresh history so
+      //    allocations are NEVER skipped (root cause of "paid but invoice unpaid").
+      if (!paymentId) {
+        const fresh = await TransactionService.getHistory(selectedCustomer.id);
+        const candidate = (Array.isArray(fresh) ? normalizeList(fresh) : [])
+          .filter(t =>
+            t.type === 'payment' &&
+            isActive(t) &&
+            !(t.note || '').startsWith('[FORGIVEN]') &&
+            Math.abs((parseFloat(t.paid) || 0) - amt) <= 0.009
+          )
+          .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0];
+        paymentId = candidate ? candidate.id : null;
+      }
+
+      // Steps 2–4 — persist the FIFO allocations (upsert — can never duplicate)
+      if (paymentId && preview.rows.length > 0) {
+        await AllocationService.createMany(
+          preview.rows.map(r => ({
             payment_id: paymentId,
-            sale_id,
+            sale_id: r.sale_id,
             contact_id: selectedCustomer.id,
-            amount: parseFloat(amount)
-          }));
-      } else {
-        rowsToSave = preview.rows.map(r => ({
-          payment_id: paymentId,
-          sale_id: r.sale_id,
-          contact_id: selectedCustomer.id,
-          amount: r.amount
-        }));
+            amount: r.amount,
+          }))
+        );
       }
 
-      if (paymentId && rowsToSave.length > 0) {
-        await AllocationService.createMany(rowsToSave);
-      }
-
-      // Recalculate aggregate balance (single source of truth)
-      const fresh = await TransactionService.getHistory(selectedCustomer.id);
+      // Step 5 — recalculate aggregate balance (customer-level source of truth)
+      const freshHistory = await TransactionService.getHistory(selectedCustomer.id);
       let bal = 0;
-      (Array.isArray(fresh) ? fresh : []).forEach(t => {
+      (Array.isArray(freshHistory) ? freshHistory : []).forEach(t => {
         if (t.status && t.status !== 'active') return;
+        if (t.replaced_by_transaction_id || t.replacedByTransactionId) return;
         const a = parseFloat(t.amount) || 0;
         const p = parseFloat(t.paid) || 0;
         if (t.type === 'sale') bal += a - p;
@@ -241,10 +178,10 @@ export const RecordPaymentPage = () => {
 
       showToast("✅ Payment recorded & applied to invoices!");
       useStore.setState({ selectedCustomer: selectedCustomer });
-      setView("profile");
+      setView("profile"); // Step 6 — profile reloads history + invoices (and heals if needed)
     } catch (error) {
       console.error(error);
-      showToast(" Failed to record payment.");
+      showToast("❌ Failed to record payment.");
     } finally {
       setIsSaving(false);
     }
@@ -254,7 +191,6 @@ export const RecordPaymentPage = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <TopBar title="Record Payment" showBack={true} onBack={() => setView("profile")} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
-
         {mode === "search" && (
           <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <p className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2"><Users size={16} className="text-blue-600" /> Who is paying?</p>
@@ -295,7 +231,7 @@ export const RecordPaymentPage = () => {
                 <p className="text-xs text-blue-600 dark:text-blue-400 uppercase font-bold">Receiving payment from</p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedCustomer.name || "Unknown Customer"}</p>
               </div>
-              <button onClick={() => { setMode("search"); setSelectedCustomer(null); setManualMode(false); setManualAllocations({}); }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">
+              <button onClick={() => { setMode("search"); setSelectedCustomer(null); }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">
                 Change
               </button>
             </div>
@@ -318,89 +254,23 @@ export const RecordPaymentPage = () => {
             </div>
 
             {(parseFloat(amount) || 0) > 0 && (
-              <div className="space-y-3">
-                {/* Toggle Button */}
-                <button
-                  onClick={toggleManualMode}
-                  className="w-full text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 py-2 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition"
-                >
-                  {manualMode ? (
-                    <> <Link2 size={12} /> Switch back to Auto-apply (FIFO) </>
-                  ) : (
-                    <> <Edit3 size={12} /> Choose specific invoices manually </>
-                  )}
-                </button>
-
-                {/* AUTO MODE (Existing FIFO logic) */}
-                {!manualMode && (
-                  <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl p-3 space-y-1.5">
-                    <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase flex items-center gap-1">
-                      <Link2 size={11} /> Payment will be applied to (oldest first)
-                    </p>
-                    {preview.rows.length === 0 && (
-                      <p className="text-xs text-gray-600 dark:text-gray-300">No unpaid invoices — full amount becomes customer credit.</p>
-                    )}
-                    {preview.rows.map((a, i) => (
-                      <div key={i} className="flex justify-between text-xs">
-                        <span className="text-gray-600 dark:text-gray-300">{a.name}</span>
-                        <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(a.amount, currency)}</span>
-                      </div>
-                    ))}
-                    {preview.leftover > 0 && (
-                      <div className="flex justify-between text-xs pt-1 border-t border-blue-100 dark:border-blue-900/30">
-                        <span className="text-gray-600 dark:text-gray-300">Left as customer credit</span>
-                        <span className="font-bold text-green-600 dark:text-green-400">{formatCurrency(preview.leftover, currency)}</span>
-                      </div>
-                    )}
-                  </div>
+              <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl p-3 space-y-1.5">
+                <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase flex items-center gap-1">
+                  <Link2 size={11} /> Payment will be applied to (oldest first)
+                </p>
+                {preview.rows.length === 0 && (
+                  <p className="text-xs text-gray-600 dark:text-gray-300">No unpaid invoices — full amount becomes customer credit.</p>
                 )}
-
-                {/* MANUAL MODE (New feature) */}
-                {manualMode && (
-                  <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-2">
-                    <p className="text-[10px] font-bold text-gray-700 dark:text-gray-300 uppercase flex items-center gap-1">
-                      <Edit3 size={11} /> Select invoices and enter amounts
-                    </p>
-                    {openInvoices.length === 0 && (
-                      <p className="text-xs text-gray-600 dark:text-gray-300">No unpaid invoices available.</p>
-                    )}
-                    {openInvoices.map(inv => {
-                      const isChecked = manualAllocations[inv.id] !== undefined;
-                      const val = manualAllocations[inv.id] || '';
-                      return (
-                        <div key={inv.id} className="flex items-center gap-3 p-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) setManualAllocations(prev => ({ ...prev, [inv.id]: inv.remaining }));
-                              else { const n = { ...manualAllocations }; delete n[inv.id]; setManualAllocations(n); }
-                            }}
-                            className="w-4 h-4 text-blue-600 rounded"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-xs text-gray-900 dark:text-white truncate">{inv.name}</p>
-                            <p className="text-[10px] text-gray-500">Due: {formatCurrency(inv.remaining, currency)}</p>
-                          </div>
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            value={val}
-                            onChange={(e) => setManualAllocations(prev => ({ ...prev, [inv.id]: parseFloat(e.target.value) || 0 }))}
-                            placeholder="0.00"
-                            className="w-20 px-2 py-1 text-right text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-                          />
-                        </div>
-                      );
-                    })}
-                    {manualTotal > 0 && (
-                      <div className="flex justify-between text-xs pt-2 border-t border-gray-200 dark:border-gray-700">
-                        <span className="font-bold text-gray-600 dark:text-gray-300">Total Allocated:</span>
-                        <span className={`font-bold ${manualTotal > parseFloat(amount) ? 'text-red-600' : 'text-green-600 dark:text-green-400'}`}>
-                          {formatCurrency(manualTotal, currency)}
-                        </span>
-                      </div>
-                    )}
+                {preview.rows.map((a, i) => (
+                  <div key={i} className="flex justify-between text-xs">
+                    <span className="text-gray-600 dark:text-gray-300">{a.name}</span>
+                    <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(a.amount, currency)}</span>
+                  </div>
+                ))}
+                {preview.leftover > 0.009 && (
+                  <div className="flex justify-between text-xs pt-1 border-t border-blue-100 dark:border-blue-900/30">
+                    <span className="text-gray-600 dark:text-gray-300">Left as customer credit</span>
+                    <span className="font-bold text-green-600 dark:text-green-400">{formatCurrency(preview.leftover, currency)}</span>
                   </div>
                 )}
               </div>

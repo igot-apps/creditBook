@@ -18,8 +18,13 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
   const payById = (id) => (Array.isArray(history) ? history : []).find(p => p.id === id);
   const saleById = (id) => (Array.isArray(history) ? history : []).find(s => s.id === id);
 
-  const appliedToThisSale = !isPayment ? (Array.isArray(allocations) ? allocations : []).filter(a => a.sale_id === tx.id && isActive(payById(a.payment_id) || {})) : [];
-  const appliedByThisPayment = isPayment ? (Array.isArray(allocations) ? allocations : []).filter(a => a.payment_id === tx.id) : [];
+  // 👇 Allocation truth from the payment_allocations table
+  const appliedToThisSale = !isPayment
+    ? (Array.isArray(allocations) ? allocations : []).filter(a => a.sale_id === tx.id && isActive(payById(a.payment_id) || {}))
+    : [];
+  const appliedByThisPayment = isPayment
+    ? (Array.isArray(allocations) ? allocations : []).filter(a => a.payment_id === tx.id)
+    : [];
   const appliedTotal = appliedToThisSale.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
   const trueOutstanding = Math.max(0, totalSale - paid - appliedTotal);
 
@@ -95,8 +100,16 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
           <div className="border-t-2 border-dashed border-gray-300 dark:border-gray-700" />
           {forgiven ? (
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-purple-200 dark:border-purple-800 p-4 space-y-3">
-              <div className="flex justify-between text-lg font-bold"><span className="text-gray-700 dark:text-gray-300 flex items-center gap-2"><HeartHandshake size={18} className="text-purple-600" /> Amount Forgiven</span><span className="text-purple-600 dark:text-purple-400">{formatCurrency(paid, currency)}</span></div>
-              {forgiveReason && <div className="bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 rounded-xl p-3"><p className="text-[10px] font-bold text-purple-700 dark:text-purple-400 uppercase mb-1">Reason</p><p className="text-sm text-gray-700 dark:text-gray-300">{forgiveReason}</p></div>}
+              <div className="flex justify-between text-lg font-bold">
+                <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2"><HeartHandshake size={18} className="text-purple-600" /> Amount Forgiven</span>
+                <span className="text-purple-600 dark:text-purple-400">{formatCurrency(paid, currency)}</span>
+              </div>
+              {forgiveReason && (
+                <div className="bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 rounded-xl p-3">
+                  <p className="text-[10px] font-bold text-purple-700 dark:text-purple-400 uppercase mb-1">Reason</p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">{forgiveReason}</p>
+                </div>
+              )}
             </div>
           ) : (
             <>

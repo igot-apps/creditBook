@@ -13,7 +13,7 @@ import { AddCustomerModal } from "../components/customer/AddCustomerModal";
 import { DeleteContactModal } from "../components/DeleteContactModal";
 import { TopBar } from "../components/TopBar";
 
-// Import our new clean components
+// Modular, allocation-aware components
 import { CustomerHeader } from "./customer/components/CustomerHeader";
 import { BalanceCard } from "./customer/components/BalanceCard";
 import { QuickActions } from "./customer/components/QuickActions";
@@ -25,6 +25,25 @@ import { ForgiveDebtModal } from "./customer/components/ForgiveDebtModal";
 import { FixReasonModal } from "./customer/components/FixReasonModal";
 import { CancelModal } from "./customer/components/CancelModal";
 import { normalizeList, isActive, isWriteOffTx, getTrueOutstanding } from "./customer/utils/helpers";
+
+// ==========================================
+// SHARED MONEY RULES (single source of truth for this page)
+// ==========================================
+// A transaction counts ONLY if active AND not replaced by a correction
+const isLive = (t) => isActive(t) && !t.replacedByTransactionId;
+
+// Customer-level aggregate balance (never allocation-based)
+const recomputeBalance = (list) => {
+  let bal = 0;
+  (Array.isArray(list) ? list : []).forEach(t => {
+    if (!isLive(t)) return;
+    const amt = parseFloat(t.amount) || 0;
+    const pd = parseFloat(t.paid) || 0;
+    if (t.type === 'sale') bal += amt - pd;
+    else if (t.type === 'payment') bal -= pd;
+  });
+  return bal;
+};
 
 export const CustomerProfilePage = () => {
   const { currentStore, selectedCustomer, setSelectedCustomer, setView, setPrefillTransaction, setFixTransaction, showToast, readOnly } = useStore();
@@ -51,6 +70,7 @@ export const CustomerProfilePage = () => {
   const [showForgiveModal, setShowForgiveModal] = useState(false);
   const [visibleCount, setVisibleCount] = useState(10);
 
+  // Load history + allocations together
   useEffect(() => {
     if (selectedCustomer?.id) {
       CustomerService.getById(selectedCustomer.id).then(setCustomerData);
@@ -63,7 +83,7 @@ export const CustomerProfilePage = () => {
 
   useEffect(() => { setVisibleCount(10); }, [selectedCustomer?.id]);
 
-  // AUTOMATIC healing — guarded so it can NEVER run twice at the same time
+  // 👇 AUTOMATIC healing — guarded so it can NEVER run twice at the same time
   const healRunning = useRef(false);
   useEffect(() => {
     if (!selectedCustomer?.id || history.length === 0) return;
@@ -77,40 +97,42 @@ export const CustomerProfilePage = () => {
           const fresh = await AllocationService.getByContact(selectedCustomer.id);
           setAllocations(fresh);
         }
-      } catch (error) { console.error("Auto-match failed:", error); } 
-      finally { healRunning.current = false; }
+      } catch (error) {
+        console.error("Auto-match failed:", error);
+      } finally {
+        healRunning.current = false;
+      }
     })();
   }, [history, allocations, selectedCustomer?.id]);
 
   if (!customerData) return null;
 
-  // CALCULATIONS — allocation-aware
+  // ==========================================
+  // CALCULATIONS — allocation-aware + replacement-safe
+  // ==========================================
   const allocationMap = useMemo(() => buildAllocationMap(allocations, history), [allocations, history]);
-  const lastPayment = useMemo(() => history.find(tx => (parseFloat(tx.paid) || 0) > 0 && (tx.type === 'payment' || tx.type === 'sale') && !isWriteOffTx(tx) && isActive(tx)), [history]);
+  const lastPayment = useMemo(() => history.find(tx => (parseFloat(tx.paid) || 0) > 0 && (tx.type === 'payment' || tx.type === 'sale') && !isWriteOffTx(tx) && isLive(tx)), [history]);
 
+  // Invoice-level: subtract allocated payments → fully-paid invoices disappear
   const outstandingInvoices = useMemo(() =>
-    history.filter(tx => tx.type === 'sale' && isActive(tx) && !tx.replacedByTransactionId)
+    history
+      .filter(tx => tx.type === 'sale' && isLive(tx))
       .map(tx => {
         const original = getTrueOutstanding(tx);
         const remaining = saleRemaining(tx, allocationMap);
         return { ...tx, trueOutstanding: remaining, originalOutstanding: original, allocated: original - remaining };
-      }).filter(tx => tx.trueOutstanding > 0),
+      })
+      .filter(tx => tx.trueOutstanding > 0.009),
     [history, allocationMap]);
 
-  const trueBalance = useMemo(() => {
-    let bal = 0;
-    history.forEach(t => {
-      if (!isActive(t)) return;
-      const amt = parseFloat(t.amount) || 0;
-      const pd = parseFloat(t.paid) || 0;
-      if (t.type === 'sale') bal += amt - pd;
-      else if (t.type === 'payment') bal -= pd;
-    });
-    return bal;
-  }, [history]);
+  // Customer-level: aggregate only (single source of truth for the balance card)
+  const trueBalance = useMemo(() => recomputeBalance(history), [history]);
 
-  const totalSales = history.reduce((sum, t) => sum + ((parseFloat(t.amount) || 0) > 0 && t.type === 'sale' && isActive(t) ? (parseFloat(t.amount) || 0) : 0), 0);
-  const totalPayments = history.reduce((sum, t) => sum + ((parseFloat(t.paid) || 0) > 0 && !isWriteOffTx(t) && isActive(t) ? (parseFloat(t.paid) || 0) : 0), 0);
+  const totalSales = history.reduce((sum, t) =>
+    sum + ((parseFloat(t.amount) || 0) > 0 && t.type === 'sale' && isLive(t) ? (parseFloat(t.amount) || 0) : 0), 0);
+  const totalPayments = history.reduce((sum, t) =>
+    sum + ((parseFloat(t.paid) || 0) > 0 && !isWriteOffTx(t) && isLive(t) ? (parseFloat(t.paid) || 0) : 0), 0);
+
   const visibleHistory = useMemo(() => history.filter(tx => !tx.replacedByTransactionId), [history]);
   const pagedHistory = useMemo(() => visibleHistory.slice(0, visibleCount), [visibleHistory, visibleCount]);
 
@@ -123,7 +145,23 @@ export const CustomerProfilePage = () => {
     return `${days} days ago`;
   }, [customerData]);
 
+  // Refresh history + allocations + stored balance after any mutation
+  const refreshAfterMutation = async () => {
+    const updatedHistory = normalizeList(await TransactionService.getHistory(customerData.id));
+    const bal = recomputeBalance(updatedHistory);
+    await CustomerService.updateBalance(customerData.id, bal);
+    const [updated, freshAllocs] = await Promise.all([
+      CustomerService.getById(customerData.id),
+      AllocationService.getByContact(customerData.id).catch(() => []),
+    ]);
+    setCustomerData(updated);
+    setHistory(updatedHistory);
+    setAllocations(freshAllocs);
+  };
+
+  // ==========================================
   // HANDLERS (all guarded)
+  // ==========================================
   const handleRecordSale = () => {
     if (blockIfReadOnly()) return;
     setPrefillTransaction({ customerId: customerData.id, name: customerData.name, phone: customerData.phone, amount: "", paid: "0" });
@@ -153,18 +191,8 @@ export const CustomerProfilePage = () => {
     setShowCancelModal(false);
     try {
       await TransactionService.cancelTransaction(viewingTransaction.id, cancelReason);
-      const updatedHistory = await TransactionService.getHistory(customerData.id);
-      let bal = 0;
-      (Array.isArray(updatedHistory) ? updatedHistory : []).forEach(t => {
-        if (!isActive(t)) return;
-        const amt = parseFloat(t.amount) || 0;
-        const pd = parseFloat(t.paid) || 0;
-        if (t.type === 'sale') bal += amt - pd;
-        else if (t.type === 'payment') bal -= pd;
-      });
-      await CustomerService.updateBalance(customerData.id, bal);
-      const updated = await CustomerService.getById(customerData.id);
-      setCustomerData(updated); setHistory(normalizeList(updatedHistory)); setViewingTransaction(null);
+      await refreshAfterMutation();
+      setViewingTransaction(null);
       showToast("✅ Transaction cancelled!");
     } catch (error) { console.error(error); showToast("❌ Failed to cancel."); }
     setCancelReason("");
@@ -174,24 +202,14 @@ export const CustomerProfilePage = () => {
     if (blockIfReadOnly()) return;
     try {
       await TransactionService.recordWriteOff(currentStore.id, customerData.id, amount, reason);
-      const updatedHistory = await TransactionService.getHistory(customerData.id);
-      let bal = 0;
-      (Array.isArray(updatedHistory) ? updatedHistory : []).forEach(t => {
-        if (!isActive(t)) return;
-        const amt = parseFloat(t.amount) || 0;
-        const pd = parseFloat(t.paid) || 0;
-        if (t.type === 'sale') bal += amt - pd;
-        else if (t.type === 'payment') bal -= pd;
-      });
-      await CustomerService.updateBalance(customerData.id, bal);
-      const updated = await CustomerService.getById(customerData.id);
-      setCustomerData(updated); setHistory(normalizeList(updatedHistory)); setShowForgiveModal(false);
+      await refreshAfterMutation();
+      setShowForgiveModal(false);
       showToast(`🤝 ${formatCurrency(amount, currency)} of debt forgiven`);
     } catch (error) { console.error(error); showToast("❌ Failed to forgive debt"); throw error; }
   };
 
   const toggleOldReceipt = async (tx) => {
-    if (expandedOldTx && expandedOldTx.id === tx.correctsTransactionId) { setExpandedOldTx(null); } 
+    if (expandedOldTx && expandedOldTx.id === tx.correctsTransactionId) { setExpandedOldTx(null); }
     else { const oldTx = await TransactionService.getById(tx.correctsTransactionId); setExpandedOldTx(normalizeList([oldTx])[0]); }
   };
 
@@ -210,27 +228,54 @@ export const CustomerProfilePage = () => {
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
         <CustomerHeader customer={customerData} daysSinceLastActive={daysSinceLastActive} onEdit={() => { if (!blockIfReadOnly()) setIsEditModalOpen(true); }} />
         <BalanceCard balance={trueBalance} lastPayment={lastPayment} currency={currency} />
-        
+
         {trueBalance > 0 && (
-          <button onClick={() => { if (!blockIfReadOnly()) setShowForgiveModal(true); }} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-purple-200 dark:border-purple-900/40 text-purple-600 dark:text-purple-400 text-sm font-semibold hover:bg-purple-50 dark:hover:bg-purple-900/10 active:scale-95 transition">
+          <button
+            onClick={() => { if (!blockIfReadOnly()) setShowForgiveModal(true); }}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-purple-200 dark:border-purple-900/40 text-purple-600 dark:text-purple-400 text-sm font-semibold hover:bg-purple-50 dark:hover:bg-purple-900/10 active:scale-95 transition"
+          >
             <HeartHandshake size={16} /> Forgive Debt (Write Off)
           </button>
         )}
 
         <QuickActions onSale={handleRecordSale} onPayment={handleReceivePayment} onCall={() => openDialer(customerData.phone)} onShare={() => setShowShareModal(true)} />
         <OutstandingInvoices invoices={outstandingInvoices} onView={setViewingTransaction} currency={currency} />
-        <TransactionHistory history={pagedHistory} onView={setViewingTransaction} onToggleOld={toggleOldReceipt} expandedOldTx={expandedOldTx} setViewingTransaction={setViewingTransaction} currency={currency} hasMore={visibleHistory.length > visibleCount} onLoadMore={() => setVisibleCount(c => c + 10)} shownCount={pagedHistory.length} totalCount={visibleHistory.length} />
+        <TransactionHistory
+          history={pagedHistory}
+          onView={setViewingTransaction}
+          onToggleOld={toggleOldReceipt}
+          expandedOldTx={expandedOldTx}
+          setViewingTransaction={setViewingTransaction}
+          currency={currency}
+          hasMore={visibleHistory.length > visibleCount}
+          onLoadMore={() => setVisibleCount(c => c + 10)}
+          shownCount={pagedHistory.length}
+          totalCount={visibleHistory.length}
+        />
         <MoreInformation totalSales={totalSales} totalPayments={totalPayments} historyLength={visibleHistory.length} createdAt={customerData.created_at || customerData.createdAt} currency={currency} />
 
         <div className="pt-2">
-          <button onClick={() => { if (!blockIfReadOnly()) setShowDeleteModal(true); }} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 text-sm font-semibold hover:bg-red-50 dark:hover:bg-red-900/10 active:scale-95 transition">
+          <button
+            onClick={() => { if (!blockIfReadOnly()) setShowDeleteModal(true); }}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 text-sm font-semibold hover:bg-red-50 dark:hover:bg-red-900/10 active:scale-95 transition"
+          >
             <Trash2 size={16} /> Delete this customer
           </button>
         </div>
       </div>
 
       {!showFixModal && !showCancelModal && (
-        <ReceiptModal tx={viewingTransaction} customer={customerData} currentStore={currentStore} onClose={() => setViewingTransaction(null)} onFix={handleFixTransaction} onCancel={handleCancelTransaction} currency={currency} history={history} allocations={allocations} />
+        <ReceiptModal
+          tx={viewingTransaction}
+          customer={customerData}
+          currentStore={currentStore}
+          onClose={() => setViewingTransaction(null)}
+          onFix={handleFixTransaction}
+          onCancel={handleCancelTransaction}
+          currency={currency}
+          history={history}
+          allocations={allocations}
+        />
       )}
       <FixReasonModal isOpen={showFixModal} onClose={() => setShowFixModal(false)} onConfirm={confirmFix} fixReason={fixReason} setFixReason={setFixReason} />
       <CancelModal isOpen={showCancelModal} onClose={() => setShowCancelModal(false)} onConfirm={executeCancelTransaction} cancelReason={cancelReason} setCancelReason={setCancelReason} type={viewingTransaction?.type} />

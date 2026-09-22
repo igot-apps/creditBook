@@ -1,4 +1,4 @@
-import { Edit3, Ban, HeartHandshake, Check, FileText, ChevronDown, ChevronUp, ArrowRight } from "lucide-react";
+import { Edit3, Ban, HeartHandshake, Check, FileText, ChevronDown, ChevronUp, ArrowRight, Clock } from "lucide-react";
 import { formatCurrency, formatDate } from "../../../utils/helpers";
 import { txDate, isWriteOffTx } from "../utils/helpers";
 
@@ -15,7 +15,7 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
       <div className="p-4 border-b border-gray-100 dark:border-gray-700 font-bold text-gray-700 dark:text-gray-300 flex items-center justify-between gap-2">
-        <span className="flex items-center gap-2"><Check size={18} /> Recent Activity</span>
+        <span className="flex items-center gap-2"><Clock size={18} /> Recent Activity</span>
         <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">{shownCount} of {totalCount}</span>
       </div>
       <div className="p-4 space-y-3">
@@ -59,7 +59,9 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
                       </button>
                     )}
                     {tx.replacedByTransactionId && (
-                      <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1 ml-auto">Updated Receipt <ArrowRight size={10} /></p>
+                      <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1 ml-auto">
+                        Updated Receipt <ArrowRight size={10} />
+                      </p>
                     )}
                   </div>
                 </div>
@@ -74,8 +76,12 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
             );
           })
         )}
+
         {hasMore && (
-          <button onClick={onLoadMore} className="w-full py-3 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-gray-800/50 active:scale-[0.98] transition flex items-center justify-center gap-2">
+          <button
+            onClick={onLoadMore}
+            className="w-full py-3 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-gray-800/50 active:scale-[0.98] transition flex items-center justify-center gap-2"
+          >
             <ChevronDown size={16} /> Load More Transactions
           </button>
         )}

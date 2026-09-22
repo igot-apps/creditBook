@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { Search, ArrowRight, Clock, TrendingUp, TrendingDown, AlertCircle, Plus, FileText, Pause, Trash2, ShoppingCart, Truck } from "lucide-react";
+import { Search, ArrowRight, Clock, TrendingUp, TrendingDown, AlertCircle, Pause, Trash2, ShoppingCart, Truck, Package } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
 import { TransactionService } from "../services/TransactionService";
 import { SuspendedTransactionService } from "../services/SuspendedTransactionService";
+import { ProductService } from "../services/ProductService";
 import { TopBar } from "../components/TopBar";
 import { UniversalSearchModal } from "../components/UniversalSearchModal";
 
@@ -24,24 +25,15 @@ const getTimeAgo = (dateString) => {
 export const HomePage = () => {
   const {
     currentStore, setView, autoDraft, showToast,
-    setSelectedCustomer, setPrefillTransaction, setResumedSuspendedId,
-    readOnly
+    setSelectedCustomer, setPrefillTransaction, setResumedSuspendedId
   } = useStore();
-
-  // 👇 VIEW-ONLY GUARD (blocks creating/resuming/discarding when subscription expired)
-  const blockIfReadOnly = () => {
-    if (readOnly) {
-      showToast("🔒 Subscription expired — please renew to continue.");
-      return true;
-    }
-    return false;
-  };
-
+  
   const [showSearch, setShowSearch] = useState(false);
   const [todayStats, setTodayStats] = useState({ received: 0, purchases: 0, outstanding: 0 });
   const [topDebtors, setTopDebtors] = useState([]);
   const [recentCustomers, setRecentCustomers] = useState([]);
   const [suspended, setSuspended] = useState([]);
+  const [products, setProducts] = useState([]); // Track products
   const currency = currentStore?.currency || "GH₵";
 
   // Handle both snake_case (Supabase) and camelCase
@@ -52,18 +44,22 @@ export const HomePage = () => {
     const loadData = async () => {
       if (!currentStore?.id) return;
       try {
-        const [customers, transactions, suspendedTx] = await Promise.all([
+        // Added ProductService.getAll() to fetch products
+        const [customers, transactions, suspendedTx, productsData] = await Promise.all([
           CustomerService.getAll({ fetchAll: true }),
           TransactionService.getAll(),
-          SuspendedTransactionService.getSuspendedTransactions()
+          SuspendedTransactionService.getSuspendedTransactions(),
+          ProductService.getAll()
         ]);
 
         const validCustomers = Array.isArray(customers) ? customers : [];
         const validTransactions = Array.isArray(transactions) ? transactions : [];
+        const validProducts = Array.isArray(productsData) ? productsData : [];
+        
         const today = new Date().toDateString();
         let received = 0;
         let purchases = 0;
-
+        
         validTransactions.forEach(tx => {
           const isActive = tx.status === 'active' || !tx.status;
           if (!isActive) return;
@@ -77,12 +73,15 @@ export const HomePage = () => {
         const outstanding = validCustomers.reduce(
           (sum, c) => sum + ((parseFloat(c.balance) || 0) > 0 ? (parseFloat(c.balance) || 0) : 0), 0
         );
-        setTodayStats({ received, purchases, outstanding });
 
+        setTodayStats({ received, purchases, outstanding });
+        setProducts(validProducts); // Save products to state
+        
         const debtors = validCustomers
           .filter(c => (parseFloat(c.balance) || 0) > 0)
           .sort((a, b) => (parseFloat(b.balance) || 0) - (parseFloat(a.balance) || 0))
           .slice(0, 3);
+          
         setTopDebtors(debtors);
         setRecentCustomers(validCustomers.slice(0, 5));
         setSuspended(Array.isArray(suspendedTx) ? suspendedTx : []);
@@ -95,7 +94,6 @@ export const HomePage = () => {
 
   // 2. Handle "Continue Working" (Auto-Draft)
   const handleContinueDraft = () => {
-    if (blockIfReadOnly()) return;
     if (!autoDraft) return;
     if (autoDraft.draftType === 'sale') {
       setView('record');
@@ -104,29 +102,14 @@ export const HomePage = () => {
     }
   };
 
-  // 3. Handle Quick Actions
-  const handleQuickSale = () => {
-    if (blockIfReadOnly()) return;
-    setPrefillTransaction(null);
-    setView('record');
-  };
-
-  const handleQuickPurchase = () => {
-    if (blockIfReadOnly()) return;
-    setPrefillTransaction(null);
-    setView('recordSupplierPurchase');
-  };
-
-  // 4. Handle Resume Suspended Transaction
+  // 3. Handle Resume Suspended Transaction
   const handleResumeSuspended = (tx) => {
-    if (blockIfReadOnly()) return;
     setResumedSuspendedId(tx.id);
     setView(tx.type === 'sale' ? 'record' : 'recordSupplierPurchase');
   };
 
-  // 5. Handle Discard Suspended Transaction
+  // 4. Handle Discard Suspended Transaction
   const handleDiscardSuspended = async (tx) => {
-    if (blockIfReadOnly()) return;
     const label = tx.type === 'sale' ? 'sale' : 'purchase';
     const name = tx.contactName || "Unknown";
     if (!window.confirm(`Discard this suspended ${label} for ${name}? This cannot be undone.`)) return;
@@ -151,7 +134,7 @@ export const HomePage = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <TopBar title="Dashboard" />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
-
+        
         {/* 1. GREETING & SEARCH TRIGGER */}
         <div className="flex items-center justify-between">
           <div>
@@ -254,23 +237,17 @@ export const HomePage = () => {
           </div>
         )}
 
-        {/* 5. QUICK ACTIONS */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* 5. QUICK ACTIONS (Only shows "Add Products" if you have zero products) */}
+        {products.length === 0 && (
           <button
-            onClick={handleQuickSale}
-            className="bg-green-600 hover:bg-green-700 text-white p-4 rounded-2xl shadow-md flex flex-col items-center gap-2 active:scale-95 transition"
+            onClick={() => setView('products')}
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white p-5 rounded-2xl shadow-md flex flex-col items-center gap-2 active:scale-95 transition"
           >
-            <Plus size={24} />
-            <span className="font-bold text-sm">Record Sale</span>
+            <Package size={28} />
+            <span className="font-bold text-base">Add Products</span>
+            <span className="text-[10px] font-medium opacity-90">You need products to record sales</span>
           </button>
-          <button
-            onClick={handleQuickPurchase}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white p-4 rounded-2xl shadow-md flex flex-col items-center gap-2 active:scale-95 transition"
-          >
-            <FileText size={24} />
-            <span className="font-bold text-sm">Record Purchase</span>
-          </button>
-        </div>
+        )}
 
         {/* 6. RECENT CUSTOMERS (Horizontal Scroll) */}
         {recentCustomers.length > 0 && (
@@ -331,8 +308,7 @@ export const HomePage = () => {
           </div>
         )}
       </div>
-
-      {/* Universal Search Modal (works even in view-only mode — browsing is allowed) */}
+      {/* Universal Search Modal */}
       <UniversalSearchModal isOpen={showSearch} onClose={() => setShowSearch(false)} />
     </div>
   );

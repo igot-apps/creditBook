@@ -18,8 +18,18 @@ export const RecordPurchasePage = () => {
     autoDraft, saveDraft, clearAutoDraft,
     fixTransaction, setFixTransaction, lastScrollPosition, setLastScrollPosition,
     setSelectedSupplier: setStoreSelectedSupplier,
-    resumedSuspendedId, clearResumedSuspended
+    resumedSuspendedId, clearResumedSuspended,
+    readOnly
   } = useStore();
+
+  // 👇 VIEW-ONLY GUARD
+  const blockIfReadOnly = () => {
+    if (readOnly) {
+      showToast("🔒 Subscription expired — please renew to continue.");
+      return true;
+    }
+    return false;
+  };
 
   const currency = currentStore?.currency || "GH₵";
   const lastActionTime = useRef(0);
@@ -33,18 +43,14 @@ export const RecordPurchasePage = () => {
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [note, setNote] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
-  // 👇 NEW: Supplier discount on the invoice
   const [discount, setDiscount] = useState("");
-
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [showAddProductModal, setShowAddProductModal] = useState(false);
   const [newProductName, setNewProductName] = useState("");
-
   const [isFixing, setIsFixing] = useState(false);
   const [fixingOldId, setFixingOldId] = useState(null);
   const [originalAmount, setOriginalAmount] = useState(0);
   const [fixReason, setFixReason] = useState("");
-
   const [undoData, setUndoData] = useState(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
   const [suspendedId, setSuspendedId] = useState(null);
@@ -75,11 +81,11 @@ export const RecordPurchasePage = () => {
           setInvoiceItems(susp.items || []);
           setTransactionType(susp.type === 'payment' ? 'payment' : 'purchase');
           setAmountPaid((susp.paid || 0).toString());
-          setDiscount((susp.discount || 0).toString()); // 👈 restore discount
+          setDiscount((susp.discount || 0).toString());
           setNote(susp.note || "");
           setSuspendedId(susp.id);
           setMode("existing");
-          showToast("⏸️ Resumed suspended purchase");
+          showToast("️ Resumed suspended purchase");
         }
         clearResumedSuspended();
       });
@@ -107,6 +113,7 @@ export const RecordPurchasePage = () => {
     }
   }, [selectedSupplier?.id, mode, isFixing, transactionType, currentStore?.id, suspendedId, showToast]);
 
+  // Handle Prefill from Profile Page
   useEffect(() => {
     if (prefillTransaction && prefillTransaction.supplierId) {
       const supplier = suppliers.find(s => s.id === prefillTransaction.supplierId) || {
@@ -126,16 +133,14 @@ export const RecordPurchasePage = () => {
   // Handle Fix Transaction (snake_case-safe + fetches REAL supplier name)
   useEffect(() => {
     if (!fixTransaction || !fixTransaction.id) return;
-
     const contactId = fixTransaction.contact_id || fixTransaction.contactId;
-
     const startFixMode = (supplier) => {
       setSelectedSupplier(supplier);
       setTransactionType(fixTransaction.type || "purchase");
       setInvoiceItems(fixTransaction.items || []);
       setNote(fixTransaction.note || '');
       setAmountPaid(fixTransaction.paid?.toString() || '');
-      setDiscount(fixTransaction.discount?.toString() || ''); // 👈 restore discount
+      setDiscount(fixTransaction.discount?.toString() || '');
       setOriginalAmount(parseFloat(fixTransaction.amount) || 0);
       setFixReason(fixTransaction.fixReason || "");
       setMode("existing");
@@ -144,7 +149,6 @@ export const RecordPurchasePage = () => {
       TransactionService.update(fixTransaction.id, { status: 'being_corrected' });
       setFixTransaction(null);
     };
-
     if (contactId) {
       SupplierService.getById(contactId)
         .then(s => startFixMode(s || { id: contactId, name: "Unknown Supplier", phone: "" }))
@@ -181,7 +185,7 @@ export const RecordPurchasePage = () => {
       setInvoiceItems(autoDraft.invoiceItems || []);
       setNote(autoDraft.note || '');
       setAmountPaid(autoDraft.amountPaid || '');
-      setDiscount(autoDraft.discount || ''); // 👈 restore discount
+      setDiscount(autoDraft.discount || '');
       setMode("existing");
     }
   }, [autoDraft, suppliers, selectedSupplier, prefillTransaction, isFixing]);
@@ -197,7 +201,7 @@ export const RecordPurchasePage = () => {
         invoiceItems,
         note,
         amountPaid,
-        discount, // 👈 include discount
+        discount,
         draftType: 'purchase'
       };
       const timeoutId = setTimeout(() => { saveDraft(draftData, true); }, 500);
@@ -212,9 +216,14 @@ export const RecordPurchasePage = () => {
     return suppliers.filter(s => s.name.toLowerCase().includes(q) || (s.phone && s.phone.includes(q)));
   }, [suppliers, searchQuery]);
 
-  const handleSelectSupplier = (supplier) => { setSelectedSupplier(supplier); setMode("existing"); setSearchQuery(""); };
+  const handleSelectSupplier = (supplier) => {
+    setSelectedSupplier(supplier);
+    setMode("existing");
+    setSearchQuery("");
+  };
 
   const handleCreateSupplier = () => {
+    if (blockIfReadOnly()) return;
     const name = searchQuery.trim();
     if (name) {
       SupplierService.addSupplier(currentStore.id, name, "").then(id => {
@@ -231,19 +240,16 @@ export const RecordPurchasePage = () => {
     const now = Date.now();
     if (now - lastActionTime.current < 300) return;
     lastActionTime.current = now;
-
     setInvoiceItems(prev => {
       const itemMap = new Map();
       prev.forEach(item => {
         const key = `${item.productId || 'custom'}-${item.unitName}`;
         itemMap.set(key, { ...item, quantity: parseFloat(item.quantity) || 0, price: parseFloat(item.price) || 0 });
       });
-
       selectedProducts.forEach(newItem => {
         const key = `${newItem.productId || 'custom'}-${newItem.unitName}`;
         const incomingQty = parseFloat(newItem.quantity) > 0 ? parseFloat(newItem.quantity) : 1;
         const cleanPrice = parseFloat(newItem.price) || 0;
-
         if (itemMap.has(key)) {
           const existing = itemMap.get(key);
           existing.quantity = incomingQty;
@@ -264,26 +270,21 @@ export const RecordPurchasePage = () => {
     const now = Date.now();
     if (now - lastActionTime.current < 300) return;
     lastActionTime.current = now;
-
     try {
       const newId = await ProductService.create(currentStore.id, productData);
       const updatedProducts = await ProductService.getAll();
       setProducts(updatedProducts);
       const createdProduct = updatedProducts.find(p => p.id === newId);
-
       if (createdProduct && createdProduct.units && createdProduct.units.length > 0) {
         const unit = createdProduct.units[0];
-
         setInvoiceItems(prev => {
           const itemMap = new Map();
           prev.forEach(item => {
             const key = `${item.productId || 'custom'}-${item.unitName}`;
             itemMap.set(key, { ...item, quantity: parseFloat(item.quantity) || 0, price: parseFloat(item.price) || 0 });
           });
-
           const key = `${newId}-${unit.name}`;
           const cleanPrice = parseFloat(unit.defaultPurchasePrice) || 0;
-
           if (itemMap.has(key)) {
             const existing = itemMap.get(key);
             existing.quantity += 1;
@@ -296,7 +297,6 @@ export const RecordPurchasePage = () => {
           }
           return Array.from(itemMap.values());
         });
-
         showToast("✅ Product template created and added!");
       }
       setNewProductName("");
@@ -327,11 +327,12 @@ export const RecordPurchasePage = () => {
     return invoiceItems.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0);
   }, [invoiceItems]);
 
-  // 👇 NEW: discount-aware totals
+  // 👇 Discount-aware totals
   const discountValue = parseFloat(discount) || 0;
   const netTotal = Math.max(0, totalAmount - discountValue);
 
   const handleSuspendPurchase = async () => {
+    if (blockIfReadOnly()) return;
     if (isSuspending || isSaving) return;
     if (!selectedSupplier) { showToast("⚠️ Select a supplier first"); return; }
     if (invoiceItems.length === 0 && !note.trim() && parseFloat(amountPaid) === 0) {
@@ -347,9 +348,9 @@ export const RecordPurchasePage = () => {
         contactName: selectedSupplier.name,
         contactPhone: selectedSupplier.phone,
         items: invoiceItems,
-        amount: netTotal, // 👈 save net total
+        amount: netTotal,
         paid: parseFloat(amountPaid) || 0,
-        discount: discountValue, // 👈 save discount
+        discount: discountValue,
         note: note
       };
       const newId = await SuspendedTransactionService.suspendTransaction(data);
@@ -386,11 +387,11 @@ export const RecordPurchasePage = () => {
   };
 
   const handleSavePurchase = async () => {
+    if (blockIfReadOnly()) return;
     if (isSaving || isSuspending) return;
     if (!selectedSupplier) return;
     const finalPaid = parseFloat(amountPaid) || 0;
     const finalTotal = transactionType === "payment" ? 0 : netTotal;
-
     if (transactionType === "purchase" && discountValue > totalAmount) {
       showToast("⚠️ Discount cannot be more than the total purchase."); return;
     }
@@ -402,28 +403,23 @@ export const RecordPurchasePage = () => {
       const extraData = {
         contactName: selectedSupplier.name,
         contactPhone: selectedSupplier.phone,
-        discount: discountValue // 👈 persist the discount
+        discount: discountValue
       };
-
       if (isFixing && fixingOldId) {
         extraData.correctsTransactionId = fixingOldId;
         extraData.fixReason = fixReason;
-
         const newId = await TransactionService.create(
           currentStore.id, selectedSupplier.id, transactionType === "payment" ? "payment" : "purchase",
           invoiceItems, finalTotal, finalPaid, note, extraData
         );
-
         await TransactionService.update(fixingOldId, {
           replacedByTransactionId: newId, status: 'cancelled',
           cancelReason: `Replaced by ${transactionType === "payment" ? "Payment" : "Purchase"} ${newId}`
         });
         await SupplierService.updateBalance(selectedSupplier.id);
-
         setUndoData({ newId, oldId: fixingOldId, supplierId: selectedSupplier.id });
         setShowUndoToast(true);
         setTimeout(() => { setShowUndoToast(false); setUndoData(null); }, 10000);
-
         setIsFixing(false);
         setFixingOldId(null);
         setFixReason("");
@@ -437,7 +433,6 @@ export const RecordPurchasePage = () => {
         }
         showToast("✅ Transaction recorded!");
       }
-
       setLastScrollPosition(window.scrollY);
       setStoreSelectedSupplier(selectedSupplier);
       setView("supplierProfile");
@@ -456,7 +451,6 @@ export const RecordPurchasePage = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <TopBar title={isFixing ? (transactionType === "purchase" ? "Fix Purchase" : "Fix Payment") : (transactionType === "purchase" ? "Record Purchase" : "Make Payment")} showBack={true} onBack={isFixing ? handleAbortFix : () => setView("suppliers")} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
-
         {isFixing && transactionType === "purchase" && (
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 p-3 rounded-r-xl shadow-sm">
             <p className="text-[10px] font-bold text-yellow-800 dark:text-yellow-400 uppercase tracking-wider mb-1">Editing Previous Purchase</p>
@@ -514,18 +508,32 @@ export const RecordPurchasePage = () => {
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedSupplier.name || "Unknown Supplier"}</p>
               </div>
               {!isFixing && (
-                <button
-                  onClick={() => {
-                    useStore.setState({ autoDraft: null });
-                    setMode("search");
-                    setSelectedSupplier(null);
-                    setSuspendedId(null);
-                    clearAutoDraft('purchase');
-                  }}
-                  className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
-                >
-                  Change
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      useStore.setState({ autoDraft: null });
+                      setMode("search");
+                      setSelectedSupplier(null);
+                      setSuspendedId(null);
+                      clearAutoDraft('purchase');
+                    }}
+                    className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
+                  >
+                    Discard Draft
+                  </button>
+                  <span className="text-gray-300 dark:text-gray-600">|</span>
+                  <button
+                    onClick={() => {
+                      setMode("search");
+                      setSelectedSupplier(null);
+                      setSuspendedId(null);
+                      clearAutoDraft('purchase');
+                    }}
+                    className="text-xs text-blue-600 dark:text-blue-400 underline font-semibold px-2 py-1 flex-shrink-0"
+                  >
+                    Change
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -568,8 +576,7 @@ export const RecordPurchasePage = () => {
                   <span className="text-indigo-600 dark:text-indigo-400">{formatCurrency(totalAmount, currency)}</span>
                 </div>
               )}
-
-              {/* 👇 NEW: Supplier Discount input */}
+              {/* 👇 Supplier Discount input */}
               {transactionType === "purchase" && (
                 <div>
                   <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 flex items-center gap-1">
@@ -591,13 +598,11 @@ export const RecordPurchasePage = () => {
                   )}
                 </div>
               )}
-
               <div>
                 <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">{transactionType === "purchase" ? "Money Paid Upfront" : "Payment Amount"}</label>
                 <input type="number" inputMode="decimal" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="0.00" className={`w-full text-xl font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`} autoFocus={transactionType === "payment"} />
               </div>
               <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Add a note (optional)..." className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm resize-none" rows="2" />
-
               {mode === "existing" && !isFixing && transactionType === "purchase" && (
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   <button
@@ -616,7 +621,6 @@ export const RecordPurchasePage = () => {
                   </button>
                 </div>
               )}
-
               {mode === "existing" && !isFixing && transactionType === "payment" && (
                 <button
                   onClick={handleSavePurchase}
@@ -626,7 +630,6 @@ export const RecordPurchasePage = () => {
                   {isSaving ? <><Loader2 className="animate-spin" size={24} /> Saving...</> : <><Check size={24} /> Save Payment</>}
                 </button>
               )}
-
               {mode === "existing" && isFixing && (
                 <button
                   onClick={handleSavePurchase}
@@ -642,7 +645,6 @@ export const RecordPurchasePage = () => {
       </div>
       <ProductPickerModal isOpen={showProductPicker} onClose={() => setShowProductPicker(false)} products={products} currentStore={currentStore} onProductsSelected={handleProductsSelected} priceType="purchase" onRequestCreateProduct={(name) => { setShowProductPicker(false); setNewProductName(name); setShowAddProductModal(true); }} />
       <AddProductModal isOpen={showAddProductModal} onClose={() => setShowAddProductModal(false)} onSave={handleSaveProduct} initialName={newProductName} />
-
       {showUndoToast && (
         <div className="fixed bottom-24 left-4 right-4 max-w-lg mx-auto bg-gray-900 dark:bg-white text-white dark:text-gray-900 p-4 rounded-xl shadow-2xl flex items-center justify-between z-[200] animate-in slide-in-from-bottom-5">
           <div>

@@ -29,7 +29,6 @@ export const RecordSalePage = () => {
   };
 
   const currency = currentStore?.currency || "GH₵";
-
   const [mode, setMode] = useState("search");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -127,9 +126,7 @@ export const RecordSalePage = () => {
   // Handle Fix Transaction (snake_case-safe + fetches REAL customer name)
   useEffect(() => {
     if (!fixTransaction || !fixTransaction.id) return;
-
     const contactId = fixTransaction.contact_id || fixTransaction.contactId;
-
     const startFixMode = (customer) => {
       setSelectedCustomer(customer);
       setInvoiceItems(fixTransaction.items || []);
@@ -147,7 +144,6 @@ export const RecordSalePage = () => {
       TransactionService.update(fixTransaction.id, { status: 'being_corrected' });
       setFixTransaction(null);
     };
-
     if (contactId) {
       CustomerService.getById(contactId)
         .then(c => startFixMode(c || { id: contactId, name: "Unknown Customer", phone: "" }))
@@ -240,7 +236,7 @@ export const RecordSalePage = () => {
   const handleSuspendSale = async () => {
     if (blockIfReadOnly()) return;
     if (isSuspending || isSaving) return;
-    if (!selectedCustomer) { showToast("⚠️ Select a customer first"); return; }
+    if (!selectedCustomer) { showToast("️ Select a customer first"); return; }
     if (invoiceItems.length === 0 && !tx.note.trim() && parseFloat(tx.amount) === 0) {
       showToast("⚠️ Add items before suspending"); return;
     }
@@ -261,7 +257,7 @@ export const RecordSalePage = () => {
       };
       const newId = await SuspendedTransactionService.suspendTransaction(data);
       setSuspendedId(newId);
-      showToast("⏸️ Sale suspended");
+      showToast("️ Sale suspended");
       setView("home");
     } catch (error) {
       console.error(error);
@@ -353,7 +349,6 @@ export const RecordSalePage = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <TopBar title={isFixing ? "Fix Sale" : "Record Sale"} showBack={true} onBack={isFixing ? handleAbortFix : () => setView("customers")} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
-
         {isFixing && (
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 p-3 rounded-r-xl shadow-sm">
             <p className="text-[10px] font-bold text-yellow-800 dark:text-yellow-400 uppercase tracking-wider mb-1">Editing Previous Sale</p>
@@ -388,7 +383,7 @@ export const RecordSalePage = () => {
                 </button>
               ))}
               {searchQuery.trim() && filteredCustomers.length === 0 && (
-                <button onClick={handleCreateCustomer} className="w-full flex items-center gap-3 p-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 transition text-left">
+                <button onClick={handleCreateCustomer} className="w-full flex items-center gap-3 p-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:bg-green-800 text-green-700 dark:text-green-400 transition text-left">
                   <Plus size={20} className="flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm">Create new customer</p>
@@ -411,18 +406,32 @@ export const RecordSalePage = () => {
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedCustomer.name || "Unknown Customer"}</p>
               </div>
               {!isFixing && (
-                <button
-                  onClick={() => {
-                    useStore.setState({ autoDraft: null });
-                    setMode("search");
-                    setSelectedCustomer(null);
-                    setSuspendedId(null);
-                    clearAutoDraft('sale');
-                  }}
-                  className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
-                >
-                  Change
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      useStore.setState({ autoDraft: null });
+                      setMode("search");
+                      setSelectedCustomer(null);
+                      setSuspendedId(null);
+                      clearAutoDraft('sale');
+                    }}
+                    className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
+                  >
+                    Discard Draft
+                  </button>
+                  <span className="text-gray-300 dark:text-gray-600">|</span>
+                  <button
+                    onClick={() => {
+                      setMode("search");
+                      setSelectedCustomer(null);
+                      setSuspendedId(null);
+                      clearAutoDraft('sale');
+                    }}
+                    className="text-xs text-blue-600 dark:text-blue-400 underline font-semibold px-2 py-1 flex-shrink-0"
+                  >
+                    Change
+                  </button>
+                </div>
               )}
             </div>
           </div>

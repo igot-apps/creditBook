@@ -26,7 +26,10 @@ export const ForgiveDebtModal = ({ isOpen, onClose, onConfirm, balance, currency
       <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-full"><HeartHandshake size={20} className="text-purple-600 dark:text-purple-400" /></div>
-          <div><h3 className="font-bold text-xl text-gray-900 dark:text-white">Forgive Debt</h3><p className="text-xs text-gray-500 dark:text-gray-400">{customerName}</p></div>
+          <div>
+            <h3 className="font-bold text-xl text-gray-900 dark:text-white">Forgive Debt</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{customerName}</p>
+          </div>
         </div>
         <div className="bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 rounded-xl p-3 mb-4 flex justify-between items-center">
           <span className="text-xs font-bold text-purple-700 dark:text-purple-400 uppercase">Current Outstanding</span>
