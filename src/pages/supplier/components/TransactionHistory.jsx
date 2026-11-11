@@ -39,7 +39,7 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
                       </div>
                       <div>
                         <p className={`font-bold text-sm ${isInvalid ? 'text-gray-500 line-through' : 'text-gray-900 dark:text-white'}`}>
-                          {tx.type === 'supplier_payment' ? 'Payment' : 'Purchase'}
+                          {tx.credit_source_id ? 'Refund received' : tx.type === 'supplier_payment' ? 'Payment' : 'Purchase'}
                         </p>
                         <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDate(txDate(tx)).split(',')[0]}</p>
                       </div>

@@ -21,7 +21,7 @@ export const purchaseLabel = (tx) => `Purchase #${(tx.id || "").slice(-6).toUppe
 // LOCAL ALLOCATION HELPERS (supplier side)
 // ==========================================
 export const activePaymentIds = (history) =>
-  new Set((Array.isArray(history) ? history : []).filter(t => t.type === 'supplier_payment' && isActive(t)).map(t => t.id));
+  new Set((Array.isArray(history) ? history : []).filter(t => ['supplier_payment', 'purchase'].includes(t.type) && isActive(t) && !t.replacedByTransactionId).map(t => t.id));
 
 export const buildAllocMap = (allocs, history) => {
   const ids = activePaymentIds(history);

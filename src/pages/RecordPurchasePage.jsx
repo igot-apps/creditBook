@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { Search, Plus, Truck, Package, Check, X, RotateCcw, Pause, Loader2, Percent } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
+import { InvoicePayments } from "../components/InvoicePayments";
 import { SupplierService } from "../services/SupplierService";
 import { ProductService } from "../services/ProductService";
 import { TransactionService } from "../services/TransactionService";
@@ -43,6 +44,7 @@ export const RecordPurchasePage = () => {
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [note, setNote] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
+  const [invoicePayments, setInvoicePayments] = useState([]);
   const [discount, setDiscount] = useState("");
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [showAddProductModal, setShowAddProductModal] = useState(false);
@@ -81,6 +83,7 @@ export const RecordPurchasePage = () => {
           setInvoiceItems(susp.items || []);
           setTransactionType(susp.type === 'payment' ? 'payment' : 'purchase');
           setAmountPaid((susp.paid || 0).toString());
+          setInvoicePayments(susp.invoicePayments || []);
           setDiscount((susp.discount || 0).toString());
           setNote(susp.note || "");
           setSuspendedId(susp.id);
@@ -91,27 +94,6 @@ export const RecordPurchasePage = () => {
       });
     }
   }, [resumedSuspendedId, clearResumedSuspended, showToast]);
-
-  // Duplicate Protection (UUID guard + direct service call)
-  useEffect(() => {
-    if (selectedSupplier?.id && mode === 'existing' && !isFixing && transactionType === 'purchase') {
-      SuspendedTransactionService.checkDuplicateSuspended(currentStore?.id, selectedSupplier.id, 'purchase').then(susp => {
-        if (susp && susp.id !== suspendedId) {
-          showToast(`⏸️ Resuming suspended purchase for ${selectedSupplier.name || "Supplier"}`);
-          setSelectedSupplier({
-            id: susp.contactId,
-            name: susp.contactName || "Unknown Supplier",
-            phone: susp.contactPhone || ""
-          });
-          setInvoiceItems(susp.items || []);
-          setAmountPaid((susp.paid || 0).toString());
-          setDiscount((susp.discount || 0).toString());
-          setNote(susp.note || "");
-          setSuspendedId(susp.id);
-        }
-      });
-    }
-  }, [selectedSupplier?.id, mode, isFixing, transactionType, currentStore?.id, suspendedId, showToast]);
 
   // Handle Prefill from Profile Page
   useEffect(() => {
@@ -140,6 +122,7 @@ export const RecordPurchasePage = () => {
       setInvoiceItems(fixTransaction.items || []);
       setNote(fixTransaction.note || '');
       setAmountPaid(fixTransaction.paid?.toString() || '');
+      setInvoicePayments(fixTransaction.invoice_payments || []);
       setDiscount(fixTransaction.discount?.toString() || '');
       setOriginalAmount(parseFloat(fixTransaction.amount) || 0);
       setFixReason(fixTransaction.fixReason || "");
@@ -166,6 +149,7 @@ export const RecordPurchasePage = () => {
     setMode("search");
     setSelectedSupplier(null);
     setAmountPaid("");
+    setInvoicePayments([]);
     setDiscount("");
     setInvoiceItems([]);
     setNote("");
@@ -174,7 +158,7 @@ export const RecordPurchasePage = () => {
 
   // Restore Auto-Draft
   useEffect(() => {
-    if (autoDraft && autoDraft.draftType === 'purchase' && suppliers.length > 0 && !selectedSupplier && !prefillTransaction && !isFixing) {
+    if (autoDraft && autoDraft.draftType === 'purchase' && suppliers.length > 0 && !selectedSupplier && !prefillTransaction && !resumedSuspendedId && !fixTransaction && !isFixing) {
       const draftSupplier = suppliers.find(s => s.id === autoDraft.supplierId) || {
         id: autoDraft.supplierId,
         name: autoDraft.supplierName || 'Unknown Supplier',
@@ -185,10 +169,12 @@ export const RecordPurchasePage = () => {
       setInvoiceItems(autoDraft.invoiceItems || []);
       setNote(autoDraft.note || '');
       setAmountPaid(autoDraft.amountPaid || '');
+      setInvoicePayments(autoDraft.invoicePayments || []);
       setDiscount(autoDraft.discount || '');
+      setSuspendedId(autoDraft.suspendedId || null);
       setMode("existing");
     }
-  }, [autoDraft, suppliers, selectedSupplier, prefillTransaction, isFixing]);
+  }, [autoDraft, suppliers, selectedSupplier, prefillTransaction, resumedSuspendedId, fixTransaction, isFixing]);
 
   // Save Auto-Draft (debounced)
   useEffect(() => {
@@ -201,13 +187,15 @@ export const RecordPurchasePage = () => {
         invoiceItems,
         note,
         amountPaid,
+        invoicePayments,
+        suspendedId,
         discount,
         draftType: 'purchase'
       };
       const timeoutId = setTimeout(() => { saveDraft(draftData, true); }, 500);
       return () => clearTimeout(timeoutId);
     }
-  }, [selectedSupplier, transactionType, invoiceItems, note, amountPaid, discount, mode, saveDraft, isFixing]);
+  }, [selectedSupplier, transactionType, invoiceItems, note, amountPaid, invoicePayments, discount, suspendedId, mode, saveDraft, isFixing]);
 
   const filteredSuppliers = useMemo(() => {
     if (!Array.isArray(suppliers)) return [];
@@ -330,6 +318,7 @@ export const RecordPurchasePage = () => {
   // 👇 Discount-aware totals
   const discountValue = parseFloat(discount) || 0;
   const netTotal = Math.max(0, totalAmount - discountValue);
+  const totalQuantity = invoiceItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
 
   const handleSuspendPurchase = async () => {
     if (blockIfReadOnly()) return;
@@ -350,11 +339,12 @@ export const RecordPurchasePage = () => {
         items: invoiceItems,
         amount: netTotal,
         paid: parseFloat(amountPaid) || 0,
+        invoicePayments: invoicePayments.length || suspendedId ? invoicePayments : undefined,
         discount: discountValue,
         note: note
       };
-      const newId = await SuspendedTransactionService.suspendTransaction(data);
-      setSuspendedId(newId);
+      await SuspendedTransactionService.suspendTransaction(data);
+      clearAutoDraft('purchase');
       showToast("⏸️ Purchase suspended");
       setView("home");
     } catch (error) {
@@ -401,6 +391,7 @@ export const RecordPurchasePage = () => {
     setIsSaving(true);
     try {
       const extraData = {
+        invoicePayments,
         contactName: selectedSupplier.name,
         contactPhone: selectedSupplier.phone,
         discount: discountValue
@@ -515,6 +506,11 @@ export const RecordPurchasePage = () => {
                       setMode("search");
                       setSelectedSupplier(null);
                       setSuspendedId(null);
+                      setInvoiceItems([]);
+                      setAmountPaid("");
+                      setInvoicePayments([]);
+                      setDiscount("");
+                      setNote("");
                       clearAutoDraft('purchase');
                     }}
                     className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
@@ -527,6 +523,8 @@ export const RecordPurchasePage = () => {
                       setMode("search");
                       setSelectedSupplier(null);
                       setSuspendedId(null);
+                      setAmountPaid("");
+                      setInvoicePayments([]);
                       clearAutoDraft('purchase');
                     }}
                     className="text-xs text-blue-600 dark:text-blue-400 underline font-semibold px-2 py-1 flex-shrink-0"
@@ -544,7 +542,10 @@ export const RecordPurchasePage = () => {
             {transactionType === "purchase" && (
               <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
                 <div className="flex justify-between items-center">
-                  <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2"><Package size={18} className="text-indigo-600" /> Add Items</h3>
+                  <div>
+                    <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2"><Package size={18} className="text-indigo-600" /> Items</h3>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{invoiceItems.length} {invoiceItems.length === 1 ? "line item" : "line items"} · {totalQuantity.toLocaleString(undefined, { maximumFractionDigits: 6 })} total qty</p>
+                  </div>
                   <button onClick={() => setShowAddProductModal(true)} className="text-xs bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition"><Plus size={14} /> New Product</button>
                 </div>
                 <button onClick={() => setShowProductPicker(true)} className="w-full bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 border-2 border-dashed border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-400 font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"><Plus size={20} /> Add Products</button>
@@ -599,8 +600,21 @@ export const RecordPurchasePage = () => {
                 </div>
               )}
               <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">{transactionType === "purchase" ? "Money Paid Upfront" : "Payment Amount"}</label>
-                <input type="number" inputMode="decimal" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="0.00" className={`w-full text-xl font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`} autoFocus={transactionType === "payment"} />
+                {transactionType === "purchase" ? (
+                  <InvoicePayments paid={amountPaid} invoicePayments={invoicePayments} total={netTotal} currency={currency} isPurchase onChange={(paid, payments) => {
+                    setAmountPaid(paid);
+                    setInvoicePayments(payments);
+                  }} />
+                ) : (
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Payment amount
+                    <input type="number" inputMode="decimal" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="0.00" className={`w-full text-xl font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`} autoFocus />
+                  </label>
+                )}
+                {transactionType === "purchase" && (
+                  <p className="mt-2 flex justify-between text-sm font-semibold">
+                    <span>Balance remaining</span><span>{formatCurrency(Math.max(0, netTotal - (Number(amountPaid) || 0)), currency)}</span>
+                  </p>
+                )}
               </div>
               <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Add a note (optional)..." className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm resize-none" rows="2" />
               {mode === "existing" && !isFixing && transactionType === "purchase" && (

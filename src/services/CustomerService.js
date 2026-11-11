@@ -1,4 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
+import { TransactionService } from './TransactionService';
+import { invoiceAccountBalance } from '../utils/paymentCredit';
 
 export const CustomerService = {
   // 1. Get all customers for the logged-in user's store
@@ -70,9 +72,10 @@ export const CustomerService = {
 
   // 5. Update customer balance (Called after a transaction is saved/cancelled)
   updateBalance: async (id, newBalance) => {
+    const balance = newBalance ?? invoiceAccountBalance(await TransactionService.getHistory(id), 'sale', 'payment');
     const { error } = await supabase
       .from('contacts')
-      .update({ balance: newBalance })
+      .update({ balance })
       .eq('id', id);
       
     if (error) throw error;

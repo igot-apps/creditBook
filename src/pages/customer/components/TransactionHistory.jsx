@@ -44,9 +44,9 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
                       </div>
                       <div>
                         <p className={`font-bold text-sm ${isInvalid ? 'text-gray-500 line-through' : forgiven ? 'text-purple-700 dark:text-purple-400' : 'text-gray-900 dark:text-white'}`}>
-                          {forgiven ? 'Debt Forgiven' : tx.type === 'payment' ? 'Payment' : tx.type === 'purchase' ? 'Purchase' : 'Sale'}
+                          {tx.credit_source_id ? 'Refund returned' : forgiven ? 'Debt Forgiven' : tx.type === 'payment' ? 'Payment' : tx.type === 'purchase' ? 'Purchase' : 'Sale'}
                         </p>
-                        <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDate(txDate(tx)).split(',')[0]}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDate(tx.received_at || txDate(tx)).split(',')[0]}</p>
                         {/* 👇 NEW: prominent CORRECTED badge */}
                         {isCorrection && (
                           <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[9px] font-bold uppercase tracking-wide">

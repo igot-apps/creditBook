@@ -99,7 +99,7 @@ export const BottomNav = () => {
   return (
     <>
       {/* BOTTOM NAVIGATION BAR */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 z-40 pb-[env(safe-area-inset-bottom)]">
+      <nav aria-label="Main navigation" className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 z-40 pb-[env(safe-area-inset-bottom)] lg:left-72">
         <div className="flex justify-around items-center h-16 max-w-lg mx-auto px-2">
           <NavItem icon={Home} label="Home" active={view === 'home'} onClick={() => navigate('home')} />
           <NavItem icon={Users} label="Customers" active={view === 'customers' || view === 'profile'} onClick={() => navigate('customers')} />
@@ -129,7 +129,7 @@ export const BottomNav = () => {
 
       {/* ➕ QUICK ACTION BOTTOM SHEET (Transactions) */}
       {showQuickAdd && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowQuickAdd(false)}>
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 backdrop-blur-sm lg:pl-72" onClick={() => setShowQuickAdd(false)}>
           <div
             className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-t-3xl shadow-2xl animate-in slide-in-from-bottom-10"
             onClick={(e) => e.stopPropagation()}
@@ -179,7 +179,7 @@ export const BottomNav = () => {
 
       {/* ⋯ MORE MENU BOTTOM SHEET (Products, Backup, Settings) */}
       {showMoreMenu && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowMoreMenu(false)}>
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 backdrop-blur-sm lg:pl-72" onClick={() => setShowMoreMenu(false)}>
           <div
             className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-t-3xl shadow-2xl animate-in slide-in-from-bottom-10"
             onClick={(e) => e.stopPropagation()}

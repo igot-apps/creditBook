@@ -1,13 +1,18 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Search, Plus, Users, Check, Loader2, Banknote, Smartphone, CreditCard, Link2, Edit3, RotateCcw } from "lucide-react";
 import useStore from "../store/useStore";
-import { formatCurrency } from "../utils/helpers";
+import { formatCurrency, formatDate } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
 import { TransactionService } from "../services/TransactionService";
 import { AllocationService } from "../services/AllocationService";
 import { TopBar } from "../components/TopBar";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+
+const toLocalDateTime = (value = new Date()) => {
+  const date = new Date(value);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+};
 
 const normalizeList = (list) => (Array.isArray(list) ? list : []).map(tx => ({
   ...tx,
@@ -59,12 +64,19 @@ export const RecordPaymentPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [isChangingCustomer, setIsChangingCustomer] = useState(false);
   const [history, setHistory] = useState([]);
   const [allocations, setAllocations] = useState([]);
   const [amount, setAmount] = useState("");
+  const [invoiceId, setInvoiceId] = useState(null);
   const [method, setMethod] = useState("cash");
+  const [reference, setReference] = useState("");
+  const [receivedAt, setReceivedAt] = useState("");
+  const [duplicatePayment, setDuplicatePayment] = useState(null);
+  const [isCheckingReference, setIsCheckingReference] = useState(false);
   const [note, setNote] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const invoicePaymentRequest = useRef(null);
 
   // 👇 NEW: Fix/correction state
   const [isFixing, setIsFixing] = useState(false);
@@ -85,6 +97,7 @@ export const RecordPaymentPage = () => {
   // Auto-select when coming from a profile
   useEffect(() => {
     if (prefillTransaction?.customerId) {
+      setInvoiceId(prefillTransaction.invoiceId || null);
       setSelectedCustomer({
         id: prefillTransaction.customerId,
         name: prefillTransaction.name || "Unknown",
@@ -92,11 +105,11 @@ export const RecordPaymentPage = () => {
       });
       setMode("existing");
       setPrefillTransaction(null);
-    } else if (storeCustomer?.id && !selectedCustomer && !isFixing) {
+    } else if (storeCustomer?.id && !selectedCustomer && !isFixing && !isChangingCustomer) {
       setSelectedCustomer(storeCustomer);
       setMode("existing");
     }
-  }, [prefillTransaction, storeCustomer, setPrefillTransaction, selectedCustomer, isFixing]);
+  }, [prefillTransaction, storeCustomer, setPrefillTransaction, selectedCustomer, isFixing, isChangingCustomer]);
 
   // Load history + allocations for the selected customer
   const reloadHistory = async (contactId) => {
@@ -128,7 +141,9 @@ export const RecordPaymentPage = () => {
       setSelectedCustomer(customer);
       setMode("existing");
       setAmount((parseFloat(fixTransaction.paid) || 0).toString());
-      setMethod(fixTransaction.paymentMethod || "cash");
+      setMethod(fixTransaction.paymentMethod || fixTransaction.payment_method || "cash");
+      setReference(fixTransaction.reference || "");
+      setReceivedAt(toLocalDateTime(fixTransaction.received_at || fixTransaction.created_at || fixTransaction.createdAt));
       setNote(fixTransaction.note || "");
       setOriginalAmount(parseFloat(fixTransaction.paid) || 0);
       setFixReason(fixTransaction.fixReason || "");
@@ -169,7 +184,7 @@ export const RecordPaymentPage = () => {
   const openInvoices = useMemo(() => {
     const activePayIds = new Set(
       (Array.isArray(history) ? history : [])
-        .filter(t => t.type === 'payment' && isActiveTx(t))
+        .filter(t => ['payment', 'sale'].includes(t.type) && isLive(t))
         .map(t => t.id)
     );
     const liveSaleIds = new Set(
@@ -195,18 +210,21 @@ export const RecordPaymentPage = () => {
       .sort((a, b) => new Date(a.date) - new Date(b.date));
   }, [history, allocations]);
 
-  // FIFO preview
+  const selectedInvoice = openInvoices.find(invoice => invoice.id === invoiceId);
+
+  // FIFO preview for account payments, or allocate directly to a selected invoice.
   const preview = useMemo(() => {
     let left = parseFloat(amount) || 0;
     const rows = [];
-    for (const inv of openInvoices) {
+    const invoices = invoiceId ? openInvoices.filter(invoice => invoice.id === invoiceId) : openInvoices;
+    for (const inv of invoices) {
       if (left <= 0) break;
       const apply = Math.min(inv.remaining, left);
-      if (apply > 0.009) rows.push({ sale_id: inv.id, name: inv.name, amount: apply });
+      if (apply > 0.009) rows.push({ sale_id: inv.id, name: inv.name, amount: apply, remaining: inv.remaining - apply });
       left -= apply;
     }
     return { rows, leftover: left };
-  }, [openInvoices, amount]);
+  }, [openInvoices, amount, invoiceId]);
 
   const filteredCustomers = useMemo(() => {
     if (!Array.isArray(customers)) return [];
@@ -238,14 +256,87 @@ export const RecordPaymentPage = () => {
   // ==========================================
   // SAVE (normal + correction)
   // ==========================================
+  const checkMomoReference = async (paymentReference) => {
+    const payment = await TransactionService.findMomoPayment(currentStore.id, paymentReference);
+    if (!payment) return false;
+    const customer = customers.find(c => c.id === payment.contact_id);
+    setDuplicatePayment({
+      customer: customer?.name || "Customer on the existing payment",
+      amount: payment.paid,
+      date: payment.received_at || payment.created_at,
+    });
+    return true;
+  };
+
+  const handleCheckMomoReference = async () => {
+    setIsCheckingReference(true);
+    setDuplicatePayment(null);
+    try {
+      if (!await checkMomoReference(reference.trim().toUpperCase())) {
+        showToast("No recorded payment with that MoMo transaction ID");
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("Could not check the MoMo transaction ID");
+    } finally {
+      setIsCheckingReference(false);
+    }
+  };
+
   const handleSavePayment = async () => {
     if (blockIfReadOnly()) return;
-    if (isSaving) return;
+    if (isSaving || isCheckingReference) return;
     if (!selectedCustomer) { showToast("⚠️ Select a customer first"); return; }
     const amt = parseFloat(amount) || 0;
     if (amt <= 0) { showToast("⚠️ Enter a payment amount"); return; }
+    if (invoiceId && !selectedInvoice) {
+      showToast("This invoice no longer has a balance to pay");
+      return;
+    }
+    const paymentReference = method === "momo" ? reference.trim().toUpperCase() : null;
+    if (method === "momo" && !paymentReference) {
+      showToast("Enter the MoMo transaction ID");
+      return;
+    }
+    const invoice = history.find(tx => tx.id === invoiceId);
+    if (paymentReference && invoice?.invoice_payments?.some(payment => payment.reference === paymentReference)) {
+      showToast("This reference is already on the invoice");
+      return;
+    }
+    const paymentDate = receivedAt ? new Date(receivedAt) : new Date();
+    if (!Number.isFinite(paymentDate.getTime()) || paymentDate > new Date()) {
+      showToast("Enter a valid payment date and time");
+      return;
+    }
     setIsSaving(true);
+    setDuplicatePayment(null);
     try {
+      const paymentDetails = {
+        paymentMethod: method,
+        reference: paymentReference || (method !== "momo" ? reference.trim() : null),
+        receivedAt: paymentDate.toISOString(),
+      };
+      if (invoiceId && !isFixing) {
+        const key = JSON.stringify([invoiceId, amt, method, paymentDetails.reference, note, receivedAt]);
+        if (invoicePaymentRequest.current?.key !== key) {
+          invoicePaymentRequest.current = { key, id: crypto.randomUUID() };
+        }
+        await TransactionService.recordInvoicePayment({
+          id: invoicePaymentRequest.current.id,
+          invoiceId,
+          amount: amt,
+          method,
+          reference: paymentDetails.reference,
+          note,
+          receivedAt: paymentDetails.receivedAt,
+        });
+        showToast("Payment added to the selected invoice");
+        useStore.setState({ selectedCustomer });
+        setView("profile");
+        return;
+      }
+
+      if (paymentReference && await checkMomoReference(paymentReference)) return;
       let paymentId = null;
 
       if (isFixing && fixingOldId) {
@@ -253,7 +344,7 @@ export const RecordPaymentPage = () => {
         paymentId = await TransactionService.create(
           currentStore.id, selectedCustomer.id, 'payment', [], 0, amt, note,
           {
-            paymentMethod: method,
+            ...paymentDetails,
             contactName: selectedCustomer.name,
             contactPhone: selectedCustomer.phone,
             correctsTransactionId: fixingOldId,
@@ -262,7 +353,7 @@ export const RecordPaymentPage = () => {
       } else {
         // Normal payment
         paymentId = await TransactionService.recordPayment(currentStore.id, selectedCustomer.id, amt, note, {
-          paymentMethod: method,
+          ...paymentDetails,
           contactName: selectedCustomer.name,
           contactPhone: selectedCustomer.phone,
         });
@@ -309,7 +400,12 @@ export const RecordPaymentPage = () => {
       setView("profile");
     } catch (error) {
       console.error(error);
-      showToast("❌ Failed to record payment.");
+      if (error.code === '23505' && paymentReference) {
+        const found = await checkMomoReference(paymentReference).catch(() => false);
+        if (!found) showToast("This MoMo transaction ID is already recorded");
+      } else {
+        showToast("❌ Failed to record payment.");
+      }
     } finally {
       setIsSaving(false);
     }
@@ -319,14 +415,14 @@ export const RecordPaymentPage = () => {
   const handleUndoFix = async () => {
     if (!undoData) return;
     try {
+      await TransactionService.update(undoData.newId, {
+        status: 'cancelled',
+        cancelReason: 'Correction undone',
+      });
       await TransactionService.update(undoData.oldId, {
         status: 'active',
         cancelReason: null,
         replacedByTransactionId: null,
-      });
-      await TransactionService.update(undoData.newId, {
-        status: 'cancelled',
-        cancelReason: 'Correction undone',
       });
       const fresh = normalizeList(await TransactionService.getHistory(undoData.customerId));
       await CustomerService.updateBalance(undoData.customerId, recomputeBalance(fresh));
@@ -341,12 +437,17 @@ export const RecordPaymentPage = () => {
   };
 
   const currentTotal = parseFloat(amount) || 0;
+  const invoiceBalance = invoiceId
+    ? selectedInvoice?.remaining || 0
+    : openInvoices.reduce((sum, invoice) => sum + invoice.remaining, 0);
+  const appliedAmount = preview.rows.reduce((sum, row) => sum + row.amount, 0);
+  const remainingAfterPayment = Math.max(0, invoiceBalance - appliedAmount);
   const difference = currentTotal - originalAmount;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <TopBar title={isFixing ? "Fix Payment" : "Record Payment"} showBack={true} onBack={isFixing ? handleAbortFix : () => setView("profile")} />
-      <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
+      <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="mx-auto max-w-lg space-y-4 px-4 md:max-w-5xl md:space-y-5 md:px-8">
         {/* 👇 NEW: correction banner */}
         {isFixing && (
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 p-3 rounded-r-xl shadow-sm">
@@ -405,7 +506,7 @@ export const RecordPaymentPage = () => {
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedCustomer.name || "Unknown Customer"}</p>
               </div>
               {!isFixing && (
-                <button onClick={() => { setMode("search"); setSelectedCustomer(null); }} className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0">
+                <button onClick={() => { setIsChangingCustomer(true); setMode("search"); setSelectedCustomer(null); setInvoiceId(null); }} className="shrink-0 rounded-lg px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950">
                   Change
                 </button>
               )}
@@ -414,32 +515,124 @@ export const RecordPaymentPage = () => {
         )}
 
         {mode === "existing" && (
-          <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
-            <div>
-              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Payment Amount *</label>
-              <input
-                type="number"
-                inputMode="decimal"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                className={`w-full text-2xl font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`}
-                autoFocus
-              />
+          <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] md:items-start md:gap-x-6">
+            <div className="min-w-0 space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:p-6">
+              {invoiceId && <p className="text-sm font-semibold">Payment for {selectedInvoice?.name || "selected invoice"}</p>}
+              <div>
+                <label htmlFor="payment-amount" className="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300">Payment amount</label>
+                <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 dark:border-gray-700 dark:bg-gray-900 dark:focus-within:ring-blue-900">
+                <span className="text-lg font-semibold text-gray-500 dark:text-gray-400">{currency}</span>
+                <input
+                  id="payment-amount"
+                  type="number"
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.00"
+                  className={`min-w-0 w-full bg-transparent py-3 text-2xl font-bold tabular-nums text-gray-900 outline-none dark:text-white ${noSpinnerClass}`}
+                  autoFocus
+                />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Payment Method</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {METHODS.map(m => {
+                    const Icon = m.icon;
+                    return (
+                      <button
+                        key={m.id}
+                        aria-pressed={method === m.id}
+                        onClick={() => { if (method !== m.id) setReference(""); setMethod(m.id); setDuplicatePayment(null); }}
+                        className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition ${
+                          method === m.id
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
+                            : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400'
+                        }`}
+                      >
+                        <Icon size={18} />
+                        <span className="text-xs font-bold">{m.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {method === "momo" && (
+                <div>
+                  <label htmlFor="momo-reference" className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">MoMo transaction ID *</label>
+                  <input
+                    id="momo-reference"
+                    value={reference}
+                    onChange={e => { setReference(e.target.value); setDuplicatePayment(null); }}
+                    autoComplete="off"
+                    disabled={isCheckingReference || isSaving}
+                    spellCheck={false}
+                    className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl dark:text-white"
+                  />
+                  <button type="button" onClick={handleCheckMomoReference} disabled={!reference.trim() || isCheckingReference || isSaving} className="mt-2 text-sm font-semibold text-blue-700 dark:text-blue-400 disabled:opacity-50">
+                    {isCheckingReference ? "Checking…" : "Look up transaction ID"}
+                  </button>
+                  {duplicatePayment && (
+                    <p role="alert" className="mt-2 text-sm text-amber-800 dark:text-amber-300">
+                      Already recorded for {duplicatePayment.customer} · {formatCurrency(duplicatePayment.amount, currency)} · {formatDate(duplicatePayment.date)}
+                    </p>
+                  )}
+                </div>
+              )}
+              {method !== "momo" && (
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400">
+                  Payment reference (optional)
+                  <input value={reference} onChange={e => setReference(e.target.value)} className="mt-1 block w-full rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
+                </label>
+              )}
+
+              <div>
+                <label htmlFor="payment-received-at" className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Date and time received</label>
+                <input
+                  id="payment-received-at"
+                  type="datetime-local"
+                  value={receivedAt || toLocalDateTime()}
+                  max={toLocalDateTime()}
+                  onChange={e => setReceivedAt(e.target.value)}
+                  className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Note (optional)</label>
+                <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Add a note (optional)..." className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 dark:text-white text-sm resize-none" rows="2" />
+              </div>
             </div>
 
+            <aside className="min-w-0 space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:col-start-2 md:row-span-2 md:row-start-1 md:p-6" aria-labelledby="payment-summary-title">
+              <h2 id="payment-summary-title" className="font-bold text-gray-900 dark:text-white">Payment summary</h2>
+              <dl className="space-y-3 text-sm">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-gray-600 dark:text-gray-300">Invoice balance</dt>
+                  <dd className="font-semibold tabular-nums">{formatCurrency(invoiceBalance, currency)}</dd>
+                </div>
+                <div className="flex justify-between gap-3 border-t border-gray-200 pt-3 dark:border-gray-700">
+                  <dt className="font-semibold">Remaining after payment</dt>
+                  <dd className="font-bold tabular-nums">{formatCurrency(remainingAfterPayment, currency)}</dd>
+                </div>
+              </dl>
             {(parseFloat(amount) || 0) > 0 && (
               <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl p-3 space-y-1.5">
                 <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase flex items-center gap-1">
-                  <Link2 size={11} /> {isFixing ? "Corrected payment will be applied to (oldest first)" : "Payment will be applied to (oldest first)"}
+                  <Link2 size={11} /> {invoiceId ? "Payment for selected invoice" : "Payment will be applied oldest first"}
                 </p>
-                {preview.rows.length === 0 && (
+                {preview.rows.length === 0 && !invoiceId && (
                   <p className="text-xs text-gray-600 dark:text-gray-300">No unpaid invoices — full amount becomes customer credit.</p>
                 )}
                 {preview.rows.map((a, i) => (
                   <div key={i} className="flex justify-between text-xs">
                     <span className="text-gray-600 dark:text-gray-300">{a.name}</span>
-                    <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(a.amount, currency)}</span>
+                    <span className="text-right text-gray-900 dark:text-white">
+                      <strong>{formatCurrency(a.amount, currency)} applied</strong>
+                      <span className="block text-gray-500 dark:text-gray-400">{formatCurrency(a.remaining, currency)} remaining</span>
+                    </span>
                   </div>
                 ))}
                 {preview.leftover > 0.009 && (
@@ -450,39 +643,12 @@ export const RecordPaymentPage = () => {
                 )}
               </div>
             )}
-
-            <div>
-              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Payment Method</label>
-              <div className="grid grid-cols-3 gap-2">
-                {METHODS.map(m => {
-                  const Icon = m.icon;
-                  return (
-                    <button
-                      key={m.id}
-                      onClick={() => setMethod(m.id)}
-                      className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition ${
-                        method === m.id
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
-                          : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400'
-                      }`}
-                    >
-                      <Icon size={18} />
-                      <span className="text-xs font-bold">{m.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Note (optional)</label>
-              <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Add a note (optional)..." className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 dark:text-white text-sm resize-none" rows="2" />
-            </div>
+            </aside>
 
             <button
               onClick={handleSavePayment}
-              disabled={isSaving}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg disabled:opacity-60"
+              disabled={isSaving || isCheckingReference}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3.5 font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-60 md:col-start-1 md:w-auto md:justify-self-end"
             >
               {isSaving ? <><Loader2 className="animate-spin" size={24} /> Saving...</> : isFixing ? <><Edit3 size={24} /> Save Corrected Payment</> : <><Check size={24} /> Save Payment</>}
             </button>

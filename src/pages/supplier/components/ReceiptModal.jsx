@@ -2,8 +2,9 @@ import { FileText, Ban, Smartphone, CreditCard, Banknote, Share2, Edit3, X, Link
 import { formatCurrency, formatDate } from "../../../utils/helpers";
 import { openWhatsApp } from "../../../utils/communication";
 import { txDate, isActive, purchaseLabel } from "../utils/helpers";
+import { paymentCreditAvailable } from "../../../utils/paymentCredit";
 
-export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, currency, history, allocations }) => {
+export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, onPayment, currency, history, allocations }) => {
   if (!tx) return null;
   const items = Array.isArray(tx.items) ? tx.items : [];
   const totalPurchase = parseFloat(tx.amount) || 0;
@@ -11,13 +12,26 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
   const paid = parseFloat(tx.paid) || 0;
   const receiptNo = (tx.id || "000000").slice(-6).toUpperCase();
   const isPayment = tx.type === 'supplier_payment';
+  const isRefund = Boolean(tx.credit_source_id);
+  const creditAvailable = paymentCreditAvailable(tx, history || [], allocations || []);
+  const hasRefunds = (history || []).some(row => row.credit_source_id === tx.id && isActive(row));
   const method = tx.paymentMethod;
+  const invoicePayments = tx.invoice_payments || [];
+  const invoicePaymentDetails = payment => [
+    formatDate(payment.receivedAt),
+    { cash: "Cash", momo: "MoMo" }[payment.method],
+    payment.reference,
+    payment.paidBy && `Paid by ${payment.paidBy}`,
+  ].filter(Boolean).join(" · ");
 
   const payById = (id) => (Array.isArray(history) ? history : []).find(p => p.id === id);
   const purchaseById = (id) => (Array.isArray(history) ? history : []).find(s => s.id === id);
 
   const appliedToThisPurchase = !isPayment
-    ? (Array.isArray(allocations) ? allocations : []).filter(a => a.sale_id === tx.id && isActive(payById(a.payment_id) || {}))
+    ? (Array.isArray(allocations) ? allocations : []).filter(a => {
+        const payment = payById(a.payment_id);
+        return a.sale_id === tx.id && payment && ['supplier_payment', 'purchase'].includes(payment.type) && isActive(payment) && !payment.replacedByTransactionId;
+      })
     : [];
   const appliedByThisPayment = isPayment
     ? (Array.isArray(allocations) ? allocations : []).filter(a => a.payment_id === tx.id)
@@ -32,12 +46,14 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
     if (currentStore?.phone) L.push(`Tel: ${currentStore.phone}`);
     L.push("──────────────────────");
     L.push(`Receipt #: ${receiptNo}`);
-    L.push(`Date: ${formatDate(txDate(tx))}`);
+    L.push(`Date: ${formatDate(tx.received_at || txDate(tx))}`);
     L.push(`Supplier: ${supplier?.name || "—"}`);
     L.push("──────────────────────");
     if (isPayment) {
-      L.push(`PAYMENT MADE: ${formatCurrency(paid, currency)}`);
+      L.push(`${isRefund ? "REFUND RECEIVED" : "PAYMENT MADE"}: ${formatCurrency(Math.abs(paid), currency)}`);
+      if (isRefund) L.push(`Original payment or invoice #${tx.credit_source_id.slice(-6).toUpperCase()}`);
       if (method) L.push(`Method: ${method}`);
+      if (tx.reference) L.push(`Payment reference: ${tx.reference}`);
       if (appliedByThisPayment.length > 0) {
         appliedByThisPayment.forEach(a => {
           const s = purchaseById(a.sale_id);
@@ -59,9 +75,18 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
       L.push(`TOTAL: ${formatCurrency(totalPurchase, currency)}`);
       if (discount > 0) L.push(`Discount: ${formatCurrency(discount, currency)}`);
       L.push(`PAID UPFRONT: ${formatCurrency(paid, currency)}`);
+      if (paid > totalPurchase + 0.009) L.push(`Applied to this invoice upfront: ${formatCurrency(totalPurchase, currency)}`);
+      invoicePayments.forEach(payment => {
+        L.push(`  ${invoicePaymentDetails(payment)} · ${formatCurrency(payment.amount, currency)}`);
+      });
       if (appliedTotal > 0) L.push(`PAID VIA PAYMENTS: ${formatCurrency(appliedTotal, currency)}`);
+      appliedToThisPurchase.forEach(a => {
+        const payment = payById(a.payment_id);
+        L.push(`  ${[formatDate(txDate(payment)), payment.reference, formatCurrency(a.amount, currency)].filter(Boolean).join(" · ")}`);
+      });
       L.push(`OUTSTANDING: ${formatCurrency(trueOutstanding, currency)}`);
     }
+    if (creditAvailable > 0.009) L.push(`Credit available from this receipt: ${formatCurrency(creditAvailable, currency)}`);
     if (tx.note) L.push(`Note: ${tx.note}`);
     if (tx.status === 'cancelled') L.push(`🚫 CANCELLED: ${tx.cancel_reason || tx.cancelReason || ""}`);
     L.push("");
@@ -75,7 +100,7 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
         <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
           <h3 className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2">
             <FileText size={20} className={isPayment ? "text-blue-600" : "text-indigo-600"} />
-            {isPayment ? "Payment Receipt" : "Purchase Receipt"}
+            {isRefund ? "Refund Receipt" : isPayment ? "Payment Receipt" : "Purchase Receipt"}
           </h3>
           <button onClick={onClose} className="p-2 bg-gray-200 dark:bg-gray-800 rounded-full"><X size={18} className="text-gray-600 dark:text-gray-300" /></button>
         </div>
@@ -94,8 +119,11 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
           <div className="border-t-2 border-dashed border-gray-300 dark:border-gray-700" />
           <div className="space-y-1.5 text-sm">
             <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Receipt #</span><span className="font-bold text-gray-900 dark:text-white">#{receiptNo}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Date</span><span className="font-semibold text-gray-900 dark:text-white">{formatDate(txDate(tx))}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Date</span><span className="font-semibold text-gray-900 dark:text-white">{formatDate(tx.received_at || txDate(tx))}</span></div>
             <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Supplier</span><span className="font-semibold text-gray-900 dark:text-white">{supplier?.name || "—"}</span></div>
+            {isPayment && tx.reference && (
+              <div className="flex justify-between gap-3"><span>Payment reference</span><strong className="break-all">{tx.reference}</strong></div>
+            )}
             {method && (
               <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Method</span><span className="font-semibold text-gray-900 dark:text-white capitalize flex items-center gap-1">
                 {method === 'momo' ? <Smartphone size={14} /> : method === 'bank' ? <CreditCard size={14} /> : <Banknote size={14} />}
@@ -118,14 +146,20 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
               })}
             </div>
           )}
-          {!isPayment && appliedToThisPurchase.length > 0 && (
+          {!isPayment && (invoicePayments.length > 0 || appliedToThisPurchase.length > 0) && (
             <div className="bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/30 rounded-xl p-3 space-y-1.5">
               <p className="text-[10px] font-bold text-green-700 dark:text-green-400 uppercase flex items-center gap-1"><Link2 size={11} /> Payments applied to this purchase</p>
+              {invoicePayments.map(payment => (
+                <div key={payment.id} className="flex justify-between gap-2 text-xs">
+                  <span className="min-w-0 break-words">{invoicePaymentDetails(payment)}</span>
+                  <strong>{formatCurrency(payment.amount, currency)}</strong>
+                </div>
+              ))}
               {appliedToThisPurchase.map((a, i) => {
                 const p = payById(a.payment_id);
                 return (
                   <div key={i} className="flex justify-between text-xs">
-                    <span className="text-gray-600 dark:text-gray-300">{p ? formatDate(txDate(p)).split(',')[0] : "Payment"}{p?.paymentMethod ? ` • ${p.paymentMethod}` : ""}</span>
+                    <span className="min-w-0 break-words text-gray-600 dark:text-gray-300">{[formatDate(txDate(p)), p.paymentMethod, p.reference].filter(Boolean).join(" · ")}</span>
                     <span className="font-semibold text-green-700 dark:text-green-400">-{formatCurrency(parseFloat(a.amount) || 0, currency)}</span>
                   </div>
                 );
@@ -159,7 +193,7 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
           ))}
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 space-y-2">
             {isPayment ? (
-              <div className="flex justify-between text-lg font-bold"><span className="text-gray-700 dark:text-gray-300">Amount Paid</span><span className="text-green-600 dark:text-green-400">{formatCurrency(paid, currency)}</span></div>
+              <div className="flex justify-between text-lg font-bold"><span className="text-gray-700 dark:text-gray-300">{isRefund ? "Refund received" : "Amount paid"}</span><span className="text-green-600 dark:text-green-400">{formatCurrency(Math.abs(paid), currency)}</span></div>
             ) : (
               <>
                 <div className="flex justify-between text-base"><span className="text-gray-600 dark:text-gray-300">Total Purchase</span><span className="font-bold text-gray-900 dark:text-white">{formatCurrency(totalPurchase, currency)}</span></div>
@@ -169,6 +203,7 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
                 {paid > 0 && (
                   <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Paid Upfront</span><span className="font-semibold text-green-600 dark:text-green-400">-{formatCurrency(paid, currency)}</span></div>
                 )}
+                {paid > totalPurchase + 0.009 && <div className="flex justify-between text-sm"><span>Applied to this invoice upfront</span><strong>{formatCurrency(totalPurchase, currency)}</strong></div>}
                 {appliedTotal > 0 && (
                   <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Paid via Payments</span><span className="font-semibold text-green-600 dark:text-green-400">-{formatCurrency(appliedTotal, currency)}</span></div>
                 )}
@@ -182,6 +217,8 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
               </>
             )}
           </div>
+          {creditAvailable > 0.009 && <p className="rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200">Credit available from this receipt · {formatCurrency(creditAvailable, currency)}</p>}
+          {isRefund && <p className="text-sm">Original payment or invoice #{tx.credit_source_id.slice(-6).toUpperCase()}</p>}
           {tx.note && (
             <div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-100 dark:border-yellow-900/30 rounded-xl p-3">
               <p className="text-[10px] font-bold text-yellow-700 dark:text-yellow-400 uppercase mb-1">Note</p>
@@ -191,12 +228,15 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
           <p className="text-center text-[11px] text-gray-400 dark:text-gray-500">Thank you for your business! 🙏</p>
         </div>
         <div className="p-4 pt-3 border-t border-gray-200 dark:border-gray-800 flex-shrink-0 space-y-2">
+          {tx.type === 'purchase' && isActive(tx) && !tx.replacedByTransactionId && trueOutstanding > 0.009 && (
+            <button onClick={() => onPayment(tx.id)} className="w-full rounded-xl bg-indigo-600 py-3.5 font-bold text-white">Add payment to this invoice</button>
+          )}
           {supplier?.phone && (
             <button onClick={handleShare} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
               <Share2 size={18} /> Share Receipt (WhatsApp)
             </button>
           )}
-          {isActive(tx) && (
+          {isActive(tx) && !isRefund && !hasRefunds && (
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => onFix(tx)} className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
                 <Edit3 size={18} /> Fix

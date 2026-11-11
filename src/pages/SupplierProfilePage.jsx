@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Trash2 } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
@@ -11,6 +11,7 @@ import { ShareAccountModal } from "../components/ShareAccountModal";
 import { AddSupplierModal } from "../components/supplier/AddSupplierModal";
 import { DeleteContactModal } from "../components/DeleteContactModal";
 import { TopBar } from "../components/TopBar";
+import { PaymentCredit } from "../components/PaymentCredit";
 
 // Import our new clean components
 import { SupplierHeader } from "./supplier/components/SupplierHeader";
@@ -22,7 +23,7 @@ import { MoreInformation } from "./supplier/components/MoreInformation";
 import { ReceiptModal } from "./supplier/components/ReceiptModal";
 import { FixReasonModal } from "./supplier/components/FixReasonModal";
 import { CancelModal } from "./supplier/components/CancelModal";
-import { normalizeList, isActive, buildAllocMap, retroRows } from "./supplier/utils/helpers";
+import { normalizeList, isActive, buildAllocMap } from "./supplier/utils/helpers";
 
 export const SupplierProfilePage = () => {
   const { currentStore, selectedSupplier, setSelectedSupplier, setView, setPrefillTransaction, setFixTransaction, showToast, readOnly } = useStore();
@@ -65,28 +66,6 @@ export const SupplierProfilePage = () => {
   useEffect(() => {
     setVisibleCount(10);
   }, [selectedSupplier?.id]);
-
-  // 👇 AUTOMATIC healing — guarded so it can NEVER run twice
-  const healRunning = useRef(false);
-  useEffect(() => {
-    if (!selectedSupplier?.id || history.length === 0) return;
-    if (healRunning.current) return;
-    healRunning.current = true;
-    (async () => {
-      try {
-        const rows = retroRows(history, allocations);
-        if (rows.length > 0) {
-          await AllocationService.createMany(rows);
-          const fresh = await AllocationService.getByContact(selectedSupplier.id);
-          setAllocations(fresh);
-        }
-      } catch (error) {
-        console.error("Auto-match failed:", error);
-      } finally {
-        healRunning.current = false;
-      }
-    })();
-  }, [history, allocations, selectedSupplier?.id]);
 
   if (!supplierData) return null;
 
@@ -146,9 +125,9 @@ export const SupplierProfilePage = () => {
     setView("recordSupplierPurchase");
   };
 
-  const handleMakePayment = () => {
+  const handleMakePayment = (invoiceId) => {
     if (blockIfReadOnly()) return;
-    setPrefillTransaction({ supplierId: supplierData.id, name: supplierData.name, phone: supplierData.phone });
+    setPrefillTransaction({ supplierId: supplierData.id, name: supplierData.name, phone: supplierData.phone, invoiceId: typeof invoiceId === "string" ? invoiceId : null });
     setView("recordSupplierPayment");
   };
 
@@ -245,6 +224,12 @@ export const SupplierProfilePage = () => {
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
         <SupplierHeader supplier={supplierData} daysSinceLastActive={daysSinceLastActive} onEdit={() => { if (!blockIfReadOnly()) setIsEditModalOpen(true); }} />
         <BalanceCard balance={trueBalance} lastPayment={lastPayment} currency={currency} />
+        <PaymentCredit history={history} allocations={allocations} invoices={outstandingInvoices} currency={currency} readOnly={readOnly} isSupplier onSaved={async () => {
+          const [rows, updatedAllocations] = await Promise.all([TransactionService.getHistory(supplierData.id), AllocationService.getByContact(supplierData.id)]);
+          setHistory(normalizeList(rows));
+          setAllocations(updatedAllocations);
+          showToast("Credit updated");
+        }} />
         <QuickActions
           onPurchase={handleRecordPurchase}
           onPayment={handleMakePayment}
@@ -287,6 +272,7 @@ export const SupplierProfilePage = () => {
           currency={currency}
           history={history}
           allocations={allocations}
+          onPayment={handleMakePayment}
         />
       )}
       <FixReasonModal isOpen={showFixModal} onClose={() => setShowFixModal(false)} onConfirm={confirmFix} fixReason={fixReason} setFixReason={setFixReason} />

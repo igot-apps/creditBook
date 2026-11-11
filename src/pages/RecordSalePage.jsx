@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Search, Plus, Users, Check, RotateCcw, Pause, Loader2 } from "lucide-react";
 import useStore from "../store/useStore";
-import { formatCurrency } from "../utils/helpers";
+import { formatCurrency, formatDate } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
 import { ProductService } from "../services/ProductService";
 import { TransactionService } from "../services/TransactionService";
@@ -43,6 +43,7 @@ export const RecordSalePage = () => {
   const [undoData, setUndoData] = useState(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
   const [suspendedId, setSuspendedId] = useState(null);
+  const [saleDate, setSaleDate] = useState(() => new Date().toISOString());
   const [isSaving, setIsSaving] = useState(false);
   const [isSuspending, setIsSuspending] = useState(false);
 
@@ -59,8 +60,10 @@ export const RecordSalePage = () => {
   // Load Suspended Sale if resumed from Home Page
   useEffect(() => {
     if (resumedSuspendedId) {
+      let cancelled = false;
       SuspendedTransactionService.getSuspendedTransactions().then(all => {
-        const susp = all.find(s => s.id === resumedSuspendedId);
+        if (cancelled) return;
+        const susp = all.find(s => s.id === resumedSuspendedId && s.type === 'sale');
         if (susp) {
           setSelectedCustomer({
             id: susp.contactId,
@@ -71,41 +74,25 @@ export const RecordSalePage = () => {
           setTx({
             amount: (susp.amount || 0).toString(),
             paid: (susp.paid || 0).toString(),
+            invoicePayments: susp.invoicePayments || [],
             discount: (susp.discount || 0).toString(),
             note: susp.note || ""
           });
           setSuspendedId(susp.id);
+          setSaleDate(susp.createdAt || new Date().toISOString());
           setMode("existing");
           showToast("⏸️ Resumed suspended sale");
+        } else {
+          showToast("Suspended sale is no longer available");
         }
-        clearResumedSuspended();
+      }).catch(() => {
+        if (!cancelled) showToast("Failed to load suspended sale");
+      }).finally(() => {
+        if (!cancelled) clearResumedSuspended();
       });
+      return () => { cancelled = true; };
     }
   }, [resumedSuspendedId, clearResumedSuspended, showToast]);
-
-  // Duplicate Protection (UUID guard + direct service call)
-  useEffect(() => {
-    if (selectedCustomer?.id && mode === 'existing' && !isFixing) {
-      SuspendedTransactionService.checkDuplicateSuspended(currentStore?.id, selectedCustomer.id, 'sale').then(susp => {
-        if (susp && susp.id !== suspendedId) {
-          showToast(`⏸️ Resuming suspended sale for ${selectedCustomer.name || "Customer"}`);
-          setSelectedCustomer({
-            id: susp.contactId,
-            name: susp.contactName || "Unknown Customer",
-            phone: susp.contactPhone || ""
-          });
-          setInvoiceItems(susp.items || []);
-          setTx({
-            amount: (susp.amount || 0).toString(),
-            paid: (susp.paid || 0).toString(),
-            discount: (susp.discount || 0).toString(),
-            note: susp.note || ""
-          });
-          setSuspendedId(susp.id);
-        }
-      });
-    }
-  }, [selectedCustomer?.id, mode, isFixing, currentStore?.id, suspendedId, showToast]);
 
   // Handle Prefill from Profile Page
   useEffect(() => {
@@ -133,6 +120,7 @@ export const RecordSalePage = () => {
       setTx({
         amount: fixTransaction.amount?.toString() || "0",
         paid: fixTransaction.paid?.toString() || "",
+        invoicePayments: fixTransaction.invoice_payments || [],
         discount: fixTransaction.discount?.toString() || "",
         note: fixTransaction.note || ""
       });
@@ -167,7 +155,7 @@ export const RecordSalePage = () => {
 
   // Restore Auto-Draft
   useEffect(() => {
-    if (autoDraft && autoDraft.draftType === 'sale' && customers.length > 0 && !selectedCustomer && !prefillTransaction && !isFixing) {
+    if (autoDraft?.draftType === 'sale' && !selectedCustomer && !prefillTransaction && !resumedSuspendedId && !fixTransaction && !isFixing) {
       const draftCustomer = customers.find(c => c.id === autoDraft.customerId) || {
         id: autoDraft.customerId,
         name: autoDraft.customerName || 'Unknown',
@@ -175,15 +163,18 @@ export const RecordSalePage = () => {
       };
       setSelectedCustomer(draftCustomer);
       setInvoiceItems(autoDraft.invoiceItems || []);
+      setSuspendedId(autoDraft.suspendedId || null);
+      setSaleDate(autoDraft.saleDate || autoDraft.updatedAt || new Date().toISOString());
       setTx({
         amount: autoDraft.amount || "0",
         paid: autoDraft.paid || "",
+        invoicePayments: autoDraft.invoicePayments || [],
         discount: autoDraft.discount || "",
         note: autoDraft.note || ""
       });
       setMode("existing");
     }
-  }, [autoDraft, customers, selectedCustomer, prefillTransaction, isFixing]);
+  }, [autoDraft, customers, selectedCustomer, prefillTransaction, resumedSuspendedId, fixTransaction, isFixing]);
 
   // Save Auto-Draft (debounced)
   useEffect(() => {
@@ -193,8 +184,11 @@ export const RecordSalePage = () => {
         customerName: selectedCustomer.name,
         customerPhone: selectedCustomer.phone,
         invoiceItems,
+        suspendedId,
+        saleDate,
         amount: tx.amount,
         paid: tx.paid,
+        invoicePayments: tx.invoicePayments,
         discount: tx.discount,
         note: tx.note,
         draftType: 'sale'
@@ -202,7 +196,17 @@ export const RecordSalePage = () => {
       const timeoutId = setTimeout(() => { saveDraft(draftData, true); }, 500);
       return () => clearTimeout(timeoutId);
     }
-  }, [selectedCustomer, invoiceItems, tx, mode, saveDraft, isFixing]);
+  }, [selectedCustomer, invoiceItems, suspendedId, saleDate, tx, mode, saveDraft, isFixing]);
+
+  const resetSale = () => {
+    setMode("search");
+    setSelectedCustomer(null);
+    setSuspendedId(null);
+    setInvoiceItems([]);
+    setTx({ amount: "0", paid: "", discount: "", note: "" });
+    setSaleDate(new Date().toISOString());
+    clearAutoDraft('sale');
+  };
 
   const filteredCustomers = useMemo(() => {
     if (!Array.isArray(customers)) return [];
@@ -237,6 +241,7 @@ export const RecordSalePage = () => {
     if (blockIfReadOnly()) return;
     if (isSuspending || isSaving) return;
     if (!selectedCustomer) { showToast("️ Select a customer first"); return; }
+    if (Number(tx.paid) < 0) { showToast("Enter a non-negative amount paid"); return; }
     if (invoiceItems.length === 0 && !tx.note.trim() && parseFloat(tx.amount) === 0) {
       showToast("⚠️ Add items before suspending"); return;
     }
@@ -250,18 +255,24 @@ export const RecordSalePage = () => {
         contactName: selectedCustomer.name,
         contactPhone: selectedCustomer.phone,
         items: invoiceItems,
+        createdAt: saleDate,
         amount: parseFloat(tx.amount) || 0,
         paid: parseFloat(tx.paid) || 0,
+        invoicePayments: tx.invoicePayments,
         discount: parseFloat(tx.discount) || 0,
         note: tx.note
       };
-      const newId = await SuspendedTransactionService.suspendTransaction(data);
-      setSuspendedId(newId);
+      await SuspendedTransactionService.suspendTransaction(data);
+      clearAutoDraft('sale');
       showToast("️ Sale suspended");
       setView("home");
     } catch (error) {
       console.error(error);
-      showToast("❌ Failed to suspend sale");
+      if (error.message?.includes('invoice_payments') && ['PGRST204', '42703'].includes(error.code)) {
+        showToast("Apply the invoice payments migration in Supabase, then retry.");
+      } else {
+        showToast("❌ Failed to suspend sale");
+      }
     } finally {
       setIsSuspending(false);
     }
@@ -295,12 +306,14 @@ export const RecordSalePage = () => {
     if (!selectedCustomer) return;
     const finalAmount = parseFloat(tx.amount) || 0;
     const finalPaid = parseFloat(tx.paid) || 0;
+    if (finalPaid < 0) { showToast("Enter a non-negative amount paid"); return; }
     if (finalAmount === 0 && finalPaid === 0 && !tx.note.trim() && invoiceItems.length === 0) {
       showToast("⚠️ Please add items, a payment amount, or a note."); return;
     }
     setIsSaving(true);
     try {
       const extraData = {
+        invoicePayments: tx.invoicePayments,
         contactName: selectedCustomer.name,
         contactPhone: selectedCustomer.phone,
         discount: parseFloat(tx.discount) || 0
@@ -365,7 +378,11 @@ export const RecordSalePage = () => {
           </div>
         )}
 
-        {mode === "search" && (
+        {mode === "search" && resumedSuspendedId && (
+          <p role="status" className="text-sm text-gray-500 dark:text-gray-400">Loading suspended sale…</p>
+        )}
+
+        {mode === "search" && !resumedSuspendedId && (
           <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <p className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2"><Users size={16} className="text-green-600" /> Select Customer</p>
             <div className="relative">
@@ -404,29 +421,23 @@ export const RecordSalePage = () => {
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-green-600 dark:text-green-400 uppercase font-bold">{isFixing ? "Correcting sale for" : "Selling to"}</p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedCustomer.name || "Unknown Customer"}</p>
+                {!isFixing && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {suspendedId ? "Created on " : "Draft started on "}{formatDate(saleDate)}
+                  </p>
+                )}
               </div>
               {!isFixing && (
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => {
-                      useStore.setState({ autoDraft: null });
-                      setMode("search");
-                      setSelectedCustomer(null);
-                      setSuspendedId(null);
-                      clearAutoDraft('sale');
-                    }}
+                    onClick={resetSale}
                     className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
                   >
                     Discard Draft
                   </button>
                   <span className="text-gray-300 dark:text-gray-600">|</span>
                   <button
-                    onClick={() => {
-                      setMode("search");
-                      setSelectedCustomer(null);
-                      setSuspendedId(null);
-                      clearAutoDraft('sale');
-                    }}
+                    onClick={resetSale}
                     className="text-xs text-blue-600 dark:text-blue-400 underline font-semibold px-2 py-1 flex-shrink-0"
                   >
                     Change
@@ -438,7 +449,7 @@ export const RecordSalePage = () => {
         )}
 
         {mode === "existing" && (
-          <DetailedInvoice tx={tx} setTx={setTx} invoiceItems={invoiceItems} setInvoiceItems={setInvoiceItems} products={products} setProducts={setProducts} currentStore={currentStore} showToast={showToast} />
+          <DetailedInvoice tx={tx} setTx={setTx} invoiceItems={invoiceItems} setInvoiceItems={setInvoiceItems} products={products} setProducts={setProducts} currentStore={currentStore} showToast={showToast} createdAt={isFixing ? undefined : saleDate} />
         )}
 
         {mode === "existing" && (

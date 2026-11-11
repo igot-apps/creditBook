@@ -17,7 +17,7 @@ export const TopBar = ({ title, showBack = false, onBack }) => {
       className="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-sm"
       style={{ paddingTop: 'env(safe-area-inset-top)' }}
     >
-      <div className="flex items-center justify-between px-4 h-14">
+      <div className="flex items-center justify-between px-4 h-14 lg:ml-72">
         {/* Left Side: Back Button or Empty Space */}
         <div className="w-10 flex items-center">
           {showBack && (
@@ -40,7 +40,7 @@ export const TopBar = ({ title, showBack = false, onBack }) => {
         <div className="w-10 flex items-center justify-end">
           <button
             onClick={() => setIsMenuOpen(true)}
-            className="p-2 -mr-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition active:scale-95"
+            className="p-2 -mr-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition active:scale-95 lg:hidden"
             aria-label="Open menu"
           >
             <Menu size={22} />

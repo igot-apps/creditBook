@@ -1,4 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
+import { TransactionService } from './TransactionService';
+import { invoiceAccountBalance } from '../utils/paymentCredit';
 
 export const SupplierService = {
   // 1. Get all suppliers
@@ -70,9 +72,10 @@ getAll: async (options = {}) => {
 
   // 5. Update supplier balance
   updateBalance: async (id, newBalance) => {
+    const balance = newBalance ?? invoiceAccountBalance(await TransactionService.getHistory(id), 'purchase', 'supplier_payment');
     const { error } = await supabase
       .from('contacts')
-      .update({ balance: newBalance })
+      .update({ balance })
       .eq('id', id);
       
     if (error) throw error;

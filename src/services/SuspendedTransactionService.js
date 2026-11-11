@@ -11,6 +11,7 @@ export const SuspendedTransactionService = {
           items: data.items,
           amount: data.amount,
           paid: data.paid,
+          ...(data.invoicePayments && { invoice_payments: data.invoicePayments }),
           discount: data.discount,
           note: data.note,
           updated_at: new Date().toISOString()
@@ -31,8 +32,10 @@ export const SuspendedTransactionService = {
             items: data.items,
             amount: data.amount,
             paid: data.paid,
+            ...(data.invoicePayments?.length && { invoice_payments: data.invoicePayments }),
             discount: data.discount,
-            note: data.note
+            note: data.note,
+            ...(data.createdAt && { created_at: data.createdAt })
           }
         ])
         .select()
@@ -61,6 +64,7 @@ export const SuspendedTransactionService = {
       items: s.items,
       amount: s.amount,
       paid: s.paid,
+      invoicePayments: s.invoice_payments,
       discount: s.discount,
       note: s.note,
       createdAt: s.created_at

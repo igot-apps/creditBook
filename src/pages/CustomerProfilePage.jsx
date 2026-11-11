@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Trash2, HeartHandshake } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { openDialer } from "../utils/communication";
-import { buildAllocationMap, saleRemaining, computeRetroAllocations, computeForgiveAllocations } from "../utils/allocation";
+import { buildAllocationMap, saleRemaining, computeForgiveAllocations } from "../utils/allocation";
 import { CustomerService } from "../services/CustomerService";
 import { TransactionService } from "../services/TransactionService";
 import { AllocationService } from "../services/AllocationService";
@@ -12,6 +12,7 @@ import { ShareAccountModal } from "../components/ShareAccountModal";
 import { AddCustomerModal } from "../components/customer/AddCustomerModal";
 import { DeleteContactModal } from "../components/DeleteContactModal";
 import { TopBar } from "../components/TopBar";
+import { PaymentCredit } from "../components/PaymentCredit";
 // Modular, allocation-aware components
 import { CustomerHeader } from "./customer/components/CustomerHeader";
 import { BalanceCard } from "./customer/components/BalanceCard";
@@ -82,28 +83,6 @@ export const CustomerProfilePage = () => {
 
   useEffect(() => { setVisibleCount(10); }, [selectedCustomer?.id]);
 
-  // 👇 AUTOMATIC healing — guarded so it can NEVER run twice at the same time
-  const healRunning = useRef(false);
-  useEffect(() => {
-    if (!selectedCustomer?.id || history.length === 0) return;
-    if (healRunning.current) return;
-    healRunning.current = true;
-    (async () => {
-      try {
-        const rows = computeRetroAllocations(history, allocations);
-        if (rows.length > 0) {
-          await AllocationService.createMany(rows);
-          const fresh = await AllocationService.getByContact(selectedCustomer.id);
-          setAllocations(fresh);
-        }
-      } catch (error) {
-        console.error("Auto-match failed:", error);
-      } finally {
-        healRunning.current = false;
-      }
-    })();
-  }, [history, allocations, selectedCustomer?.id]);
-
   if (!customerData) return null;
 
   // ==========================================
@@ -167,9 +146,9 @@ export const CustomerProfilePage = () => {
     setView("record");
   };
 
-  const handleReceivePayment = () => {
+  const handleReceivePayment = (invoiceId) => {
     if (blockIfReadOnly()) return;
-    setPrefillTransaction({ customerId: customerData.id, name: customerData.name, phone: customerData.phone });
+    setPrefillTransaction({ customerId: customerData.id, name: customerData.name, phone: customerData.phone, invoiceId: typeof invoiceId === "string" ? invoiceId : undefined });
     setView("recordPayment");
   };
 
@@ -256,6 +235,12 @@ export const CustomerProfilePage = () => {
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
         <CustomerHeader customer={customerData} daysSinceLastActive={daysSinceLastActive} onEdit={() => { if (!blockIfReadOnly()) setIsEditModalOpen(true); }} />
         <BalanceCard balance={trueBalance} lastPayment={lastPayment} currency={currency} />
+        <PaymentCredit history={history} allocations={allocations} invoices={outstandingInvoices} currency={currency} readOnly={readOnly} onSaved={async () => {
+          const [rows, updatedAllocations] = await Promise.all([TransactionService.getHistory(customerData.id), AllocationService.getByContact(customerData.id)]);
+          setHistory(normalizeList(rows));
+          setAllocations(updatedAllocations);
+          showToast("Credit updated");
+        }} />
 
         {trueBalance > 0 && (
           <button
@@ -303,6 +288,8 @@ export const CustomerProfilePage = () => {
           currency={currency}
           history={history}
           allocations={allocations}
+          balance={trueBalance}
+          onReceivePayment={handleReceivePayment}
         />
       )}
       <FixReasonModal isOpen={showFixModal} onClose={() => setShowFixModal(false)} onConfirm={confirmFix} fixReason={fixReason} setFixReason={setFixReason} />

@@ -33,7 +33,7 @@ export const InvoiceModal = ({ onClose, transaction, customerName, customerPhone
               </div>
               <div className="text-right">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Date Issued</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{formatDate(transaction.date)}</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{formatDate(transaction.createdAt || transaction.created_at || transaction.date)}</p>
               </div>
             </div>
             <div className="bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl border border-gray-100 dark:border-gray-700">

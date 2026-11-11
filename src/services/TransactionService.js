@@ -24,6 +24,19 @@ const toSnake = (obj) => {
 };
 
 export const TransactionService = {
+  recordInvoicePayment: async ({ id, invoiceId, amount, method, reference, note, receivedAt }) => {
+    const { error } = await supabase.rpc('record_invoice_payment', {
+      p_id: id,
+      p_invoice: invoiceId,
+      p_amount: amount,
+      p_method: method,
+      p_reference: reference || null,
+      p_note: note,
+      p_received_at: receivedAt || null,
+    });
+    if (error) throw error;
+  },
+
   getAll: async () => {
     const { data, error } = await supabase
       .from('transactions')
@@ -70,6 +83,8 @@ export const TransactionService = {
           corrects_transaction_id: extraData.correctsTransactionId || null,
           payment_method: extraData.paymentMethod || null,
           reference: extraData.reference || null,
+          ...(extraData.receivedAt && { received_at: extraData.receivedAt }),
+          ...(extraData.invoicePayments?.length && { invoice_payments: extraData.invoicePayments }),
         }
       ])
       .select()
@@ -95,6 +110,22 @@ export const TransactionService = {
     if (error) throw error;
   },
 
+  findMomoPayment: async (storeId, reference) => {
+    const query = supabase
+      .from('transactions')
+      .select('id, contact_id, paid, received_at, created_at')
+      .eq('store_id', storeId)
+      .eq('type', 'payment')
+      .eq('payment_method', 'momo')
+      .or('status.eq.active,status.is.null');
+    const matchingReference = /^[A-Z0-9-]+$/.test(reference)
+      ? query.ilike('reference', reference)
+      : query.eq('reference', reference);
+    const { data, error } = await matchingReference.limit(1).maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+
   recordPayment: async (storeId, contactId, amount, note, extraData = {}) => {
     const { data, error } = await supabase
       .from('transactions')
@@ -109,6 +140,7 @@ export const TransactionService = {
           note: note || '',
           payment_method: extraData.paymentMethod || 'cash',
           reference: extraData.reference || null,
+          ...(extraData.receivedAt && { received_at: extraData.receivedAt }),
           status: 'active',
         }
       ])

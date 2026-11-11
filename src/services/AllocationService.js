@@ -1,6 +1,18 @@
 import { supabase } from '../lib/supabaseClient';
 
 export const AllocationService = {
+  useCredit: async ({ sourceId, invoiceId, amount, operationId, reference, receivedAt }) => {
+    const { error } = await supabase.rpc('use_payment_credit', {
+      p_source: sourceId,
+      p_invoice: invoiceId || null,
+      p_amount: amount,
+      p_operation_id: operationId,
+      p_reference: reference || null,
+      p_received_at: receivedAt || null,
+    });
+    if (error) throw error;
+  },
+
   // All allocation rows for a contact
   getByContact: async (contactId) => {
     const { data, error } = await supabase

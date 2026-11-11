@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Truck, Check, Loader2, Banknote, Smartphone, CreditCard, Link2 } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Search, Plus, Truck, Check, Loader2, Banknote, Smartphone, CreditCard } from "lucide-react";
 import useStore from "../store/useStore";
-import { formatCurrency } from "../utils/helpers";
+import { formatCurrency, formatDate } from "../utils/helpers";
 import { SupplierService } from "../services/SupplierService";
 import { TransactionService } from "../services/TransactionService";
 import { AllocationService } from "../services/AllocationService";
@@ -13,6 +13,7 @@ const normalizeList = (list) => (Array.isArray(list) ? list : []).map(tx => ({
   ...tx,
   createdAt: tx.created_at || tx.createdAt,
   contactId: tx.contact_id || tx.contactId,
+  replacedByTransactionId: tx.replaced_by_transaction_id || tx.replacedByTransactionId,
 }));
 
 const isActiveTx = (tx) => tx.status === 'active' || !tx.status;
@@ -45,9 +46,12 @@ export const RecordSupplierPaymentPage = () => {
   const [history, setHistory] = useState([]);
   const [allocations, setAllocations] = useState([]);
   const [amount, setAmount] = useState("");
+  const [invoiceId, setInvoiceId] = useState("");
+  const [reference, setReference] = useState("");
   const [method, setMethod] = useState("cash");
   const [note, setNote] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const invoicePaymentRequest = useRef(null);
 
   useEffect(() => {
     if (currentStore?.id) {
@@ -60,6 +64,7 @@ export const RecordSupplierPaymentPage = () => {
   // Auto-select when coming from a supplier profile
   useEffect(() => {
     if (prefillTransaction?.supplierId) {
+      setInvoiceId(prefillTransaction.invoiceId || "");
       setSelectedSupplier({
         id: prefillTransaction.supplierId,
         name: prefillTransaction.name || "Unknown",
@@ -90,7 +95,7 @@ export const RecordSupplierPaymentPage = () => {
   const openInvoices = useMemo(() => {
     const activePayIds = new Set(
       (Array.isArray(history) ? history : [])
-        .filter(t => t.type === 'supplier_payment' && isActiveTx(t))
+        .filter(t => ['supplier_payment', 'purchase'].includes(t.type) && isActiveTx(t) && !t.replacedByTransactionId)
         .map(t => t.id)
     );
     const map = {};
@@ -117,29 +122,17 @@ export const RecordSupplierPaymentPage = () => {
       .sort((a, b) => new Date(a.date) - new Date(b.date));
   }, [history, allocations]);
 
-  // 👇 FIFO preview — only real rows (name + amount), NaN-proof
-  const preview = useMemo(() => {
-    let left = parseFloat(amount) || 0;
-    const rows = [];
-    for (const inv of openInvoices) {
-      if (left <= 0) break;
-      const apply = Math.min(inv.remaining, left);
-      if (apply > 0) {
-        rows.push({ sale_id: inv.id, name: inv.name, amount: apply });
-      }
-      left = left - apply;
-    }
-    return { rows: rows, leftover: left };
-  }, [openInvoices, amount]);
+  const selectedInvoice = openInvoices.find(invoice => invoice.id === invoiceId);
 
   const filteredSuppliers = useMemo(() => {
     if (!Array.isArray(suppliers)) return [];
     if (!searchQuery.trim()) return suppliers;
     const q = searchQuery.toLowerCase();
     return suppliers.filter(s => s.name.toLowerCase().includes(q) || (s.phone && s.phone.includes(q)));
-  }, [suppliers]);
+  }, [suppliers, searchQuery]);
 
   const handleSelectSupplier = (supplier) => {
+    setInvoiceId("");
     setSelectedSupplier(supplier);
     setMode("existing");
     setSearchQuery("");
@@ -165,44 +158,33 @@ export const RecordSupplierPaymentPage = () => {
     if (!selectedSupplier) { showToast("⚠️ Select a supplier first"); return; }
     const amt = parseFloat(amount) || 0;
     if (amt <= 0) { showToast("⚠️ Enter a payment amount"); return; }
+    if (!selectedInvoice) { showToast("Select a purchase invoice"); return; }
+    const paymentReference = reference.trim();
+    if (method === "momo" && !paymentReference) {
+      showToast("Enter the MoMo transaction ID");
+      return;
+    }
     setIsSaving(true);
     try {
-      const paymentId = await TransactionService.recordSupplierPayment(currentStore.id, selectedSupplier.id, amt, note, {
-        paymentMethod: method,
-        contactName: selectedSupplier.name,
-        contactPhone: selectedSupplier.phone,
-      });
-
-      // Persist the FIFO allocations (upsert — can never duplicate)
-      if (paymentId && preview.rows.length > 0) {
-        await AllocationService.createMany(
-          preview.rows.map(r => ({
-            payment_id: paymentId,
-            sale_id: r.sale_id,
-            contact_id: selectedSupplier.id,
-            amount: r.amount,
-          }))
-        );
+      const key = JSON.stringify([invoiceId, amt, method, paymentReference, note]);
+      if (invoicePaymentRequest.current?.key !== key) {
+        invoicePaymentRequest.current = { key, id: crypto.randomUUID() };
       }
-
-      // Recalculate aggregate balance (single source of truth)
-      const fresh = await TransactionService.getHistory(selectedSupplier.id);
-      let bal = 0;
-      (Array.isArray(fresh) ? fresh : []).forEach(t => {
-        if (t.status && t.status !== 'active') return;
-        const a = parseFloat(t.amount) || 0;
-        const p = parseFloat(t.paid) || 0;
-        if (t.type === 'purchase') bal += a - p;
-        else if (t.type === 'supplier_payment') bal -= p;
+      await TransactionService.recordInvoicePayment({
+        id: invoicePaymentRequest.current.id,
+        invoiceId,
+        amount: amt,
+        method,
+        reference: paymentReference,
+        note,
       });
-      await SupplierService.updateBalance(selectedSupplier.id, bal);
 
-      showToast("✅ Payment recorded & applied to purchases!");
+      showToast("Payment added to the selected invoice");
       useStore.setState({ selectedSupplier: selectedSupplier });
       setView("supplierProfile");
     } catch (error) {
       console.error(error);
-      showToast("❌ Failed to record payment.");
+      showToast(error.code === "P0001" ? error.message : "Failed to record payment.");
     } finally {
       setIsSaving(false);
     }
@@ -275,29 +257,30 @@ export const RecordSupplierPaymentPage = () => {
               />
             </div>
 
-            {(parseFloat(amount) || 0) > 0 && (
-              <div className="bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl p-3 space-y-1.5">
-                <p className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400 uppercase flex items-center gap-1">
-                  <Link2 size={11} /> Payment will be applied to (oldest first)
-                </p>
-                {preview.rows.length === 0 && (
-                  <p className="text-xs text-gray-600 dark:text-gray-300">No unpaid purchases — full amount becomes supplier credit.</p>
-                )}
-                {preview.rows.map((a, i) => (
-                  <div key={i} className="flex justify-between text-xs">
-                    <span className="text-gray-600 dark:text-gray-300">{a.name}</span>
-                    <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(a.amount, currency)}</span>
-                  </div>
+            <label className="block text-sm font-medium">
+              Purchase invoice
+              <select value={invoiceId} onChange={e => setInvoiceId(e.target.value)} className="mt-1 block w-full rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
+                <option value="">Select an unpaid invoice</option>
+                {openInvoices.map(invoice => (
+                  <option key={invoice.id} value={invoice.id}>{invoice.name} · {formatDate(invoice.date)} · {formatCurrency(invoice.remaining, currency)} due</option>
                 ))}
-                {preview.leftover > 0 && (
-                  <div className="flex justify-between text-xs pt-1 border-t border-indigo-100 dark:border-indigo-900/30">
-                    <span className="text-gray-600 dark:text-gray-300">Left as supplier credit</span>
-                    <span className="font-bold text-green-600 dark:text-green-400">{formatCurrency(preview.leftover, currency)}</span>
-                  </div>
+              </select>
+            </label>
+            {selectedInvoice && (
+              <div className="space-y-2 rounded-xl bg-indigo-50 p-3 text-sm dark:bg-indigo-900/20">
+                <div className="flex justify-between"><span>Current balance</span><strong>{formatCurrency(selectedInvoice.remaining, currency)}</strong></div>
+                <div className="flex justify-between"><span>Remaining after payment</span><strong>{formatCurrency(Math.max(0, selectedInvoice.remaining - (Number(amount) || 0)), currency)}</strong></div>
+                {Number(amount) > selectedInvoice.remaining + 0.009 && (
+                  <div className="flex justify-between"><span>Supplier credit added</span><strong>{formatCurrency(Number(amount) - selectedInvoice.remaining, currency)}</strong></div>
                 )}
               </div>
             )}
 
+            <div>
+              <label className="block text-sm font-medium">{method === "momo" ? "MoMo transaction ID" : "Payment reference (optional)"}
+                <input value={reference} onChange={e => setReference(e.target.value)} className="mt-1 block w-full rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
+              </label>
+            </div>
             <div>
               <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Payment Method</label>
               <div className="grid grid-cols-3 gap-2">
@@ -328,7 +311,7 @@ export const RecordSupplierPaymentPage = () => {
 
             <button
               onClick={handleSavePayment}
-              disabled={isSaving}
+              disabled={isSaving || !selectedInvoice}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg disabled:opacity-60"
             >
               {isSaving ? <><Loader2 className="animate-spin" size={24} /> Saving...</> : <><Check size={24} /> Save Payment</>}

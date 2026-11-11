@@ -200,7 +200,7 @@ export const Layout = ({ children }) => {
       )}
 
       {/* Main Content Area — native document scrolling */}
-      <main className="flex-1 lg:ml-72 w-full max-w-full">
+      <main className="min-w-0 lg:ml-72">
         {children}
       </main>
     </div>

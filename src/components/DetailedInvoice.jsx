@@ -1,22 +1,21 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Plus, X, Tag, ChevronUp, ChevronDown, Package } from "lucide-react";
 import { ProductService } from "../services/ProductService";
-import { formatCurrency } from "../utils/helpers";
+import { formatCurrency, formatDate } from "../utils/helpers";
 import { ProductPickerModal } from "./ProductPickerModal";
+import { InvoicePayments } from "./InvoicePayments";
 import { AddProductModal } from "./AddProductModal";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
 export const DetailedInvoice = ({
   tx, setTx, invoiceItems, setInvoiceItems,
-  products, setProducts, currentStore, showToast
+  products, setProducts, currentStore, showToast, createdAt
 }) => {
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [showAddProductModal, setShowAddProductModal] = useState(false);
   const [newProductName, setNewProductName] = useState("");
-  const [discount, setDiscount] = useState(tx.discount || "");
   const [showSummary, setShowSummary] = useState(true);
-
   // Time Lock Ref to prevent double-execution
   const lastActionTime = useRef(0);
   const currency = currentStore?.currency || "GH";
@@ -30,8 +29,9 @@ export const DetailedInvoice = ({
     }, 0);
   }, [invoiceItems]);
 
-  const discountAmount = parseFloat(discount) || 0;
+  const discountAmount = parseFloat(tx.discount) || 0;
   const finalTotal = Math.max(0, totalInvoiceAmount - discountAmount);
+  const balanceRemaining = Math.max(0, finalTotal - (Number(tx.paid) || 0));
 
   // Sync final total back to parent transaction state
   useEffect(() => {
@@ -227,26 +227,39 @@ export const DetailedInvoice = ({
         <button onClick={() => setShowSummary(!showSummary)} className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-900 transition">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Summary</span>
-            <span className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(finalTotal, currency)}</span>
+            <span className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(balanceRemaining, currency)} remaining</span>
           </div>
           {showSummary ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronUp size={16} className="text-gray-400" />}
         </button>
         {showSummary && (
           <div className="p-3 space-y-3 border-t border-gray-100 dark:border-gray-700">
+            {createdAt && (
+              <div className="flex flex-wrap justify-between gap-x-3 text-xs text-gray-500 dark:text-gray-400">
+                <span>Created</span>
+                <time dateTime={createdAt}>{formatDate(createdAt)}</time>
+              </div>
+            )}
             <div className="flex items-center justify-between text-xs">
               <span className="text-gray-500 dark:text-gray-400">Subtotal: {formatCurrency(totalInvoiceAmount, currency)}</span>
               <div className="flex items-center gap-1 bg-orange-50 dark:bg-orange-900/10 px-2 py-1 rounded border border-orange-100 dark:border-orange-900/30">
                 <Tag className="text-orange-500" size={12} />
-                <input type="number" inputMode="decimal" placeholder="Discount" value={discount} onChange={e => { const val = e.target.value; setDiscount(val); setTx(prev => ({ ...prev, discount: val })); }} className={`w-16 bg-transparent text-right font-bold text-orange-700 dark:text-orange-400 outline-none text-xs ${noSpinnerClass}`} />
+                <input type="number" inputMode="decimal" placeholder="Discount" value={tx.discount} onChange={e => { const val = e.target.value; setTx(prev => ({ ...prev, discount: val })); }} className={`w-16 bg-transparent text-right font-bold text-orange-700 dark:text-orange-400 outline-none text-xs ${noSpinnerClass}`} />
               </div>
             </div>
             <div className="flex justify-between items-center pt-2 border-t border-dashed border-gray-200 dark:border-gray-600">
-              <span className="text-sm font-bold text-gray-900 dark:text-white">Total Due:</span>
+              <span className="text-sm font-bold text-gray-900 dark:text-white">Invoice total</span>
               <span className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(finalTotal, currency)}</span>
             </div>
-            <div>
-              <label className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold uppercase mb-1 block">Money Received</label>
-              <input type="number" inputMode="decimal" placeholder="0.00" value={tx.paid} onChange={e => setTx({...tx, paid: e.target.value})} className={`w-full text-lg font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-1 ${noSpinnerClass}`} />
+            <InvoicePayments
+              paid={tx.paid}
+              invoicePayments={tx.invoicePayments}
+              total={finalTotal}
+              currency={currency}
+              onChange={(paid, invoicePayments) => setTx(prev => ({ ...prev, paid, invoicePayments }))}
+            />
+            <div className="flex justify-between text-sm font-bold text-gray-900 dark:text-white">
+              <span>Balance remaining</span>
+              <span>{formatCurrency(balanceRemaining, currency)}</span>
             </div>
           </div>
         )}

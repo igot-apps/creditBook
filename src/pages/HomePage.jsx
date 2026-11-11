@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Search, ArrowRight, Clock, TrendingUp, TrendingDown, AlertCircle, Pause, Trash2, ShoppingCart, Truck, Package } from "lucide-react";
 import useStore from "../store/useStore";
-import { formatCurrency } from "../utils/helpers";
+import { formatCurrency, formatDate } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
 import { TransactionService } from "../services/TransactionService";
 import { SuspendedTransactionService } from "../services/SuspendedTransactionService";
@@ -212,8 +212,14 @@ export const HomePage = () => {
                         {tx.type === 'sale' ? 'Sale' : 'Purchase'} • {tx.contactName || "Unknown"}
                       </p>
                       <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-                        {tx.items?.length || 0} items • {getTimeAgo(tx.createdAt || tx.created_at)}
+                        {tx.items?.length || 0} items • {tx.type === 'sale' ? formatDate(tx.createdAt) : getTimeAgo(tx.createdAt || tx.created_at)}
                       </p>
+                      {tx.type === 'sale' && (
+                        <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-gray-600 dark:text-gray-300">
+                          <span>Paid {formatCurrency(tx.paid, currency)}</span>
+                          <span className="font-semibold">Remaining {formatCurrency(Math.max(0, (Number(tx.amount) || 0) - (Number(tx.paid) || 0)), currency)}</span>
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
