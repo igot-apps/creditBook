@@ -44,8 +44,13 @@ export function PaymentCredit({ history, allocations, invoices, currency, isSupp
   async function save(event) {
     event.preventDefault();
     if (saving) return;
-    const value = Number(amount);
+    const decimalAmount = amount.trim().replace(",", ".");
+    const value = Number(decimalAmount);
     const received = date ? new Date(date) : new Date();
+    if (!/^(?:\d+(?:\.\d{0,2})?|\.\d{1,2})$/.test(decimalAmount)) {
+      setError("Enter an amount with up to two decimal places.");
+      return;
+    }
     if (!(value > 0 && value <= max + 0.00001) || (!isRefund && !selectedInvoice)) {
       setError("Enter an amount within the available credit and invoice balance.");
       return;
@@ -68,7 +73,9 @@ export function PaymentCredit({ history, allocations, invoices, currency, isSupp
       dialog.current.close();
       await onSaved().catch(() => setRefreshError("Credit was saved. Reopen the profile to refresh the balance."));
     } catch (failure) {
-      setError(failure.message || "Could not save credit.");
+      setError(failure.code === "PGRST202"
+        ? `${isRefund ? "Refund" : "Credit application"} was not saved. Ask your store admin to install the payment credit database update, then try again.`
+        : failure.message || "Could not save credit.");
     } finally {
       setSaving(false);
     }
@@ -125,9 +132,9 @@ export function PaymentCredit({ history, allocations, invoices, currency, isSupp
             </label>
           )}
           <label className="block text-sm">Amount
-            <input className={fieldClass} type="number" inputMode="decimal" min="0.01" max={max.toFixed(2)} step="0.01" required value={amount} onChange={event => setAmount(event.target.value)} />
+            <input className={fieldClass} type="text" inputMode="decimal" required value={amount} onChange={event => setAmount(event.target.value)} />
           </label>
-          {selectedInvoice && <p className="text-sm">Invoice balance after credit {formatCurrency(Math.max(0, selectedInvoice.trueOutstanding - money(amount)), currency)}</p>}
+          {selectedInvoice && <p className="text-sm">Invoice balance after credit {formatCurrency(Math.max(0, selectedInvoice.trueOutstanding - money(amount.replace(",", "."))), currency)}</p>}
           {isRefund && (
             <>
               <label className="block text-sm">Refund reference<input className={fieldClass} required value={reference} onChange={event => setReference(event.target.value)} /></label>
