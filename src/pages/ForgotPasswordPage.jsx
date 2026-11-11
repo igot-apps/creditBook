@@ -19,7 +19,7 @@ export const ForgotPasswordPage = () => {
     setIsLoading(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/?view=resetPassword`,
+        redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}?view=resetPassword`,
       });
       if (error) throw error;
       setIsSent(true);
