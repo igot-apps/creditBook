@@ -24,6 +24,22 @@ const toSnake = (obj) => {
 };
 
 export const TransactionService = {
+  correct: async (originalId, replacementId, changes, reason) => {
+    const { data, error } = await supabase.rpc('save_transaction_correction', {
+      p_original: originalId,
+      p_replacement: replacementId,
+      p_changes: changes,
+      p_reason: reason,
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  undoCorrection: async (replacementId) => {
+    const { error } = await supabase.rpc('undo_transaction_correction', { p_replacement: replacementId });
+    if (error) throw error;
+  },
+
   recordInvoicePayment: async ({ id, invoiceId, amount, method, reference, note, receivedAt }) => {
     const { error } = await supabase.rpc('record_invoice_payment', {
       p_id: id,

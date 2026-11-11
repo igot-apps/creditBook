@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Users, Check, RotateCcw, Pause, Loader2 } from "lucide-react";
+import { Search, Plus, Users, Check, Pause, Loader2 } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
@@ -38,10 +38,10 @@ export const RecordSalePage = () => {
   const [tx, setTx] = useState({ amount: "0", paid: "", discount: "", note: "" });
   const [isFixing, setIsFixing] = useState(false);
   const [fixingOldId, setFixingOldId] = useState(null);
+  const [replacementId, setReplacementId] = useState(null);
   const [originalAmount, setOriginalAmount] = useState(0);
+  const [originalPaid, setOriginalPaid] = useState(0);
   const [fixReason, setFixReason] = useState("");
-  const [undoData, setUndoData] = useState(null);
-  const [showUndoToast, setShowUndoToast] = useState(false);
   const [suspendedId, setSuspendedId] = useState(null);
   const [saleDate, setSaleDate] = useState(() => new Date().toISOString());
   const [isSaving, setIsSaving] = useState(false);
@@ -125,11 +125,12 @@ export const RecordSalePage = () => {
         note: fixTransaction.note || ""
       });
       setOriginalAmount(parseFloat(fixTransaction.amount) || 0);
+      setOriginalPaid(Number(fixTransaction.paid) || 0);
       setFixReason(fixTransaction.fixReason || "");
       setMode("existing");
       setIsFixing(true);
       setFixingOldId(fixTransaction.id);
-      TransactionService.update(fixTransaction.id, { status: 'being_corrected' });
+      setReplacementId(crypto.randomUUID());
       setFixTransaction(null);
     };
     if (contactId) {
@@ -141,16 +142,8 @@ export const RecordSalePage = () => {
     }
   }, [fixTransaction, setFixTransaction]);
 
-  const handleAbortFix = async () => {
-    if (fixingOldId) await TransactionService.update(fixingOldId, { status: 'active' });
-    setIsFixing(false);
-    setFixingOldId(null);
-    setFixReason("");
-    setMode("search");
-    setSelectedCustomer(null);
-    setInvoiceItems([]);
-    setTx({ amount: "0", paid: "", discount: "", note: "" });
-    clearAutoDraft('sale');
+  const handleAbortFix = () => {
+    if (!isSaving) setView("profile");
   };
 
   // Restore Auto-Draft
@@ -278,26 +271,7 @@ export const RecordSalePage = () => {
     }
   };
 
-  const handleUndoFix = async () => {
-    if (!undoData) return;
-    try {
-      await TransactionService.update(undoData.oldId, {
-        status: 'active',
-        cancelReason: null,
-        replacedByTransactionId: null
-      });
-      await CustomerService.updateBalance(undoData.customerId);
-      setShowUndoToast(false);
-      setUndoData(null);
-      showToast("✅ Correction undone.");
-      const c = customers.find(c => c.id === undoData.customerId);
-      if (c) { setStoreSelectedCustomer(c); setView("profile"); }
-      else { setView("customers"); }
-    } catch (error) {
-      console.error(error);
-      showToast("❌ Failed to undo.");
-    }
-  };
+
 
   // 👇 GUARDED: save sale
   const handleSaveInvoice = async () => {
@@ -319,21 +293,15 @@ export const RecordSalePage = () => {
         discount: parseFloat(tx.discount) || 0
       };
       if (isFixing && fixingOldId) {
-        extraData.correctsTransactionId = fixingOldId;
-        extraData.fixReason = fixReason;
-        const newId = await TransactionService.create(currentStore.id, selectedCustomer.id, 'sale', invoiceItems, finalAmount, finalPaid, tx.note, extraData);
-        await TransactionService.update(fixingOldId, {
-          replacedByTransactionId: newId,
-          status: 'cancelled',
-          cancelReason: `Replaced by Sale ${newId}`
-        });
-        await CustomerService.updateBalance(selectedCustomer.id);
-        setUndoData({ newId, oldId: fixingOldId, customerId: selectedCustomer.id });
-        setShowUndoToast(true);
-        setTimeout(() => { setShowUndoToast(false); setUndoData(null); }, 10000);
-        setIsFixing(false);
-        setFixingOldId(null);
-        setFixReason("");
+        await TransactionService.correct(fixingOldId, replacementId, {
+          amount: finalAmount,
+          paid: finalPaid,
+          discount: extraData.discount,
+          note: tx.note,
+          items: invoiceItems,
+          invoice_payments: extraData.invoicePayments || [],
+        }, fixReason);
+        showToast("Correction saved");
       } else {
         await TransactionService.create(currentStore.id, selectedCustomer.id, 'sale', invoiceItems, finalAmount, finalPaid, tx.note, extraData);
         await CustomerService.updateBalance(selectedCustomer.id);
@@ -349,7 +317,7 @@ export const RecordSalePage = () => {
       setView("profile");
     } catch (error) {
       console.error(error);
-      showToast("❌ Failed to record sale.");
+      showToast(error.code === "P0001" ? error.message : "Failed to record sale.");
     } finally {
       setIsSaving(false);
     }
@@ -357,6 +325,7 @@ export const RecordSalePage = () => {
 
   const currentTotal = parseFloat(tx.amount) || 0;
   const difference = currentTotal - originalAmount;
+  const balanceChange = difference - ((Number(tx.paid) || 0) - originalPaid);
 
   return (
     <div className="app-screen min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -364,17 +333,18 @@ export const RecordSalePage = () => {
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
         {isFixing && (
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 p-3 rounded-r-xl shadow-sm">
-            <p className="text-[10px] font-bold text-yellow-800 dark:text-yellow-400 uppercase tracking-wider mb-1">Editing Previous Sale</p>
+            <p className="text-[10px] font-bold text-yellow-800 dark:text-yellow-400 uppercase tracking-wider mb-1">Review correction</p>
             <div className="flex justify-between text-sm mb-1">
               <span className="text-gray-600 dark:text-gray-400">Original: {formatCurrency(originalAmount, currency)}</span>
               <span className="font-bold text-gray-900 dark:text-white">Current: {formatCurrency(currentTotal, currency)}</span>
             </div>
             <div className="pt-1 border-t border-yellow-200 dark:border-yellow-800/50 flex justify-between text-sm font-bold">
-              <span className="text-gray-700 dark:text-gray-300">Difference:</span>
-              <span className={difference >= 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}>
-                {difference >= 0 ? "+" : ""}{formatCurrency(difference, currency)}
+              <span className="text-gray-700 dark:text-gray-300">Change to account balance</span>
+              <span className={balanceChange >= 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}>
+                {balanceChange >= 0 ? "+" : ""}{formatCurrency(balanceChange, currency)}
               </span>
             </div>
+            <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">Reason: {fixReason}</p>
           </div>
         )}
 
@@ -489,17 +459,7 @@ export const RecordSalePage = () => {
         )}
       </div>
 
-      {showUndoToast && (
-        <div className="fixed bottom-24 left-4 right-4 max-w-lg mx-auto bg-gray-900 dark:bg-white text-white dark:text-gray-900 p-4 rounded-xl shadow-2xl flex items-center justify-between z-[200] animate-in slide-in-from-bottom-5">
-          <div>
-            <p className="font-bold text-sm">Sale corrected successfully!</p>
-            <p className="text-xs opacity-80">Tap undo to revert changes.</p>
-          </div>
-          <button onClick={handleUndoFix} className="flex items-center gap-1 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 rounded-lg font-bold text-sm active:scale-95 transition">
-            <RotateCcw size={14} /> Undo
-          </button>
-        </div>
-      )}
+
     </div>
   );
 };

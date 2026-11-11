@@ -267,6 +267,21 @@ export const SupplierProfilePage = () => {
           supplier={supplierData}
           currentStore={currentStore}
           onClose={() => setViewingTransaction(null)}
+          readOnly={readOnly}
+          onCorrectionUndone={async () => {
+            setViewingTransaction(null);
+            try {
+              const [rows, updatedAllocations] = await Promise.all([
+                TransactionService.getHistory(supplierData.id),
+                AllocationService.getByContact(supplierData.id),
+              ]);
+              setHistory(normalizeList(rows));
+              setAllocations(updatedAllocations);
+              showToast("Correction undone");
+            } catch {
+              showToast("Correction undone. Reopen this profile to refresh the balance.");
+            }
+          }}
           onFix={handleFixTransaction}
           onCancel={handleCancelTransaction}
           currency={currency}

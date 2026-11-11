@@ -7,7 +7,7 @@ export const FixReasonModal = ({ isOpen, onClose, onConfirm, fixReason, setFixRe
       <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full"><Edit3 size={20} className="text-blue-600 dark:text-blue-400" /></div>
-          <h3 className="font-bold text-xl text-gray-900 dark:text-white">Reason for Fix</h3>
+          <h3 className="font-bold text-xl text-gray-900 dark:text-white">Reason for correction</h3>
         </div>
         <textarea
           value={fixReason}
@@ -18,7 +18,7 @@ export const FixReasonModal = ({ isOpen, onClose, onConfirm, fixReason, setFixRe
         />
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl">Cancel</button>
-          <button onClick={onConfirm} className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-xl active:scale-95 transition">Continue</button>
+          <button onClick={onConfirm} disabled={!fixReason.trim()} className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-xl active:scale-95 transition disabled:opacity-50">Continue</button>
         </div>
       </div>
     </div>

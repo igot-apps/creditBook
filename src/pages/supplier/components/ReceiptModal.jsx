@@ -1,10 +1,11 @@
+import { CorrectionHistory } from "../../../components/CorrectionHistory";
 import { FileText, Ban, Smartphone, CreditCard, Banknote, Share2, Edit3, X, Link2 } from "lucide-react";
 import { formatCurrency, formatDate } from "../../../utils/helpers";
 import { openWhatsApp } from "../../../utils/communication";
 import { txDate, isActive, purchaseLabel } from "../utils/helpers";
 import { paymentCreditAvailable } from "../../../utils/paymentCredit";
 
-export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, onPayment, currency, history, allocations }) => {
+export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, onPayment, currency, history, allocations, readOnly, onCorrectionUndone }) => {
   if (!tx) return null;
   const items = Array.isArray(tx.items) ? tx.items : [];
   const totalPurchase = parseFloat(tx.amount) || 0;
@@ -218,6 +219,7 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
               </>
             )}
           </div>
+          <CorrectionHistory key={tx.id} transaction={tx} history={history} currency={currency} readOnly={readOnly} onUndone={onCorrectionUndone} />
           {creditAvailable > 0.009 && <p className="rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200">Credit available from this {documentLabel.toLowerCase()} · {formatCurrency(creditAvailable, currency)}</p>}
           {isRefund && <p className="text-sm">Original payment or invoice #{tx.credit_source_id.slice(-6).toUpperCase()}</p>}
           {tx.note && (
@@ -237,10 +239,10 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
               <Share2 size={18} /> Share {documentLabel} (WhatsApp)
             </button>
           )}
-          {isActive(tx) && !isRefund && !hasRefunds && (
+          {(isActive(tx) || tx.status === "being_corrected") && !isRefund && !hasRefunds && (
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => onFix(tx)} className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
-                <Edit3 size={18} /> Fix
+                <Edit3 size={18} /> Correct entry
               </button>
               <button onClick={() => onCancel(tx)} className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
                 <Ban size={18} /> Cancel

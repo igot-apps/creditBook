@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Search, Plus, Users, Check, Loader2, Banknote, Smartphone, CreditCard, Link2, Edit3, RotateCcw } from "lucide-react";
+import { Search, Plus, Users, Check, Loader2, Banknote, Smartphone, CreditCard, Link2, Edit3 } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
@@ -81,10 +81,9 @@ export const RecordPaymentPage = () => {
   // 👇 NEW: Fix/correction state
   const [isFixing, setIsFixing] = useState(false);
   const [fixingOldId, setFixingOldId] = useState(null);
+  const [replacementId, setReplacementId] = useState(null);
   const [originalAmount, setOriginalAmount] = useState(0);
   const [fixReason, setFixReason] = useState("");
-  const [undoData, setUndoData] = useState(null);
-  const [showUndoToast, setShowUndoToast] = useState(false);
 
   useEffect(() => {
     if (currentStore?.id) {
@@ -149,10 +148,7 @@ export const RecordPaymentPage = () => {
       setFixReason(fixTransaction.fixReason || "");
       setIsFixing(true);
       setFixingOldId(fixTransaction.id);
-      // Mark old payment as being corrected → its allocations stop counting while editing
-      TransactionService.update(fixTransaction.id, { status: 'being_corrected' })
-        .then(() => reloadHistory(customer.id))
-        .catch(() => {});
+      setReplacementId(crypto.randomUUID());
       setFixTransaction(null);
     };
     if (contactId) {
@@ -164,10 +160,8 @@ export const RecordPaymentPage = () => {
     }
   }, [fixTransaction, setFixTransaction]);
 
-  const handleAbortFix = async () => {
-    if (fixingOldId) {
-      await TransactionService.update(fixingOldId, { status: 'active' }).catch(() => {});
-    }
+  const handleAbortFix = () => {
+    if (isSaving) return;
     setIsFixing(false);
     setFixingOldId(null);
     setFixReason("");
@@ -336,36 +330,22 @@ export const RecordPaymentPage = () => {
         return;
       }
 
-      if (paymentReference && await checkMomoReference(paymentReference)) return;
-      let paymentId = null;
-
       if (isFixing && fixingOldId) {
-        // 1) Create the CORRECTED payment, linked to the old one
-        paymentId = await TransactionService.create(
-          currentStore.id, selectedCustomer.id, 'payment', [], 0, amt, note,
-          {
-            ...paymentDetails,
-            contactName: selectedCustomer.name,
-            contactPhone: selectedCustomer.phone,
-            correctsTransactionId: fixingOldId,
-          }
-        );
-      } else {
-        // Normal payment
-        paymentId = await TransactionService.recordPayment(currentStore.id, selectedCustomer.id, amt, note, {
-          ...paymentDetails,
-          contactName: selectedCustomer.name,
-          contactPhone: selectedCustomer.phone,
-        });
-        // Safety net: if no id came back, recover it so allocations are never skipped
-        if (!paymentId) {
-          const fresh = normalizeList(await TransactionService.getHistory(selectedCustomer.id));
-          const candidate = fresh
-            .filter(t => t.type === 'payment' && isActiveTx(t) && !(t.note || '').startsWith('[FORGIVEN]') && Math.abs((parseFloat(t.paid) || 0) - amt) <= 0.009)
-            .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0];
-          paymentId = candidate ? candidate.id : null;
-        }
+        await TransactionService.correct(fixingOldId, replacementId, {
+          paid: amt,
+          note,
+          payment_method: method,
+          reference: paymentDetails.reference,
+          received_at: paymentDetails.receivedAt,
+        }, fixReason);
+        showToast("Correction saved");
+        useStore.setState({ selectedCustomer });
+        setView("profile");
+        return;
       }
+
+      if (paymentReference && await checkMomoReference(paymentReference)) return;
+      const paymentId = await TransactionService.recordPayment(currentStore.id, selectedCustomer.id, amt, note, paymentDetails);
 
       // 2) Persist FIFO allocations (upsert — can never duplicate)
       if (paymentId && preview.rows.length > 0) {
@@ -379,23 +359,11 @@ export const RecordPaymentPage = () => {
         );
       }
 
-      // 3) For corrections: retire the OLD payment (its allocations auto-invalidate)
-      if (isFixing && fixingOldId) {
-        await TransactionService.update(fixingOldId, {
-          status: 'cancelled',
-          replacedByTransactionId: paymentId,
-          cancelReason: `Replaced by corrected payment${fixReason ? ` — ${fixReason}` : ""}`,
-        });
-        setUndoData({ newId: paymentId, oldId: fixingOldId, customerId: selectedCustomer.id });
-        setShowUndoToast(true);
-        setTimeout(() => { setShowUndoToast(false); setUndoData(null); }, 10000);
-      }
-
       // 4) Recalculate aggregate balance
       const fresh = normalizeList(await TransactionService.getHistory(selectedCustomer.id));
       await CustomerService.updateBalance(selectedCustomer.id, recomputeBalance(fresh));
 
-      showToast(isFixing ? "✅ Payment corrected!" : "✅ Payment recorded & applied to invoices!");
+      showToast("✅ Payment recorded & applied to invoices!");
       useStore.setState({ selectedCustomer: selectedCustomer });
       setView("profile");
     } catch (error) {
@@ -404,37 +372,14 @@ export const RecordPaymentPage = () => {
         const found = await checkMomoReference(paymentReference).catch(() => false);
         if (!found) showToast("This MoMo transaction ID is already recorded");
       } else {
-        showToast("❌ Failed to record payment.");
+        showToast(error.code === "P0001" ? error.message : "Failed to record payment.");
       }
     } finally {
       setIsSaving(false);
     }
   };
 
-  // 👇 NEW: Undo a correction — restore old, cancel the new one
-  const handleUndoFix = async () => {
-    if (!undoData) return;
-    try {
-      await TransactionService.update(undoData.newId, {
-        status: 'cancelled',
-        cancelReason: 'Correction undone',
-      });
-      await TransactionService.update(undoData.oldId, {
-        status: 'active',
-        cancelReason: null,
-        replacedByTransactionId: null,
-      });
-      const fresh = normalizeList(await TransactionService.getHistory(undoData.customerId));
-      await CustomerService.updateBalance(undoData.customerId, recomputeBalance(fresh));
-      setShowUndoToast(false);
-      setUndoData(null);
-      showToast("✅ Correction undone.");
-      setView("profile");
-    } catch (error) {
-      console.error(error);
-      showToast("❌ Failed to undo.");
-    }
-  };
+
 
   const currentTotal = parseFloat(amount) || 0;
   const invoiceBalance = invoiceId
@@ -443,6 +388,7 @@ export const RecordPaymentPage = () => {
   const appliedAmount = preview.rows.reduce((sum, row) => sum + row.amount, 0);
   const remainingAfterPayment = Math.max(0, invoiceBalance - appliedAmount);
   const difference = currentTotal - originalAmount;
+  const balanceChange = -difference;
 
   return (
     <div className="app-screen min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -451,17 +397,18 @@ export const RecordPaymentPage = () => {
         {/* 👇 NEW: correction banner */}
         {isFixing && (
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 p-3 rounded-r-xl shadow-sm">
-            <p className="text-[10px] font-bold text-yellow-800 dark:text-yellow-400 uppercase tracking-wider mb-1">Correcting Previous Payment</p>
+            <p className="text-[10px] font-bold text-yellow-800 dark:text-yellow-400 uppercase tracking-wider mb-1">Review correction</p>
             <div className="flex justify-between text-sm mb-1">
               <span className="text-gray-600 dark:text-gray-400">Original: {formatCurrency(originalAmount, currency)}</span>
               <span className="font-bold text-gray-900 dark:text-white">Current: {formatCurrency(currentTotal, currency)}</span>
             </div>
             <div className="pt-1 border-t border-yellow-200 dark:border-yellow-800/50 flex justify-between text-sm font-bold">
-              <span className="text-gray-700 dark:text-gray-300">Difference:</span>
-              <span className={difference >= 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}>
-                {difference >= 0 ? "+" : ""}{formatCurrency(difference, currency)}
+              <span className="text-gray-700 dark:text-gray-300">Change to account balance</span>
+              <span className={balanceChange >= 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}>
+                {balanceChange >= 0 ? "+" : ""}{formatCurrency(balanceChange, currency)}
               </span>
             </div>
+            <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">Reason: {fixReason}</p>
           </div>
         )}
 
@@ -608,6 +555,7 @@ export const RecordPaymentPage = () => {
 
             <aside className="min-w-0 space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:col-start-2 md:row-span-2 md:row-start-1 md:p-6" aria-labelledby="payment-summary-title">
               <h2 id="payment-summary-title" className="font-bold text-gray-900 dark:text-white">Payment summary</h2>
+              {isFixing ? <p className="text-sm text-gray-600 dark:text-gray-300">Existing invoice allocations are kept up to the corrected payment amount.</p> : (
               <dl className="space-y-3 text-sm">
                 <div className="flex justify-between gap-3">
                   <dt className="text-gray-600 dark:text-gray-300">Invoice balance</dt>
@@ -618,7 +566,8 @@ export const RecordPaymentPage = () => {
                   <dd className="font-bold tabular-nums">{formatCurrency(remainingAfterPayment, currency)}</dd>
                 </div>
               </dl>
-            {(parseFloat(amount) || 0) > 0 && (
+              )}
+            {!isFixing && (parseFloat(amount) || 0) > 0 && (
               <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl p-3 space-y-1.5">
                 <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase flex items-center gap-1">
                   <Link2 size={11} /> {invoiceId ? "Payment for selected invoice" : "Payment will be applied oldest first"}
@@ -656,18 +605,7 @@ export const RecordPaymentPage = () => {
         )}
       </div>
 
-      {/* 👇 NEW: Undo correction toast */}
-      {showUndoToast && (
-        <div className="fixed bottom-24 left-4 right-4 max-w-lg mx-auto bg-gray-900 dark:bg-white text-white dark:text-gray-900 p-4 rounded-xl shadow-2xl flex items-center justify-between z-[200] animate-in slide-in-from-bottom-5">
-          <div>
-            <p className="font-bold text-sm">Payment corrected successfully!</p>
-            <p className="text-xs opacity-80">Tap undo to revert changes.</p>
-          </div>
-          <button onClick={handleUndoFix} className="flex items-center gap-1 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 rounded-lg font-bold text-sm active:scale-95 transition">
-            <RotateCcw size={14} /> Undo
-          </button>
-        </div>
-      )}
+
     </div>
   );
 };
