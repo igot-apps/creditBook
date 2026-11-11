@@ -110,6 +110,28 @@ export const ProductService = {
     throw new Error('The product changed while saving. Please try again.');
   },
 
+  updateUnitPrice: async (storeId, productId, unitName, priceType, price) => {
+    const priceField = priceType === 'purchase' ? 'defaultPurchasePrice' : 'defaultSalePrice';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data: product, error: readError } = await supabase
+        .from('products').select('units').eq('store_id', storeId).eq('id', productId).single();
+      if (readError) throw readError;
+      const units = product.units || [];
+      const unitIndex = units.findIndex(unit => unit.name?.trim().toLowerCase() === unitName?.trim().toLowerCase());
+      if (unitIndex < 0) throw new Error('This product type is no longer available.');
+      if (Number(units[unitIndex][priceField]) === Number(price)) return units;
+
+      const updatedUnits = units.map((unit, index) => index === unitIndex ? { ...unit, [priceField]: Number(price) } : unit);
+      const update = supabase.from('products').update({ units: updatedUnits })
+        .eq('store_id', storeId).eq('id', productId);
+      const unchanged = product.units == null ? update.is('units', null) : update.eq('units', JSON.stringify(product.units));
+      const { data, error } = await unchanged.select('units').maybeSingle();
+      if (error) throw error;
+      if (data) return data.units;
+    }
+    throw new Error('The product changed while saving. Please try again.');
+  },
+
   delete: async (id) => {
     const { error } = await supabase
       .from('products')

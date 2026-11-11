@@ -31,6 +31,12 @@ export const TransactionService = {
       p_changes: changes,
       p_reason: reason,
     });
+    if (error?.code === '42P01' && error.message?.includes('contacts')) {
+      throw Object.assign(
+        new Error('The correction database update is missing. Run the latest migration, then try again.'),
+        { code: 'P0001' }
+      );
+    }
     if (error) throw error;
     return data;
   },

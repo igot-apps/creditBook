@@ -7,9 +7,11 @@ import useStore from "../store/useStore";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
-const visibleUnitsFor = (product, priceType) => (product.units || []).filter(unit =>
-  priceType === "purchase" ? unit.visibleInPurchases !== false : unit.visibleInSales !== false
-);
+const visibleUnitsFor = (product, priceType) => (product.units || []).filter(unit => {
+  const isVisible = priceType === "purchase" ? unit.visibleInPurchases !== false : unit.visibleInSales !== false;
+  const price = priceType === "purchase" ? unit.defaultPurchasePrice : unit.defaultSalePrice;
+  return isVisible && Number(price) > 0;
+});
 
 export const ProductPickerModal = ({
   isOpen,
@@ -26,6 +28,7 @@ export const ProductPickerModal = ({
   const [activeTab, setActiveTab] = useState("all");
   const [multiUnitProduct, setMultiUnitProduct] = useState(null);
   const [tempQuantities, setTempQuantities] = useState({});
+  const [tempTotals, setTempTotals] = useState({});
   const [addedProducts, setAddedProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [showAddType, setShowAddType] = useState(false);
@@ -160,13 +163,16 @@ export const ProductPickerModal = ({
     setTypeError("");
     const existing = addedProducts.filter(p => p.productId === product.id);
     const initialQtys = {};
+    const initialTotals = {};
     
     getVisibleUnits(product).forEach(u => {
       const found = existing.find(ep => ep.unitName === u.name);
       initialQtys[u.id] = found ? found.quantity : 0;
+      initialTotals[u.id] = found ? found.total : 0;
     });
     
     setTempQuantities(initialQtys);
+    setTempTotals(initialTotals);
   };
 
   const saveType = async (event) => {
@@ -181,6 +187,10 @@ export const ProductPickerModal = ({
       defaultPurchasePrice: Number(fields.get("purchasePrice")) || 0,
       defaultSalePrice: Number(fields.get("salePrice")) || 0,
     };
+    if (getPrice(unit) <= 0) {
+      setTypeError(`Enter a ${priceType} price greater than zero to use this type here.`);
+      return;
+    }
     savingType.current = true;
     setIsSavingType(true);
     setTypeError("");
@@ -189,6 +199,7 @@ export const ProductPickerModal = ({
       onUnitsUpdated(multiUnitProduct.id, units);
       setMultiUnitProduct(product => ({ ...product, units }));
       setTempQuantities(quantities => ({ ...quantities, [unit.id]: 1 }));
+      setTempTotals(totals => ({ ...totals, [unit.id]: getPrice(unit) }));
       setShowAddType(false);
     } catch (error) {
       setTypeError(error instanceof Error ? error.message : "Could not save the type. Try again.");
@@ -199,17 +210,30 @@ export const ProductPickerModal = ({
   };
 
   const updateModalQty = (unitId, delta) => {
-    setTempQuantities(prev => ({
-      ...prev,
-      [unitId]: Math.max(0, (prev[unitId] || 0) + delta)
-    }));
+    const unit = getVisibleUnits(multiUnitProduct).find(item => item.id === unitId);
+    const price = getPrice(unit);
+    const quantity = Math.max(0, (tempQuantities[unitId] || 0) + delta);
+    setTempQuantities(prev => ({ ...prev, [unitId]: quantity }));
+    setTempTotals(prev => ({ ...prev, [unitId]: quantity * price }));
   };
 
   const updateModalQtyInput = (unitId, value) => {
-    const qty = parseFloat(value);
+    const unit = getVisibleUnits(multiUnitProduct).find(item => item.id === unitId);
+    const price = getPrice(unit);
+    const parsedQuantity = parseFloat(String(value).replace(",", "."));
+    const quantity = Number.isFinite(parsedQuantity) ? Math.max(0, parsedQuantity) : 0;
+    setTempQuantities(prev => ({ ...prev, [unitId]: quantity }));
+    setTempTotals(prev => ({ ...prev, [unitId]: quantity * price }));
+  };
+
+  const updateModalTotal = (unit, value) => {
+    const price = getPrice(unit);
+    const parsedTotal = parseFloat(String(value).replace(",", "."));
+    const total = Number.isFinite(parsedTotal) ? Math.max(0, parsedTotal) : 0;
+    setTempTotals(prev => ({ ...prev, [unit.id]: total }));
     setTempQuantities(prev => ({
       ...prev,
-      [unitId]: isNaN(qty) ? 0 : Math.max(0, qty)
+      [unit.id]: price > 0 ? Number((total / price).toFixed(6)) : 0
     }));
   };
 
@@ -230,7 +254,7 @@ export const ProductPickerModal = ({
             unitName: unit.name,
             quantity: qty,
             price: price,
-            total: qty * price
+            total: Number.isFinite(Number(tempTotals[unit.id])) ? Number(tempTotals[unit.id]) : qty * price
           });
         }
       });
@@ -490,17 +514,20 @@ export const ProductPickerModal = ({
               )}
               {getUnitsForDisplay(multiUnitProduct).map(unit => {
                 const currentQty = tempQuantities[unit.id] || 0;
+                const price = getPrice(unit);
+                const currentTotal = tempTotals[unit.id] || 0;
                 return (
-                  <div key={unit.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
-                    <div>
-                      <p className="font-bold text-gray-900 dark:text-white text-sm">{unit.name}</p>
-                      <p className={`text-xs font-semibold ${priceType === "purchase" ? "text-indigo-600 dark:text-indigo-400" : "text-green-600 dark:text-green-400"}`}>
-                        {formatCurrency(getPrice(unit), currency)}
-                      </p>
-                    </div>
-                    <div className={`flex items-center gap-2 rounded-lg p-1 border ${
-                      priceType === "purchase" ? "bg-white dark:bg-gray-900 border-indigo-200 dark:border-indigo-800" : "bg-white dark:bg-gray-900 border-green-200 dark:border-green-800"
-                    }`}>
+                  <div key={unit.id} className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-words text-sm font-bold text-gray-900 dark:text-white">{unit.name}</p>
+                        <p className={`text-xs font-semibold ${priceType === "purchase" ? "text-indigo-600 dark:text-indigo-400" : "text-green-600 dark:text-green-400"}`}>
+                          {formatCurrency(price, currency)} per unit
+                        </p>
+                      </div>
+                      <div className={`flex shrink-0 items-center gap-2 rounded-lg border p-1 ${
+                        priceType === "purchase" ? "bg-white dark:bg-gray-900 border-indigo-200 dark:border-indigo-800" : "bg-white dark:bg-gray-900 border-green-200 dark:border-green-800"
+                      }`}>
                       <button 
                         onClick={() => updateModalQty(unit.id, -1)}
                         disabled={currentQty === 0}
@@ -509,8 +536,8 @@ export const ProductPickerModal = ({
                         <Minus size={16} />
                       </button>
                       <input 
-                        type="number" 
-                        step="0.1" 
+                        aria-label={`Quantity of ${unit.name}`}
+                        type="text"
                         inputMode="decimal"
                         value={currentQty || ""} 
                         onChange={(e) => updateModalQtyInput(unit.id, e.target.value)}
@@ -523,7 +550,26 @@ export const ProductPickerModal = ({
                       >
                         <Plus size={16} />
                       </button>
+                      </div>
                     </div>
+                    {price > 0 && (
+                      <label className="mt-3 block text-xs font-semibold text-gray-600 dark:text-gray-300">
+                        {priceType === "purchase" ? "Total purchase amount" : "Customer wants to pay"}
+                        <div className="relative mt-1">
+                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-500">{currency}</span>
+                          <input
+                            aria-label={`Total amount for ${unit.name}`}
+                            type="text"
+                            inputMode="decimal"
+                            value={currentTotal || ""}
+                            onChange={event => updateModalTotal(unit, event.target.value)}
+                            placeholder="0.00"
+                            className="min-h-11 w-full rounded-xl border border-green-200 bg-white py-2 pl-12 pr-3 text-right font-bold text-gray-900 outline-none focus:ring-2 focus:ring-green-500 dark:border-green-800 dark:bg-gray-900 dark:text-white"
+                          />
+                        </div>
+                        {currentTotal > 0 && <span className="mt-1 block text-right font-normal text-gray-500 dark:text-gray-400">Quantity {currentQty}</span>}
+                      </label>
+                    )}
                   </div>
                 );
               })}

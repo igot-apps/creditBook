@@ -5,6 +5,7 @@ import { formatCurrency, formatDate } from "../utils/helpers";
 import { ProductPickerModal } from "./ProductPickerModal";
 import { InvoicePayments } from "./InvoicePayments";
 import { AddProductModal } from "./AddProductModal";
+import { UpdateDefaultPriceButton } from "./UpdateDefaultPriceButton";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
@@ -25,7 +26,9 @@ export const DetailedInvoice = ({
     return invoiceItems.reduce((sum, item) => {
       const qty = parseFloat(item.quantity) || 0;
       const price = parseFloat(item.price) || 0;
-      return sum + (qty * price);
+      const storedTotal = Number(item.total);
+      const hasStoredTotal = item.total !== null && item.total !== undefined && item.total !== "";
+      return sum + (hasStoredTotal && Number.isFinite(storedTotal) ? storedTotal : qty * price);
     }, 0);
   }, [invoiceItems]);
 
@@ -68,12 +71,13 @@ export const DetailedInvoice = ({
         // Get quantity from picker, default to 1 if missing/invalid
         const incomingQty = parseFloat(newItem.quantity) > 0 ? parseFloat(newItem.quantity) : 1;
         const cleanPrice = parseFloat(newItem.price) || 0;
+        const incomingTotal = Number.isFinite(Number(newItem.total)) ? Number(newItem.total) : incomingQty * cleanPrice;
 
         if (itemMap.has(key)) {
           // Item exists - OVERWRITE the existing quantity with the new one from the picker
           const existing = itemMap.get(key);
           existing.quantity = incomingQty; 
-          existing.total = existing.quantity * existing.price;
+          existing.total = existing.price === cleanPrice ? incomingTotal : existing.quantity * existing.price;
         } else {
           // New item - add it cleanly
           itemMap.set(key, {
@@ -83,7 +87,7 @@ export const DetailedInvoice = ({
             unitName: newItem.unitName,
             quantity: incomingQty,
             price: cleanPrice,
-            total: incomingQty * cleanPrice
+            total: incomingTotal
           });
         }
       });
@@ -156,9 +160,15 @@ export const DetailedInvoice = ({
     setInvoiceItems(prev => {
       const updated = [...prev];
       const item = { ...updated[index] };
+      const numericValue = parseFloat(String(value).replace(",", "."));
       
-      if (field !== 'name' && field !== 'unitName') {
-        item[field] = value === "" ? "" : (parseFloat(value) || 0);
+      if (field === 'total') {
+        const total = value === "" ? "" : Math.max(0, numericValue || 0);
+        const price = parseFloat(item.price) || 0;
+        item.total = total;
+        item.quantity = total === "" ? "" : Number((total / price).toFixed(6));
+      } else if (field !== 'name' && field !== 'unitName') {
+        item[field] = value === "" ? "" : Math.max(0, numericValue || 0);
       } else {
         item[field] = value;
       }
@@ -206,18 +216,28 @@ export const DetailedInvoice = ({
               <div className="flex items-center gap-1.5">
                 <div className="relative flex-1">
                   <label className="absolute left-2 top-0.5 text-[9px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Qty</label>
-                  <input type="number" inputMode="decimal" value={item.quantity === "" ? "" : Number(item.quantity)} onChange={e => updateItem(index, 'quantity', e.target.value)} className={`w-full px-2 pt-3.5 pb-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm font-bold text-center outline-none focus:ring-1 focus:ring-blue-500 ${noSpinnerClass}`} />
+                  <input type="text" inputMode="decimal" value={item.quantity === "" ? "" : Number(item.quantity)} onChange={e => updateItem(index, 'quantity', e.target.value)} className={`w-full px-2 pt-3.5 pb-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm font-bold text-center outline-none focus:ring-1 focus:ring-blue-500 ${noSpinnerClass}`} />
                 </div>
                 <span className="text-gray-400 dark:text-gray-500 text-xs font-bold">×</span>
                 <div className="relative flex-[1.5]">
                   <label className="absolute left-2 top-0.5 text-[9px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider">Price</label>
-                  <input type="number" inputMode="decimal" value={item.price === "" ? "" : Number(item.price)} onChange={e => updateItem(index, 'price', e.target.value)} className={`w-full px-2 pt-3.5 pb-1.5 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-sm font-bold text-right outline-none focus:ring-1 focus:ring-purple-500 ${noSpinnerClass}`} />
+                  <input type="text" inputMode="decimal" value={item.price === "" ? "" : Number(item.price)} onChange={e => updateItem(index, 'price', e.target.value)} className={`w-full px-2 pt-3.5 pb-1.5 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-sm font-bold text-right outline-none focus:ring-1 focus:ring-purple-500 ${noSpinnerClass}`} />
                 </div>
                 <span className="text-gray-400 dark:text-gray-500 text-xs font-bold">=</span>
-                <div className="flex-1 text-right min-w-[60px]">
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0), currency)}</p>
+                <div className="relative min-w-[82px] flex-[1.15]">
+                  <label className="absolute left-2 top-0.5 text-[9px] font-bold uppercase tracking-wider text-green-700 dark:text-green-400">Total</label>
+                  <input
+                    aria-label={`Total for ${item.name}`}
+                    type="text"
+                    inputMode="decimal"
+                    disabled={(parseFloat(item.price) || 0) <= 0}
+                    value={item.total === "" ? "" : item.total != null && Number.isFinite(Number(item.total)) ? Number(item.total) : (parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)}
+                    onChange={event => updateItem(index, 'total', event.target.value)}
+                    className="w-full rounded-lg border border-green-200 bg-green-50 px-2 pb-1.5 pt-3.5 text-right text-sm font-bold text-gray-900 outline-none focus:ring-1 focus:ring-green-500 disabled:opacity-50 dark:border-green-800 dark:bg-green-900/20 dark:text-white"
+                  />
                 </div>
               </div>
+              <UpdateDefaultPriceButton item={item} products={products} setProducts={setProducts} storeId={currentStore.id} priceType="sale" currency={currency} showToast={showToast} />
             </div>
           ))
         )}

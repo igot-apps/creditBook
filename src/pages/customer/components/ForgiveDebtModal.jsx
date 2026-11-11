@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { HeartHandshake, Loader2 } from "lucide-react";
 import { formatCurrency } from "../../../utils/helpers";
+import { ReasonPicker } from "../../../components/ReasonPicker";
+
+const reasons = ["Customer unable to pay", "Goodwill adjustment", "Disputed balance resolved", "Small balance cleared"];
 
 export const ForgiveDebtModal = ({ isOpen, onClose, onConfirm, balance, currency, customerName }) => {
   const [amount, setAmount] = useState("");
@@ -23,7 +26,7 @@ export const ForgiveDebtModal = ({ isOpen, onClose, onConfirm, balance, currency
 
   return (
     <div className="fixed inset-0 bg-black/70 z-[110] flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-2xl p-6">
+      <div className="max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-gray-900 sm:p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-full"><HeartHandshake size={20} className="text-purple-600 dark:text-purple-400" /></div>
           <div>
@@ -42,8 +45,8 @@ export const ForgiveDebtModal = ({ isOpen, onClose, onConfirm, balance, currency
             {amt > balance && <p className="mt-1 text-[10px] font-semibold text-red-600 dark:text-red-400">Cannot forgive more than the outstanding balance.</p>}
           </div>
           <div>
-            <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Reason (required)</label>
-            <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g., Customer is unable to pay due to hardship..." className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 text-sm" rows="3" />
+            <label className="mb-2 block text-[10px] font-bold uppercase text-gray-500 dark:text-gray-400">Reason (required)</label>
+            <ReasonPicker value={reason} onChange={setReason} options={reasons} accent="purple" placeholder="Describe why this debt is being forgiven..." />
           </div>
           <p className="text-[10px] text-gray-400 dark:text-gray-500">This permanently reduces the customer's debt and is recorded in history with your reason. You can cancel it later if done by mistake.</p>
           <div className="flex gap-3">

@@ -11,6 +11,7 @@ import { SuspendedTransactionService } from "../services/SuspendedTransactionSer
 import { ProductPickerModal } from "../components/ProductPickerModal";
 import { AddProductModal } from "../components/AddProductModal";
 import { TopBar } from "../components/TopBar";
+import { UpdateDefaultPriceButton } from "../components/UpdateDefaultPriceButton";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
@@ -515,12 +516,13 @@ export const RecordPurchasePage = () => {
                           <button onClick={() => removeItem(index)} className="p-1.5 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-lg"><X size={14} /></button>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <div className="relative flex-1"><label className="absolute left-2 top-0.5 text-[9px] font-bold text-blue-600 uppercase">Qty</label><input type="number" inputMode="decimal" value={item.quantity === "" ? "" : Number(item.quantity)} onChange={e => updateItem(index, 'quantity', e.target.value)} className={`w-full px-2 pt-3.5 pb-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm font-bold text-center outline-none ${noSpinnerClass}`} /></div>
+                          <div className="relative flex-1"><label className="absolute left-2 top-0.5 text-[9px] font-bold text-blue-600 uppercase">Qty</label><input type="text" inputMode="decimal" value={item.quantity === "" ? "" : Number(item.quantity)} onChange={e => updateItem(index, 'quantity', e.target.value)} className={`w-full px-2 pt-3.5 pb-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm font-bold text-center outline-none ${noSpinnerClass}`} /></div>
                           <span className="text-gray-400 text-xs font-bold">×</span>
-                          <div className="relative flex-[1.5]"><label className="absolute left-2 top-0.5 text-[9px] font-bold text-purple-600 uppercase">Price</label><input type="number" inputMode="decimal" value={item.price === "" ? "" : Number(item.price)} onChange={e => updateItem(index, 'price', e.target.value)} className={`w-full px-2 pt-3.5 pb-1.5 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-sm font-bold text-right outline-none ${noSpinnerClass}`} /></div>
+                          <div className="relative flex-[1.5]"><label className="absolute left-2 top-0.5 text-[9px] font-bold text-purple-600 uppercase">Price</label><input type="text" inputMode="decimal" value={item.price === "" ? "" : Number(item.price)} onChange={e => updateItem(index, 'price', e.target.value)} className={`w-full px-2 pt-3.5 pb-1.5 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-sm font-bold text-right outline-none ${noSpinnerClass}`} /></div>
                           <span className="text-gray-400 text-xs font-bold">=</span>
                           <div className="flex-1 text-right min-w-[60px]"><p className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0), currency)}</p></div>
                         </div>
+                        <UpdateDefaultPriceButton item={item} products={products} setProducts={setProducts} storeId={currentStore.id} priceType="purchase" currency={currency} showToast={showToast} />
                       </div>
                     ))
                   )}
