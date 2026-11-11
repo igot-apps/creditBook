@@ -22,7 +22,7 @@ const colorStyles = {
   }
 };
 
-const QuickAction = ({ icon: Icon, label, subtext, color, onClick }) => {
+const QuickAction = ({ icon: Icon, label, color, onClick }) => {
   const styles = colorStyles[color] || colorStyles.green;
   return (
     <button
@@ -34,7 +34,6 @@ const QuickAction = ({ icon: Icon, label, subtext, color, onClick }) => {
       </div>
       <div>
         <p className="font-bold text-gray-900 dark:text-white text-sm">{label}</p>
-        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{subtext}</p>
       </div>
     </button>
   );
@@ -65,12 +64,15 @@ const MenuButton = ({ icon: Icon, title, subtitle, iconBg, onClick, badge }) => 
 const NavItem = ({ icon: Icon, label, active, onClick }) => (
   <button
     onClick={onClick}
-    className={`flex flex-col items-center justify-center w-16 h-full transition-all active:scale-90 ${
-      active ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 dark:text-gray-500"
+    aria-current={active ? "page" : undefined}
+    className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl py-1 transition active:scale-95 ${
+      active ? "text-indigo-700 dark:text-indigo-300" : "text-gray-600 dark:text-gray-400"
     }`}
   >
-    <Icon size={22} strokeWidth={active ? 2.5 : 2} className="mb-1" />
-    <span className={`text-[10px] ${active ? "font-bold" : "font-medium"}`}>{label}</span>
+    <span className={`grid h-7 w-10 place-items-center rounded-lg ${active ? "bg-indigo-100 dark:bg-indigo-900/60" : ""}`}>
+      <Icon size={20} strokeWidth={active ? 2.4 : 1.9} />
+    </span>
+    <span className={`text-[11px] leading-tight ${active ? "font-bold" : "font-medium"}`}>{label}</span>
   </button>
 );
 
@@ -100,15 +102,15 @@ export const BottomNav = () => {
     <>
       {/* BOTTOM NAVIGATION BAR */}
       <nav aria-label="Main navigation" className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 z-40 pb-[env(safe-area-inset-bottom)] lg:left-72">
-        <div className="flex justify-around items-center h-16 max-w-lg mx-auto px-2">
+        <div className="mx-auto grid h-16 max-w-lg grid-cols-5 items-stretch gap-0.5 px-1.5">
           <NavItem icon={Home} label="Home" active={view === 'home'} onClick={() => navigate('home')} />
           <NavItem icon={Users} label="Customers" active={view === 'customers' || view === 'profile'} onClick={() => navigate('customers')} />
 
           {/* 👇 CENTER "+" FLOATING BUTTON (Quick Transactions) */}
-          <div className="-mt-7">
+          <div className="grid place-items-center">
             <button
               onClick={() => { setShowMoreMenu(false); setShowQuickAdd(true); }}
-              className="w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-lg active:scale-90 transition border-4 border-gray-50 dark:border-gray-950"
+              className="grid size-11 place-items-center rounded-2xl bg-indigo-600 text-white shadow-sm transition hover:bg-indigo-700 active:scale-95"
               aria-label="Quick actions"
             >
               <Plus size={26} strokeWidth={2.5} />
@@ -131,12 +133,13 @@ export const BottomNav = () => {
       {showQuickAdd && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 backdrop-blur-sm lg:pl-72" onClick={() => setShowQuickAdd(false)}>
           <div
-            className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-t-3xl shadow-2xl animate-in slide-in-from-bottom-10"
+            role="dialog" aria-modal="true" aria-labelledby="quick-actions-heading"
+            className="app-sheet app-safe-footer w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white shadow-2xl dark:bg-gray-900"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center p-5 border-b border-gray-100 dark:border-gray-800">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">What do you want to do?</h3>
-              <button onClick={() => setShowQuickAdd(false)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
+              <h3 id="quick-actions-heading" className="text-lg font-bold text-gray-900 dark:text-white">Quick actions</h3>
+              <button aria-label="Close quick actions" onClick={() => setShowQuickAdd(false)} className="grid size-11 place-items-center rounded-full bg-gray-100 dark:bg-gray-800">
                 <X size={20} className="text-gray-600 dark:text-gray-300" />
               </button>
             </div>
@@ -145,34 +148,29 @@ export const BottomNav = () => {
               <QuickAction
                 icon={ShoppingCart}
                 label="Sell to Customer"
-                subtext="Record a new sale"
                 color="green"
                 onClick={() => handleQuickAction('record')}
               />
               <QuickAction
                 icon={Truck}
                 label="Buy from Supplier"
-                subtext="Record a purchase"
                 color="indigo"
                 onClick={() => handleQuickAction('recordSupplierPurchase')}
               />
               <QuickAction
                 icon={Banknote}
                 label="Receive Payment"
-                subtext="Customer pays you"
                 color="blue"
                 onClick={() => handleQuickAction('recordPayment')}
               />
               <QuickAction
                 icon={DollarSign}
                 label="Pay Supplier"
-                subtext="You pay supplier"
                 color="orange"
                 onClick={() => handleQuickAction('recordSupplierPayment')}
               />
             </div>
 
-            <div className="h-4"></div>
           </div>
         </div>
       )}
@@ -181,12 +179,13 @@ export const BottomNav = () => {
       {showMoreMenu && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 backdrop-blur-sm lg:pl-72" onClick={() => setShowMoreMenu(false)}>
           <div
-            className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-t-3xl shadow-2xl animate-in slide-in-from-bottom-10"
+            role="dialog" aria-modal="true" aria-labelledby="more-menu-heading"
+            className="app-sheet app-safe-footer w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white shadow-2xl dark:bg-gray-900"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center p-5 border-b border-gray-100 dark:border-gray-800">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Menu</h3>
-              <button onClick={() => setShowMoreMenu(false)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
+              <h3 id="more-menu-heading" className="text-lg font-bold text-gray-900 dark:text-white">Menu</h3>
+              <button aria-label="Close menu" onClick={() => setShowMoreMenu(false)} className="grid size-11 place-items-center rounded-full bg-gray-100 dark:bg-gray-800">
                 <X size={20} className="text-gray-600 dark:text-gray-300" />
               </button>
             </div>

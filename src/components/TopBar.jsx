@@ -23,7 +23,7 @@ export const TopBar = ({ title, showBack = false, onBack }) => {
           {showBack && (
             <button
               onClick={handleBack}
-              className="p-2 -ml-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition active:scale-95"
+              className="-ml-2 grid size-11 shrink-0 place-items-center rounded-full text-gray-700 transition hover:bg-gray-100 active:scale-95 dark:text-gray-200 dark:hover:bg-gray-800"
               aria-label="Go back"
             >
               <ArrowLeft size={22} />
@@ -40,7 +40,7 @@ export const TopBar = ({ title, showBack = false, onBack }) => {
         <div className="w-10 flex items-center justify-end">
           <button
             onClick={() => setIsMenuOpen(true)}
-            className="p-2 -mr-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition active:scale-95 lg:hidden"
+            className="-mr-2 grid size-11 shrink-0 place-items-center rounded-full text-gray-700 transition hover:bg-gray-100 active:scale-95 dark:text-gray-200 dark:hover:bg-gray-800 lg:hidden"
             aria-label="Open menu"
           >
             <Menu size={22} />

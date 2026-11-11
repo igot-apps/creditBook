@@ -12,7 +12,7 @@ export const InvoiceModal = ({ onClose, transaction, customerName, customerPhone
     <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-4 backdrop-blur-sm print:bg-white print:p-0 print:block">
       <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden max-h-[90vh] flex flex-col print:rounded-none print:shadow-none print:max-h-none print:w-full print:overflow-visible">
         <div className="flex justify-between items-center p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 print:hidden">
-          <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2"><FileText size={18} className="text-green-600" /> Receipt Details</h3>
+          <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2"><FileText size={18} className="text-green-600" /> Invoice Details</h3>
           <button onClick={onClose} className="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full hover:bg-red-200 dark:hover:bg-red-900/50 transition"><X size={20} /></button>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -28,7 +28,7 @@ export const InvoiceModal = ({ onClose, transaction, customerName, customerPhone
           <div className="p-6 space-y-4">
             <div className="flex justify-between items-start">
               <div>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Receipt No.</p>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Invoice No.</p>
                 <p className="text-lg font-mono font-bold text-gray-900 dark:text-white">{transaction.invoiceNumber || `#${transaction.id}`}</p>
               </div>
               <div className="text-right">

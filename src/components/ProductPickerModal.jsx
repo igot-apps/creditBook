@@ -260,21 +260,21 @@ export const ProductPickerModal = ({
   const totalItemsCount = addedProducts.reduce((sum, p) => sum + p.quantity, 0);
 
   return (
-    <div className="fixed inset-0 z-[100] bg-white dark:bg-gray-950 flex flex-col overflow-hidden">
-      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
-        <div className="flex items-center justify-between p-4">
-          <button onClick={onClose} className="p-2 -ml-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition active:scale-95">
+    <div role="dialog" aria-modal="true" aria-labelledby="product-picker-heading" className="fixed inset-0 z-[100] flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-950">
+      <div className="shrink-0 border-b border-gray-200 bg-white pt-[env(safe-area-inset-top)] dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex items-center justify-between gap-2 px-4 py-2.5">
+          <button onClick={onClose} aria-label="Close product picker" className="grid size-11 shrink-0 place-items-center rounded-full bg-gray-100 transition hover:bg-gray-200 active:scale-95 dark:bg-gray-800 dark:hover:bg-gray-700">
             <ArrowLeft size={20} className="text-gray-700 dark:text-gray-300" />
           </button>
-          <h1 className="font-bold text-xl text-gray-900 dark:text-white">
+          <h2 id="product-picker-heading" className="text-center text-base font-bold text-gray-900 dark:text-white sm:text-xl">
             {priceType === "purchase" ? "Add Purchase Items" : "Add Products"}
-          </h1>
+          </h2>
           {totalItemsCount > 0 ? (
             <div className={`px-3 py-1.5 rounded-full text-sm font-bold ${priceType === "purchase" ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400" : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"}`}>
               {totalItemsCount} items
             </div>
           ) : (
-            <div className="w-10"></div>
+            <div className="w-11 shrink-0" />
           )}
         </div>
         
@@ -282,6 +282,7 @@ export const ProductPickerModal = ({
           <div className="relative">
             <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${priceType === "purchase" ? "text-indigo-400" : "text-green-400"}`} size={20} />
             <input
+              type="search" aria-label="Search products, brands or types" enterKeyHint="search"
               value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search products, brands or types..."
               className={`w-full pl-12 pr-10 py-3.5 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-2 ${
@@ -289,14 +290,14 @@ export const ProductPickerModal = ({
               } dark:text-white text-base`}
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-gray-200 dark:bg-gray-700 rounded-full">
+              <button aria-label="Clear product search" onClick={() => setSearchQuery("")} className="absolute right-0.5 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700">
                 <X size={14} className="text-gray-600 dark:text-gray-300" />
               </button>
             )}
           </div>
         </div>
         
-        <div className="px-4 pb-2 overflow-x-auto">
+        <div className="scrollbar-hide overflow-x-auto px-4 pb-2 [&_button]:min-h-10">
           <div className="flex gap-2 min-w-max">
             <button onClick={() => setActiveTab("all")} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${activeTab === "all" ? (priceType === "purchase" ? "bg-indigo-600 text-white" : "bg-green-600 text-white") : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"}`}>All</button>
             <button onClick={() => setActiveTab("favorites")} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition flex items-center gap-1 ${activeTab === "favorites" ? "bg-yellow-500 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"}`}><Star size={14} /> Favorites</button>
@@ -305,7 +306,7 @@ export const ProductPickerModal = ({
           </div>
         </div>
         
-        <div className="px-4 pb-3 overflow-x-auto">
+        <div className="scrollbar-hide overflow-x-auto px-4 pb-3 [&_button]:min-h-9">
           <div className="flex gap-2 min-w-max">
             <button onClick={() => setSelectedCategory("All")} className={`px-3 py-1 rounded-full text-xs font-semibold transition ${selectedCategory === "All" ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"}`}>All</button>
             {categories.map(cat => (
@@ -317,7 +318,7 @@ export const ProductPickerModal = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="app-scroll-region min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
         {filteredProducts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
             <div className="text-6xl mb-4 opacity-50">📦</div>
@@ -333,7 +334,7 @@ export const ProductPickerModal = ({
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="mx-auto grid max-w-6xl grid-cols-[repeat(auto-fill,minmax(min(100%,10.5rem),1fr))] gap-3">
             {filteredProducts.map(product => {
               const emoji = ProductService.getCategoryEmoji(product.category);
               const totalQty = addedProducts.filter(p => p.productId === product.id).reduce((sum, item) => sum + item.quantity, 0);
@@ -344,9 +345,9 @@ export const ProductPickerModal = ({
                 <div key={product.id} className={`bg-white dark:bg-gray-800 rounded-2xl border-2 p-3 transition-all ${
                   totalQty > 0 ? (priceType === "purchase" ? "border-indigo-500 dark:border-indigo-400 shadow-md" : "border-green-500 dark:border-green-400 shadow-md") : "border-gray-200 dark:border-gray-700"
                 }`}>
-                  <div className="text-center mb-2">
-                    <div className="text-5xl mb-1">{emoji}</div>
-                    <p className="font-bold text-gray-900 dark:text-white text-sm truncate">{product.name}</p>
+                  <div className="mb-2">
+                    <span aria-hidden="true" className="mb-1 inline-grid size-8 place-items-center rounded-lg bg-gray-100 text-lg dark:bg-gray-700">{emoji}</span>
+                    <p className="break-words text-sm font-bold text-gray-900 dark:text-white">{product.name}</p>
                     {product.category && <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{product.category}</p>}
                     {product.brand && <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate italic">{product.brand}</p>}
                   </div>
@@ -368,7 +369,7 @@ export const ProductPickerModal = ({
                                 aria-label={`Add one ${unit.name} of ${product.name}`}
                                 title={`Add one ${unit.name}`}
                                 onClick={() => changeUnitQuantity(product, unit, 1)}
-                                className={`flex h-9 w-9 items-center justify-center rounded-lg transition active:scale-95 ${priceType === "purchase" ? "bg-indigo-100 text-indigo-800 hover:bg-indigo-200 dark:bg-indigo-900 dark:text-indigo-200" : "bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900 dark:text-green-200"}`}
+                                className={`grid size-11 place-items-center rounded-lg transition active:scale-95 ${priceType === "purchase" ? "bg-indigo-100 text-indigo-800 hover:bg-indigo-200 dark:bg-indigo-900 dark:text-indigo-200" : "bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900 dark:text-green-200"}`}
                               >
                                 <Plus size={17} />
                               </button>
@@ -439,7 +440,7 @@ export const ProductPickerModal = ({
       </div>
 
       {totalItemsCount > 0 && (
-        <div className="bg-white dark:bg-gray-900 border-t-2 border-gray-200 dark:border-gray-800 p-4 flex-shrink-0 shadow-2xl">
+        <div className="app-safe-footer shrink-0 border-t border-gray-200 bg-white px-4 pt-3 shadow-lg dark:border-gray-800 dark:bg-gray-900">
           <button onClick={handleDone} className={`w-full font-bold py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg text-lg ${
             priceType === "purchase" ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"
           }`}>
@@ -450,10 +451,10 @@ export const ProductPickerModal = ({
 
       {multiUnitProduct && (
         <div className="fixed inset-0 bg-black/60 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[85vh] flex flex-col">
+          <div role="dialog" aria-modal="true" aria-labelledby="product-types-heading" className="app-sheet flex w-full flex-col rounded-t-2xl bg-white shadow-2xl dark:bg-gray-900 sm:max-w-md sm:rounded-2xl">
             <div className="sticky top-0 bg-white dark:bg-gray-900 p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center z-10">
               <div>
-                <h3 className="font-bold text-lg text-gray-900 dark:text-white">{multiUnitProduct.name}</h3>
+                <h3 id="product-types-heading" className="font-bold text-lg text-gray-900 dark:text-white">{multiUnitProduct.name}</h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Select quantities for each unit</p>
               </div>
               <button onClick={() => setMultiUnitProduct(null)} disabled={isSavingType} aria-label="Close product types" className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full disabled:opacity-50">
@@ -461,7 +462,7 @@ export const ProductPickerModal = ({
               </button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div className="app-scroll-region min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
               {canAddType && !showAddType && (
                 <button type="button" onClick={() => { setShowAddType(true); setTypeError(""); }} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 p-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800">
                   <Plus size={16} /> Add type
@@ -528,7 +529,7 @@ export const ProductPickerModal = ({
               })}
             </div>
             
-            <div className="sticky bottom-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 p-4">
+            <div className="app-safe-footer shrink-0 border-t border-gray-200 bg-white px-4 pt-3 dark:border-gray-800 dark:bg-gray-900">
               <button 
                 onClick={confirmMultiUnitQuantities}
                 disabled={isSavingType}

@@ -359,7 +359,7 @@ export const RecordSalePage = () => {
   const difference = currentTotal - originalAmount;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
+    <div className="app-screen min-h-screen bg-gray-50 dark:bg-gray-950">
       <TopBar title={isFixing ? "Fix Sale" : "Record Sale"} showBack={true} onBack={isFixing ? handleAbortFix : () => setView("customers")} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
         {isFixing && (

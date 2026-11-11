@@ -56,7 +56,7 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
                       </button>
                     )}
                     {tx.replacedByTransactionId && (
-                      <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1 ml-auto">Updated Receipt <ArrowRight size={10} /></p>
+                      <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1 ml-auto">Updated {tx.type === "purchase" ? "Invoice" : "Receipt"} <ArrowRight size={10} /></p>
                     )}
                   </div>
                 </div>

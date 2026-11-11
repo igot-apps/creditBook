@@ -445,7 +445,7 @@ export const RecordPaymentPage = () => {
   const difference = currentTotal - originalAmount;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
+    <div className="app-screen min-h-screen bg-gray-50 dark:bg-gray-950">
       <TopBar title={isFixing ? "Fix Payment" : "Record Payment"} showBack={true} onBack={isFixing ? handleAbortFix : () => setView("profile")} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="mx-auto max-w-lg space-y-4 px-4 md:max-w-5xl md:space-y-5 md:px-8">
         {/* 👇 NEW: correction banner */}

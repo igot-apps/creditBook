@@ -8,21 +8,50 @@ html, body {
   padding: 0;
   background-color: #f9fafb;
   -webkit-tap-highlight-color: transparent;
-  overscroll-behavior-y: none; /* kills pull-to-refresh WITHOUT locking scroll */
 }
 
-/* Let the document scroll naturally */
+html {
+  --app-bottom-bar: calc(4rem + env(safe-area-inset-bottom, 0px));
+  scroll-padding-top: calc(4rem + env(safe-area-inset-top, 0px));
+  scroll-padding-bottom: calc(var(--app-bottom-bar) + 1rem);
+}
+
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
-/* Android 1-finger scroll unlock for tappable elements */
 button, a, [role="button"], .cursor-pointer {
   touch-action: manipulation;
 }
 
-input, select, textarea {
-  font-size: 16px !important;
+@media (max-width: 767px) {
+  input, select, textarea {
+    font-size: max(1rem, 16px) !important;
+  }
+}
+
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+
+.app-screen {
+  padding-bottom: calc(var(--app-bottom-bar) + 2rem);
+}
+
+.app-sheet {
+  max-height: 90vh;
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 1rem);
+  overscroll-behavior: contain;
+}
+
+.app-safe-footer {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+
+.app-scroll-region {
+  overscroll-behavior: contain;
 }
 
 .scrollbar-hide::-webkit-scrollbar { display: none; }

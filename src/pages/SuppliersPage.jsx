@@ -138,27 +138,31 @@ export const SuppliersPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
+    <div className="app-screen min-h-screen bg-gray-50 dark:bg-gray-950">
       <TopBar title="Suppliers" />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto">
 
         {/* Search & Add Button */}
         <div className="flex gap-2 mb-4">
-          <div className="relative flex-1">
+          <div className="relative min-w-0 flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search name or phone..."
+              type="search"
+              aria-label="Search suppliers by name or phone"
+              enterKeyHint="search"
+              placeholder="Search name or phone"
               className="w-full pl-9 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm"
             />
           </div>
           {/* 👇 Add button is guarded in view-only mode */}
           <button
+            aria-label="Add supplier"
             onClick={() => { if (!blockIfReadOnly()) setIsModalOpen(true); }}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-xl flex items-center gap-1.5 font-bold text-sm active:scale-95 transition shadow-md"
           >
-            <Plus size={18} /> <span className="hidden sm:inline">Add</span>
+            <Plus size={18} /> <span>Add</span>
           </button>
         </div>
 

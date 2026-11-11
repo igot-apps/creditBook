@@ -12,6 +12,7 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
   const paid = parseFloat(tx.paid) || 0;
   const receiptNo = (tx.id || "000000").slice(-6).toUpperCase();
   const isPayment = tx.type === 'payment';
+  const documentLabel = isPayment ? "Receipt" : "Invoice";
   const isRefund = Boolean(tx.credit_source_id);
   const creditAvailable = paymentCreditAvailable(tx, history || [], allocations || []);
   const hasRefunds = (history || []).some(row => row.credit_source_id === tx.id && isActive(row));
@@ -65,12 +66,12 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
     if (currentStore?.owner_name || currentStore?.ownerName) L.push(currentStore?.owner_name || currentStore?.ownerName);
     if (currentStore?.phone) L.push(`Tel: ${currentStore.phone}`);
     L.push("──────────────────────");
-    L.push(`Receipt #: ${receiptNo}`);
+    L.push(`${documentLabel} #: ${receiptNo}`);
     L.push(`${isPayment && !forgiven ? "Date received" : "Date"}: ${formatDate(receivedDate)}`);
     if (paymentReference) L.push(`${referenceLabel}: ${paymentReference}`);
     L.push(`Customer: ${customer?.name || "Walk-in"}`);
     if (tx.correctsTransactionId) L.push(`🔁 CORRECTS: ${correctedOldLabel}${correctionReason ? ` — ${correctionReason}` : ""}`);
-    if (tx.replacedByTransactionId) L.push(`🔁 REPLACED BY: Receipt #${(tx.replacedByTransactionId || "").slice(-6).toUpperCase()} (this version cancelled)`);
+    if (tx.replacedByTransactionId) L.push(`🔁 REPLACED BY: ${documentLabel} #${(tx.replacedByTransactionId || "").slice(-6).toUpperCase()} (this version cancelled)`);
     L.push("──────────────────────");
     if (forgiven) {
       L.push(`🤝 DEBT FORGIVEN: ${formatCurrency(paid, currency)}`);
@@ -104,7 +105,7 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
       L.push(`OUTSTANDING: ${formatCurrency(trueOutstanding, currency)}`);
     }
     if (forgiveReason && !forgiven) L.push(`Note: ${forgiveReason}`);
-    if (creditAvailable > 0.009) L.push(`Credit available from this receipt: ${formatCurrency(creditAvailable, currency)}`);
+    if (creditAvailable > 0.009) L.push(`Credit available from this ${documentLabel.toLowerCase()}: ${formatCurrency(creditAvailable, currency)}`);
     if (showPaymentBalance) L.push(`${balanceLabel}: ${formatCurrency(Math.abs(balance), currency)}`);
     if (tx.status === 'cancelled') L.push(`🚫 CANCELLED: ${tx.cancel_reason || tx.cancelReason || ""}`);
     L.push(""); L.push("Thank you for your business! 🙏");
@@ -113,15 +114,15 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[90] flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-gray-50 dark:bg-gray-950 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] flex flex-col">
+      <div className="bg-gray-50 dark:bg-gray-950 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl app-sheet flex flex-col">
         <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
           <h3 className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2">
             <FileText size={20} className={forgiven ? "text-purple-600" : isPayment ? "text-blue-600" : "text-green-600"} />
-            {isRefund ? "Refund Receipt" : forgiven ? "Debt Forgiveness" : isPayment ? "Payment Receipt" : "Sale Receipt"}
+            {isRefund ? "Refund Receipt" : forgiven ? "Debt Forgiveness" : isPayment ? "Payment Receipt" : "Sales Invoice"}
           </h3>
-          <button onClick={onClose} className="p-2 bg-gray-200 dark:bg-gray-800 rounded-full"><X size={18} className="text-gray-600 dark:text-gray-300" /></button>
+          <button aria-label={`Close ${documentLabel.toLowerCase()}`} onClick={onClose} className="p-2 bg-gray-200 dark:bg-gray-800 rounded-full"><X size={18} className="text-gray-600 dark:text-gray-300" /></button>
         </div>
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div className="app-scroll-region min-h-0 flex-1 overflow-y-auto p-5 space-y-4">
           {tx.status === 'cancelled' && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3 text-center">
               <p className="font-bold text-red-600 dark:text-red-400 text-sm flex items-center justify-center gap-2"><Ban size={14} /> CANCELLED</p>
@@ -131,9 +132,9 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
           {/* 👇 NEW: this receipt is a corrected version */}
           {tx.correctsTransactionId && (
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
-              <p className="font-bold text-amber-700 dark:text-amber-400 text-sm flex items-center gap-2"><Edit3 size={14} /> Corrected Receipt</p>
+              <p className="font-bold text-amber-700 dark:text-amber-400 text-sm flex items-center gap-2"><Edit3 size={14} /> Corrected {documentLabel}</p>
               <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                🔁 This receipt corrects {correctedOldLabel || "a previous receipt"}{correctionReason ? ` — ${correctionReason}` : ""}
+                🔁 This {documentLabel.toLowerCase()} corrects {correctedOldLabel || `a previous ${documentLabel.toLowerCase()}`}{correctionReason ? ` — ${correctionReason}` : ""}
               </p>
             </div>
           )}
@@ -141,7 +142,7 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
           {tx.replacedByTransactionId && (
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
               <p className="text-xs font-bold text-amber-700 dark:text-amber-400 flex items-center gap-2">
-                <Edit3 size={14} /> 🔁 Replaced by Receipt #{(tx.replacedByTransactionId || "").slice(-6).toUpperCase()} — this version is cancelled
+                <Edit3 size={14} /> 🔁 Replaced by {documentLabel} #{(tx.replacedByTransactionId || "").slice(-6).toUpperCase()} — this version is cancelled
               </p>
             </div>
           )}
@@ -152,7 +153,7 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
           </div>
           <div className="border-t-2 border-dashed border-gray-300 dark:border-gray-700" />
           <div className="space-y-1.5 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Receipt #</span><span className="font-bold text-gray-900 dark:text-white">#{receiptNo}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{documentLabel} #</span><span className="font-bold text-gray-900 dark:text-white">#{receiptNo}</span></div>
             <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{isPayment && !forgiven ? "Date received" : "Date"}</span><span className="font-semibold text-gray-900 dark:text-white">{formatDate(receivedDate)}</span></div>
             {isPayment && tx.received_at && (
               <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Date recorded</span><span className="font-semibold text-gray-900 dark:text-white">{formatDate(txDate(tx))}</span></div>
@@ -295,7 +296,7 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
               </div>
             </>
           )}
-          {creditAvailable > 0.009 && <p className="rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200">Credit available from this receipt · {formatCurrency(creditAvailable, currency)}</p>}
+          {creditAvailable > 0.009 && <p className="rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200">Credit available from this {documentLabel.toLowerCase()} · {formatCurrency(creditAvailable, currency)}</p>}
           {isRefund && <p className="text-sm">Original payment or invoice #{tx.credit_source_id.slice(-6).toUpperCase()}</p>}
           {forgiveReason && !forgiven && (
             <div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-100 dark:border-yellow-900/30 rounded-xl p-3">
@@ -305,13 +306,13 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
           )}
           <p className="text-center text-[11px] text-gray-400 dark:text-gray-500">Thank you for your business! 🙏</p>
         </div>
-        <div className="p-4 pt-3 border-t border-gray-200 dark:border-gray-800 flex-shrink-0 space-y-2">
+        <div className="app-safe-footer shrink-0 space-y-2 border-t border-gray-200 px-4 pt-3 dark:border-gray-800">
           {tx.type === 'sale' && isActive(tx) && trueOutstanding > 0.009 && onReceivePayment && (
             <button onClick={() => onReceivePayment(tx.id)} className="w-full rounded-xl bg-blue-600 py-3.5 font-bold text-white">Add payment to this invoice</button>
           )}
           {customer?.phone && !forgiven && (
             <button onClick={handleShare} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
-              <Share2 size={18} /> Share Receipt (WhatsApp)
+              <Share2 size={18} /> Share {documentLabel} (WhatsApp)
             </button>
           )}
           {isActive(tx) && !isRefund && !hasRefunds && (forgiven ? (

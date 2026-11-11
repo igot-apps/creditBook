@@ -25,7 +25,7 @@ const getTimeAgo = (dateString) => {
 export const HomePage = () => {
   const {
     currentStore, setView, autoDraft, showToast,
-    setSelectedCustomer, setPrefillTransaction, setResumedSuspendedId
+    setSelectedCustomer, setSelectedSupplier, setPrefillTransaction, setResumedSuspendedId
   } = useStore();
   
   const [showSearch, setShowSearch] = useState(false);
@@ -130,22 +130,39 @@ export const HomePage = () => {
     return "Good Evening";
   };
 
+  const startTransaction = (view) => {
+    setSelectedCustomer(null);
+    setSelectedSupplier(null);
+    setPrefillTransaction(null);
+    setView(view);
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
+    <div className="app-screen min-h-screen bg-gray-50 dark:bg-gray-950">
       <TopBar title="Dashboard" />
-      <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
+      <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="mx-auto max-w-lg space-y-5 px-4 sm:max-w-2xl sm:px-6">
         
         {/* 1. GREETING & SEARCH TRIGGER */}
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">{getGreeting()},</p>
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white">{ownerName} 👋</h1>
+            <h2 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">{ownerName}</h2>
           </div>
           <button
             onClick={() => setShowSearch(true)}
-            className="w-10 h-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full flex items-center justify-center text-gray-600 dark:text-gray-300 shadow-sm active:scale-95 transition"
+            aria-label="Search CreditBook"
+            className="grid size-11 shrink-0 place-items-center rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm transition active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
           >
             <Search size={18} />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2.5">
+          <button onClick={() => startTransaction("record")} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-green-700 px-2.5 py-3 text-sm font-semibold text-white transition active:scale-[0.98]">
+            <ShoppingCart size={18} className="shrink-0" /> Record sale
+          </button>
+          <button onClick={() => startTransaction("recordSupplierPurchase")} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-2.5 py-3 text-sm font-semibold text-indigo-800 transition active:scale-[0.98] dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">
+            <Truck size={18} className="shrink-0" /> Record purchase
           </button>
         </div>
 
@@ -153,18 +170,18 @@ export const HomePage = () => {
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-green-50 dark:bg-green-900/10 p-3 rounded-xl border border-green-100 dark:border-green-900/30">
             <TrendingUp size={14} className="text-green-600 dark:text-green-400 mb-1" />
-            <p className="text-[9px] text-gray-500 dark:text-gray-400 uppercase font-bold">Received</p>
-            <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{formatCurrency(todayStats.received, currency)}</p>
+            <p className="text-xs font-medium text-gray-600 dark:text-gray-400">Received today</p>
+            <p className="break-words text-sm font-bold tabular-nums text-gray-900 dark:text-white">{formatCurrency(todayStats.received, currency)}</p>
           </div>
           <div className="bg-indigo-50 dark:bg-indigo-900/10 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
             <TrendingDown size={14} className="text-indigo-600 dark:text-indigo-400 mb-1" />
-            <p className="text-[9px] text-gray-500 dark:text-gray-400 uppercase font-bold">Purchases</p>
-            <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{formatCurrency(todayStats.purchases, currency)}</p>
+            <p className="text-xs font-medium text-gray-600 dark:text-gray-400">Bought today</p>
+            <p className="break-words text-sm font-bold tabular-nums text-gray-900 dark:text-white">{formatCurrency(todayStats.purchases, currency)}</p>
           </div>
           <div className="bg-orange-50 dark:bg-orange-900/10 p-3 rounded-xl border border-orange-100 dark:border-orange-900/30">
             <AlertCircle size={14} className="text-orange-600 dark:text-orange-400 mb-1" />
-            <p className="text-[9px] text-gray-500 dark:text-gray-400 uppercase font-bold">Outstanding</p>
-            <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{formatCurrency(todayStats.outstanding, currency)}</p>
+            <p className="text-xs font-medium text-gray-600 dark:text-gray-400">Outstanding</p>
+            <p className="break-words text-sm font-bold tabular-nums text-gray-900 dark:text-white">{formatCurrency(todayStats.outstanding, currency)}</p>
           </div>
         </div>
 
@@ -183,7 +200,7 @@ export const HomePage = () => {
                 <p className="font-bold text-gray-900 dark:text-white text-sm">
                   {autoDraft.draftType === 'sale' ? 'Draft Sale' : 'Draft Purchase'}
                 </p>
-                <p className="text-[10px] text-gray-500 dark:text-gray-400">Last edited just now</p>
+                {autoDraft.updatedAt && <p className="text-xs text-gray-500 dark:text-gray-400">Edited {getTimeAgo(autoDraft.updatedAt).toLowerCase()}</p>}
               </div>
             </div>
             <ArrowRight size={20} className="text-indigo-600 dark:text-indigo-400" />

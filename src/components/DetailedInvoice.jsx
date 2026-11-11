@@ -179,14 +179,14 @@ export const DetailedInvoice = ({
   }, [setInvoiceItems]);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col max-h-[85vh]">
-      <div className="sticky top-0 z-20 bg-white dark:bg-gray-800 p-3 border-b border-gray-100 dark:border-gray-700 shadow-sm">
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div className="bg-white dark:bg-gray-800 p-3 border-b border-gray-100 dark:border-gray-700">
         <button onClick={() => setShowProductPicker(true)} className="w-full bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30 border-2 border-dashed border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition">
           <Plus size={20} /> Add Products
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-gray-50/50 dark:bg-gray-900/30 min-h-[150px]">
+      <div className="min-h-[120px] space-y-2 bg-gray-50/50 p-3 dark:bg-gray-900/30">
         {invoiceItems.length === 0 ? (
           <div className="text-center py-12">
             <Package className="mx-auto text-gray-300 dark:text-gray-600 mb-3" size={48} />
@@ -223,7 +223,7 @@ export const DetailedInvoice = ({
         )}
       </div>
 
-      <div className="sticky bottom-0 z-20 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+      <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
         <button onClick={() => setShowSummary(!showSummary)} className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-900 transition">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Summary</span>
