@@ -1,3 +1,4 @@
+import { DiscardInvoiceModal } from "../components/DiscardInvoiceModal";
 import { useState, useEffect } from "react";
 import { Search, ArrowRight, Clock, TrendingUp, TrendingDown, AlertCircle, Pause, Trash2, ShoppingCart, Truck, Package } from "lucide-react";
 import useStore from "../store/useStore";
@@ -28,6 +29,7 @@ export const HomePage = () => {
     setSelectedCustomer, setSelectedSupplier, setPrefillTransaction, setResumedSuspendedId
   } = useStore();
   
+  const [invoiceToDiscard, setInvoiceToDiscard] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
   const [todayStats, setTodayStats] = useState({ received: 0, purchases: 0, outstanding: 0 });
   const [topDebtors, setTopDebtors] = useState([]);
@@ -108,20 +110,7 @@ export const HomePage = () => {
     setView(tx.type === 'sale' ? 'record' : 'recordSupplierPurchase');
   };
 
-  // 4. Handle Discard Suspended Transaction
-  const handleDiscardSuspended = async (tx) => {
-    const label = tx.type === 'sale' ? 'sale' : 'purchase';
-    const name = tx.contactName || "Unknown";
-    if (!window.confirm(`Discard this suspended ${label} for ${name}? This cannot be undone.`)) return;
-    try {
-      await SuspendedTransactionService.deleteSuspendedTransaction(tx.id);
-      setSuspended(prev => (Array.isArray(prev) ? prev : []).filter(s => s.id !== tx.id));
-      showToast("🗑️ Suspended transaction discarded");
-    } catch (error) {
-      console.error(error);
-      showToast("❌ Failed to discard");
-    }
-  };
+
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -247,9 +236,10 @@ export const HomePage = () => {
                       Resume
                     </button>
                     <button
-                      onClick={() => handleDiscardSuspended(tx)}
+                      onClick={() => setInvoiceToDiscard({ ...tx, type: tx.type === "sale" ? "sale" : "purchase" })}
                       className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg active:scale-95 transition"
-                      title="Discard"
+                      title="Delete suspended invoice"
+                      aria-label={`Delete suspended invoice for ${tx.contactName || "unknown contact"}`}
                     >
                       <Trash2 size={16} />
                     </button>
@@ -332,6 +322,10 @@ export const HomePage = () => {
         )}
       </div>
       {/* Universal Search Modal */}
+      <DiscardInvoiceModal invoice={invoiceToDiscard} onClose={() => setInvoiceToDiscard(null)} onDiscarded={invoice => {
+        setSuspended(list => list.filter(entry => entry.id !== invoice.id));
+        setInvoiceToDiscard(null);
+      }} />
       <UniversalSearchModal isOpen={showSearch} onClose={() => setShowSearch(false)} />
     </div>
   );

@@ -100,12 +100,13 @@ export const SuspendedTransactionService = {
     };
   },
 
-  deleteSuspendedTransaction: async (id) => {
-    const { error } = await supabase
+  deleteSuspendedTransaction: async (id, { requireMatch = false } = {}) => {
+    const query = supabase
       .from('suspended_transactions')
       .delete()
       .eq('id', id);
-      
+    const { data, error } = await (requireMatch ? query.select('id').maybeSingle() : query);
     if (error) throw error;
+    if (requireMatch && !data) throw new Error("Could not delete the suspended invoice.");
   }
 };

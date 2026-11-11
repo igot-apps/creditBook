@@ -9,7 +9,9 @@ export const ConfirmModal = ({
   message = "This action cannot be undone.", 
   confirmWord = "yes", 
   confirmButtonText = "Confirm Action", 
-  isDestructive = true 
+  isDestructive = true,
+  isBusy = false,
+  closeOnConfirm = true
 }) => {
   const [inputValue, setInputValue] = useState("");
 
@@ -40,7 +42,7 @@ export const ConfirmModal = ({
             )}
             <h3 className="font-bold text-lg text-gray-900 dark:text-white">{title}</h3>
           </div>
-          <button onClick={onClose} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition">
+          <button onClick={onClose} disabled={isBusy} aria-label="Close confirmation" className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition">
             <X size={18} className="text-gray-700 dark:text-gray-200" />
           </button>
         </div>
@@ -53,6 +55,8 @@ export const ConfirmModal = ({
           </p>
           <input 
             type="text" 
+            aria-label={`Type ${confirmWord} to confirm`}
+            disabled={isBusy}
             value={inputValue} 
             onChange={(e) => setInputValue(e.target.value)} 
             placeholder={`Type "${confirmWord}"...`}
@@ -64,8 +68,8 @@ export const ConfirmModal = ({
         {/* Footer */}
         <div className="p-5 pt-0">
           <button 
-            onClick={() => { onConfirm(); onClose(); }} 
-            disabled={!isConfirmed}
+            onClick={() => { onConfirm(); if (closeOnConfirm) onClose(); }}
+            disabled={!isConfirmed || isBusy}
             className={`w-full font-bold py-3.5 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition active:scale-95 flex items-center justify-center gap-2 ${
               isDestructive 
                 ? "bg-red-600 hover:bg-red-700 text-white" 

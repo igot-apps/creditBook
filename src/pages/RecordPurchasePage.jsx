@@ -1,3 +1,4 @@
+import { DiscardInvoiceModal } from "../components/DiscardInvoiceModal";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Search, Plus, Truck, Package, Check, X, Pause, Loader2, Percent } from "lucide-react";
 import useStore from "../store/useStore";
@@ -55,6 +56,7 @@ export const RecordPurchasePage = () => {
   const [originalAmount, setOriginalAmount] = useState(0);
   const [originalPaid, setOriginalPaid] = useState(0);
   const [fixReason, setFixReason] = useState("");
+  const [invoiceToDiscard, setInvoiceToDiscard] = useState(null);
   const [suspendedId, setSuspendedId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isSuspending, setIsSuspending] = useState(false);
@@ -466,18 +468,8 @@ export const RecordPurchasePage = () => {
               {!isFixing && (
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => {
-                      useStore.setState({ autoDraft: null });
-                      setMode("search");
-                      setSelectedSupplier(null);
-                      setSuspendedId(null);
-                      setInvoiceItems([]);
-                      setAmountPaid("");
-                      setInvoicePayments([]);
-                      setDiscount("");
-                      setNote("");
-                      clearAutoDraft('purchase');
-                    }}
+                    onClick={() => setInvoiceToDiscard({ id: suspendedId, type: "purchase", contactName: selectedSupplier.name })}
+                    disabled={isSaving || isSuspending}
                     className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
                   >
                     Discard Draft
@@ -625,6 +617,10 @@ export const RecordPurchasePage = () => {
       <ProductPickerModal isOpen={showProductPicker} onClose={() => setShowProductPicker(false)} products={products} currentStore={currentStore} onProductsSelected={handleProductsSelected} onUnitsUpdated={(id, units) => setProducts(list => list.map(product => product.id === id ? { ...product, units } : product))} priceType="purchase" onRequestCreateProduct={(name) => { setShowProductPicker(false); setNewProductName(name); setShowAddProductModal(true); }} />
       <AddProductModal isOpen={showAddProductModal} onClose={() => setShowAddProductModal(false)} onSave={handleSaveProduct} initialName={newProductName} />
 
+      <DiscardInvoiceModal invoice={invoiceToDiscard} onClose={() => setInvoiceToDiscard(null)} onDiscarded={() => {
+        setInvoiceToDiscard(null);
+        setView("home");
+      }} />
     </div>
   );
 };

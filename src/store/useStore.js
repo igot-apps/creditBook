@@ -56,7 +56,17 @@ const useStore = create((set, get) => ({
     localStorage.setItem(key, JSON.stringify(draft));
     set({ autoDraft: draft });
   },
-  clearAutoDraft: (type) => {
+  clearAutoDraft: (type, suspendedId) => {
+    if (suspendedId) {
+      const key = `creditbook_draft_${type}`;
+      try {
+        if (JSON.parse(localStorage.getItem(key))?.suspendedId === suspendedId) localStorage.removeItem(key);
+      } catch {
+        // Leave unrelated or unreadable drafts alone.
+      }
+      if (get().autoDraft?.suspendedId === suspendedId) set({ autoDraft: null });
+      return;
+    }
     if (type === 'purchase') localStorage.removeItem('creditbook_draft_purchase');
     else if (type === 'sale') localStorage.removeItem('creditbook_draft_sale');
     else {

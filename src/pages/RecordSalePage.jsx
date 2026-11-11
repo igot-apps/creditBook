@@ -1,3 +1,4 @@
+import { DiscardInvoiceModal } from "../components/DiscardInvoiceModal";
 import { useState, useEffect, useMemo } from "react";
 import { Search, Plus, Users, Check, Pause, Loader2 } from "lucide-react";
 import useStore from "../store/useStore";
@@ -42,6 +43,7 @@ export const RecordSalePage = () => {
   const [originalAmount, setOriginalAmount] = useState(0);
   const [originalPaid, setOriginalPaid] = useState(0);
   const [fixReason, setFixReason] = useState("");
+  const [invoiceToDiscard, setInvoiceToDiscard] = useState(null);
   const [suspendedId, setSuspendedId] = useState(null);
   const [saleDate, setSaleDate] = useState(() => new Date().toISOString());
   const [isSaving, setIsSaving] = useState(false);
@@ -400,7 +402,8 @@ export const RecordSalePage = () => {
               {!isFixing && (
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={resetSale}
+                    onClick={() => setInvoiceToDiscard({ id: suspendedId, type: "sale", contactName: selectedCustomer.name })}
+                    disabled={isSaving || isSuspending}
                     className="text-xs text-red-600 dark:text-red-400 underline font-semibold px-2 py-1 flex-shrink-0"
                   >
                     Discard Draft
@@ -460,6 +463,10 @@ export const RecordSalePage = () => {
       </div>
 
 
+      <DiscardInvoiceModal invoice={invoiceToDiscard} onClose={() => setInvoiceToDiscard(null)} onDiscarded={() => {
+        setInvoiceToDiscard(null);
+        setView("home");
+      }} />
     </div>
   );
 };
