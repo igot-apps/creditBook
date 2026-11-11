@@ -271,6 +271,7 @@ export const DetailedInvoice = ({
         products={products}
         currentStore={currentStore}
         onProductsSelected={handleProductsSelected}
+        onUnitsUpdated={(id, units) => setProducts(list => list.map(product => product.id === id ? { ...product, units } : product))}
         onRequestCreateProduct={(name) => { 
           setShowProductPicker(false); 
           setNewProductName(name); 

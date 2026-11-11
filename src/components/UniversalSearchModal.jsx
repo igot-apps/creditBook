@@ -4,6 +4,7 @@ import useStore from "../store/useStore";
 import { CustomerService } from "../services/CustomerService";
 import { SupplierService } from "../services/SupplierService";
 import { ProductService } from "../services/ProductService";
+import { matchesProductSearch } from "../utils/productSearch";
 
 export const UniversalSearchModal = ({ isOpen, onClose }) => {
   const { setSelectedCustomer, setSelectedSupplier, setView } = useStore();
@@ -44,10 +45,9 @@ export const UniversalSearchModal = ({ isOpen, onClose }) => {
         ]);
         setCustomers(Array.isArray(c) ? c.slice(0, 8) : []);
         setSuppliers(Array.isArray(s) ? s.slice(0, 8) : []);
-        const ql = q.toLowerCase();
         setProducts(
           (Array.isArray(p) ? p : [])
-            .filter(pr => (pr.name || "").toLowerCase().includes(ql) || (pr.brand || "").toLowerCase().includes(ql))
+            .filter(product => matchesProductSearch(product, q))
             .slice(0, 8)
         );
       } catch (e) {

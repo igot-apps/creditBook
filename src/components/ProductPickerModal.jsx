@@ -1,9 +1,15 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Search, X, Plus, Check, Star, ArrowLeft, Minus } from "lucide-react";
 import { ProductService, CATEGORY_EMOJIS } from "../services/ProductService";
 import { formatCurrency } from "../utils/helpers";
+import { matchesProductSearch } from "../utils/productSearch";
+import useStore from "../store/useStore";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+
+const visibleUnitsFor = (product, priceType) => (product.units || []).filter(unit =>
+  priceType === "purchase" ? unit.visibleInPurchases !== false : unit.visibleInSales !== false
+);
 
 export const ProductPickerModal = ({
   isOpen,
@@ -11,6 +17,7 @@ export const ProductPickerModal = ({
   products,
   currentStore,
   onProductsSelected,
+  onUnitsUpdated,
   priceType = "sale",
   onRequestCreateProduct
 }) => {
@@ -21,6 +28,12 @@ export const ProductPickerModal = ({
   const [tempQuantities, setTempQuantities] = useState({});
   const [addedProducts, setAddedProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [showAddType, setShowAddType] = useState(false);
+  const [typeError, setTypeError] = useState("");
+  const [isSavingType, setIsSavingType] = useState(false);
+  const savingType = useRef(false);
+  const readOnly = useStore(state => state.readOnly);
+  const canAddType = Boolean(onUnitsUpdated && currentStore?.id && !readOnly);
 
   const currency = currentStore?.currency || "GH₵";
 
@@ -30,10 +43,13 @@ export const ProductPickerModal = ({
     }
   }, [currentStore?.id]);
 
-  const getVisibleUnits = (product) => {
-    if (!product.units) return [];
-    return product.units.filter(u =>
-      priceType === "purchase" ? u.visibleInPurchases !== false : u.visibleInSales !== false
+  const getVisibleUnits = (product) => visibleUnitsFor(product, priceType);
+
+  const getUnitsForDisplay = (product) => {
+    const units = getVisibleUnits(product);
+    if (matchesProductSearch(product, searchQuery, [])) return units;
+    return [...units].sort((a, b) =>
+      Number(matchesProductSearch(product, searchQuery, [b])) - Number(matchesProductSearch(product, searchQuery, [a]))
     );
   };
 
@@ -45,10 +61,8 @@ export const ProductPickerModal = ({
       const productVisible = priceType === "sale" 
         ? p.visibility?.sales !== false 
         : p.visibility?.purchases !== false;
-      const hasVisibleUnit = p.units && p.units.some(u => 
-        priceType === "sale" ? u.visibleInSales !== false : u.visibleInPurchases !== false
-      );
-      return productVisible && hasVisibleUnit;
+      const units = visibleUnitsFor(p, priceType);
+      return productVisible && units.length > 0 && matchesProductSearch(p, searchQuery, units);
     });
 
     if (activeTab === "favorites") result = result.filter(p => p.isFavourite);
@@ -56,15 +70,6 @@ export const ProductPickerModal = ({
     else if (activeTab === "most-used") result = result.filter(p => (p.usageCount || 0) > 0).sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0)).slice(0, 10);
 
     if (selectedCategory !== "All") result = result.filter(p => p.category && p.category.toLowerCase() === selectedCategory.toLowerCase());
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(p =>
-        (p.name && p.name.toLowerCase().includes(q)) ||
-        (p.category && p.category.toLowerCase().includes(q)) ||
-        (p.brand && p.brand.toLowerCase().includes(q))
-      );
-    }
 
     return result.sort((a, b) => {
       if (a.isFavourite !== b.isFavourite) return b.isFavourite ? 1 : -1;
@@ -75,9 +80,7 @@ export const ProductPickerModal = ({
   const getPrice = (unit) => priceType === "purchase" ? (unit.defaultPurchasePrice || 0) : (unit.defaultSalePrice || 0);
 
   // 👇 FIXED: Immutable state update to prevent React Strict Mode double-invocation bug
-  const handleSingleUnitAdd = (product, delta) => {
-    const visibleUnits = getVisibleUnits(product);
-    const unit = visibleUnits[0] || { name: "Piece", defaultSalePrice: 0, defaultPurchasePrice: 0 };
+  const changeUnitQuantity = (product, unit, delta) => {
     const price = getPrice(unit);
 
     setAddedProducts(prev => {
@@ -102,13 +105,18 @@ export const ProductPickerModal = ({
       } else if (delta > 0) {
         return [...prev, {
           productId: product.id, name: product.name, brand: product.brand, unitName: unit.name,
-          quantity: 1, price: price, total: price
+          quantity: delta, price: price, total: delta * price
         }];
       }
       return prev;
     });
     
     if (delta > 0) ProductService.trackUsage(product.id);
+  };
+
+  const handleSingleUnitAdd = (product, delta) => {
+    const [unit] = getVisibleUnits(product);
+    if (unit) changeUnitQuantity(product, unit, delta);
   };
 
   // 👇 FIXED: Immutable state update for manual input
@@ -146,8 +154,10 @@ export const ProductPickerModal = ({
     if (!isNaN(qty) && qty > 0) ProductService.trackUsage(product.id);
   };
 
-  const openMultiUnitModal = (product) => {
+  const openMultiUnitModal = (product, addType = false) => {
     setMultiUnitProduct(product);
+    setShowAddType(addType);
+    setTypeError("");
     const existing = addedProducts.filter(p => p.productId === product.id);
     const initialQtys = {};
     
@@ -157,6 +167,35 @@ export const ProductPickerModal = ({
     });
     
     setTempQuantities(initialQtys);
+  };
+
+  const saveType = async (event) => {
+    event.preventDefault();
+    if (!canAddType || savingType.current || !multiUnitProduct) return;
+    const fields = new FormData(event.currentTarget);
+    const name = String(fields.get("typeName") || "").trim();
+    if (!name) { setTypeError("Enter a type name."); return; }
+    const unit = {
+      id: crypto.randomUUID(),
+      name,
+      defaultPurchasePrice: Number(fields.get("purchasePrice")) || 0,
+      defaultSalePrice: Number(fields.get("salePrice")) || 0,
+    };
+    savingType.current = true;
+    setIsSavingType(true);
+    setTypeError("");
+    try {
+      const units = await ProductService.addUnit(currentStore.id, multiUnitProduct.id, unit);
+      onUnitsUpdated(multiUnitProduct.id, units);
+      setMultiUnitProduct(product => ({ ...product, units }));
+      setTempQuantities(quantities => ({ ...quantities, [unit.id]: 1 }));
+      setShowAddType(false);
+    } catch (error) {
+      setTypeError(error instanceof Error ? error.message : "Could not save the type. Try again.");
+    } finally {
+      savingType.current = false;
+      setIsSavingType(false);
+    }
   };
 
   const updateModalQty = (unitId, delta) => {
@@ -244,7 +283,7 @@ export const ProductPickerModal = ({
             <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${priceType === "purchase" ? "text-indigo-400" : "text-green-400"}`} size={20} />
             <input
               value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search products, brands, categories..."
+              placeholder="Search products, brands or types..."
               className={`w-full pl-12 pr-10 py-3.5 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-2 ${
                 priceType === "purchase" ? "focus:ring-indigo-500 focus:border-indigo-500" : "focus:ring-green-500 focus:border-green-500"
               } dark:text-white text-base`}
@@ -298,7 +337,7 @@ export const ProductPickerModal = ({
             {filteredProducts.map(product => {
               const emoji = ProductService.getCategoryEmoji(product.category);
               const totalQty = addedProducts.filter(p => p.productId === product.id).reduce((sum, item) => sum + item.quantity, 0);
-              const visibleUnits = getVisibleUnits(product);
+              const visibleUnits = getUnitsForDisplay(product);
               const isMultiUnit = visibleUnits.length > 1;
 
               return (
@@ -313,12 +352,31 @@ export const ProductPickerModal = ({
                   </div>
 
                   <div className="space-y-1 mb-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-2">
-                    {visibleUnits.slice(0, 2).map(unit => (
-                      <div key={unit.id} className="flex justify-between text-xs">
-                        <span className="text-gray-600 dark:text-gray-400 font-medium">{unit.name}</span>
-                        <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(getPrice(unit), currency)}</span>
-                      </div>
-                    ))}
+                    {visibleUnits.slice(0, 2).map(unit => {
+                      const quantity = addedProducts.find(item => item.productId === product.id && item.unitName === unit.name)?.quantity || 0;
+                      return (
+                        <div key={unit.id} className="flex items-center justify-between gap-2 text-xs">
+                          <div className="min-w-0">
+                            <span className="block break-words font-medium text-gray-700 dark:text-gray-300">{unit.name}</span>
+                            <span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(getPrice(unit), currency)}</span>
+                          </div>
+                          {isMultiUnit && (
+                            <div className="flex shrink-0 items-center gap-1">
+                              {quantity > 0 && <span className="font-bold tabular-nums" aria-label={`${quantity} selected`}>{quantity}</span>}
+                              <button
+                                type="button"
+                                aria-label={`Add one ${unit.name} of ${product.name}`}
+                                title={`Add one ${unit.name}`}
+                                onClick={() => changeUnitQuantity(product, unit, 1)}
+                                className={`flex h-9 w-9 items-center justify-center rounded-lg transition active:scale-95 ${priceType === "purchase" ? "bg-indigo-100 text-indigo-800 hover:bg-indigo-200 dark:bg-indigo-900 dark:text-indigo-200" : "bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900 dark:text-green-200"}`}
+                              >
+                                <Plus size={17} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                     {visibleUnits.length > 2 && (
                       <p className="text-[10px] text-gray-500 dark:text-gray-400 text-center pt-1 border-t border-gray-200 dark:border-gray-700">+{visibleUnits.length - 2} more</p>
                     )}
@@ -365,7 +423,12 @@ export const ProductPickerModal = ({
                           : (priceType === "purchase" ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-green-600 hover:bg-green-700 text-white")
                       }`}
                     >
-                      {totalQty > 0 ? <><Check size={16} /> {totalQty} added</> : <><Plus size={16} /> Add Units</>}
+                      {totalQty > 0 ? <><Check size={16} /> Edit quantities</> : "View all types"}
+                    </button>
+                  )}
+                  {!isMultiUnit && canAddType && (
+                    <button type="button" onClick={() => openMultiUnitModal(product, true)} className="mt-2 w-full rounded-lg px-2 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">
+                      + Add type
                     </button>
                   )}
                 </div>
@@ -393,13 +456,38 @@ export const ProductPickerModal = ({
                 <h3 className="font-bold text-lg text-gray-900 dark:text-white">{multiUnitProduct.name}</h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Select quantities for each unit</p>
               </div>
-              <button onClick={() => setMultiUnitProduct(null)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
+              <button onClick={() => setMultiUnitProduct(null)} disabled={isSavingType} aria-label="Close product types" className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full disabled:opacity-50">
                 <X size={18} className="text-gray-600 dark:text-gray-300" />
               </button>
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {getVisibleUnits(multiUnitProduct).map(unit => {
+              {canAddType && !showAddType && (
+                <button type="button" onClick={() => { setShowAddType(true); setTypeError(""); }} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 p-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800">
+                  <Plus size={16} /> Add type
+                </button>
+              )}
+              {canAddType && showAddType && (
+                <form onSubmit={saveType} className="space-y-3 rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+                  <label className="block text-sm font-semibold">Type name
+                    <input autoFocus required name="typeName" placeholder="e.g. Seara carton" className="mt-1 block w-full rounded-lg border border-gray-300 bg-transparent p-2 dark:border-gray-600" />
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="min-w-0 text-sm">Purchase price
+                      <input name="purchasePrice" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" className="mt-1 block w-full rounded-lg border border-gray-300 bg-transparent p-2 dark:border-gray-600" />
+                    </label>
+                    <label className="min-w-0 text-sm">Sale price
+                      <input name="salePrice" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" className="mt-1 block w-full rounded-lg border border-gray-300 bg-transparent p-2 dark:border-gray-600" />
+                    </label>
+                  </div>
+                  {typeError && <p role="alert" className="text-sm text-red-700 dark:text-red-400">{typeError}</p>}
+                  <div className="flex justify-end gap-2">
+                    <button type="button" disabled={isSavingType} onClick={() => setShowAddType(false)} className="rounded-lg px-3 py-2 text-sm font-semibold">Cancel</button>
+                    <button type="submit" disabled={isSavingType} className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 dark:bg-gray-100 dark:text-gray-900">{isSavingType ? "Saving…" : "Save and select"}</button>
+                  </div>
+                </form>
+              )}
+              {getUnitsForDisplay(multiUnitProduct).map(unit => {
                 const currentQty = tempQuantities[unit.id] || 0;
                 return (
                   <div key={unit.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
@@ -443,6 +531,7 @@ export const ProductPickerModal = ({
             <div className="sticky bottom-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 p-4">
               <button 
                 onClick={confirmMultiUnitQuantities}
+                disabled={isSavingType}
                 className={`w-full font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg ${
                   priceType === "purchase" ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"
                 }`}

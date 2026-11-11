@@ -3,6 +3,7 @@ import { Plus, Search, Eye, Edit3, Trash2, Star, Package, X } from "lucide-react
 import useStore from "../store/useStore";
 import { ProductService } from "../services/ProductService";
 import { formatCurrency } from "../utils/helpers";
+import { matchesProductSearch } from "../utils/productSearch";
 import { TopBar } from "../components/TopBar";
 import { AddProductModal } from "../components/AddProductModal";
 
@@ -19,15 +20,9 @@ export const ProductsPage = () => {
     }
   }, [currentStore?.id]);
 
-  const filteredProducts = useMemo(() => {
-    if (!searchQuery.trim()) return products;
-    const q = searchQuery.toLowerCase();
-    return products.filter(p => 
-      p.name.toLowerCase().includes(q) || 
-      (p.category && p.category.toLowerCase().includes(q)) ||
-      (p.brand && p.brand.toLowerCase().includes(q))
-    );
-  }, [products, searchQuery]);
+  const filteredProducts = useMemo(() =>
+    products.filter(product => matchesProductSearch(product, searchQuery)),
+  [products, searchQuery]);
 
   const handleEdit = (product) => {
     setEditingProduct(product);
@@ -101,7 +96,7 @@ export const ProductsPage = () => {
           <input 
             value={searchQuery} 
             onChange={e => setSearchQuery(e.target.value)} 
-            placeholder="Search products, brands, categories..." 
+            placeholder="Search products, brands or types..."
             className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
           />
           {searchQuery && (

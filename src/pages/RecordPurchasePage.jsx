@@ -657,7 +657,7 @@ export const RecordPurchasePage = () => {
           </>
         )}
       </div>
-      <ProductPickerModal isOpen={showProductPicker} onClose={() => setShowProductPicker(false)} products={products} currentStore={currentStore} onProductsSelected={handleProductsSelected} priceType="purchase" onRequestCreateProduct={(name) => { setShowProductPicker(false); setNewProductName(name); setShowAddProductModal(true); }} />
+      <ProductPickerModal isOpen={showProductPicker} onClose={() => setShowProductPicker(false)} products={products} currentStore={currentStore} onProductsSelected={handleProductsSelected} onUnitsUpdated={(id, units) => setProducts(list => list.map(product => product.id === id ? { ...product, units } : product))} priceType="purchase" onRequestCreateProduct={(name) => { setShowProductPicker(false); setNewProductName(name); setShowAddProductModal(true); }} />
       <AddProductModal isOpen={showAddProductModal} onClose={() => setShowAddProductModal(false)} onSave={handleSaveProduct} initialName={newProductName} />
       {showUndoToast && (
         <div className="fixed bottom-24 left-4 right-4 max-w-lg mx-auto bg-gray-900 dark:bg-white text-white dark:text-gray-900 p-4 rounded-xl shadow-2xl flex items-center justify-between z-[200] animate-in slide-in-from-bottom-5">

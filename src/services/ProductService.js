@@ -89,6 +89,27 @@ export const ProductService = {
     if (error) throw error;
   },
 
+  addUnit: async (storeId, productId, unit) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data: product, error: readError } = await supabase
+        .from('products').select('units').eq('store_id', storeId).eq('id', productId).single();
+      if (readError) throw readError;
+      const units = product.units || [];
+      if (units.some(existing => existing.id === unit.id)) return units;
+      if (units.some(existing => existing.name?.trim().toLowerCase() === unit.name.toLowerCase())) {
+        throw new Error('This product already has a type with that name.');
+      }
+      // Update only the list we just read so a concurrent edit cannot be overwritten.
+      const update = supabase.from('products').update({ units: [...units, unit] })
+        .eq('store_id', storeId).eq('id', productId);
+      const unchanged = product.units == null ? update.is('units', null) : update.eq('units', JSON.stringify(product.units));
+      const { data, error } = await unchanged.select('units').maybeSingle();
+      if (error) throw error;
+      if (data) return data.units;
+    }
+    throw new Error('The product changed while saving. Please try again.');
+  },
+
   delete: async (id) => {
     const { error } = await supabase
       .from('products')
