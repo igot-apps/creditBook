@@ -80,6 +80,7 @@ export const ReceiptModal = ({ transaction, onClose, onUpdated }) => {
         const price = parseFloat(i.price) || 0;
         L.push(`${i.name}${i.brand ? ` (${i.brand})` : ""}`);
         L.push(`  ${qty} ${i.unitName || ""} x ${formatCurrency(price, currency)} = ${formatCurrency(qty * price, currency)}`);
+        if (i.note) L.push(`  Note: ${i.note}`);
       });
     } else {
       L.push("(No item breakdown recorded)");
@@ -173,6 +174,7 @@ export const ReceiptModal = ({ transaction, onClose, onUpdated }) => {
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       {qty} {item.unitName || "unit"} × {formatCurrency(price, currency)}
                     </p>
+                    {item.note && <p className="mt-1 text-xs italic text-amber-700 dark:text-amber-300">Note: {item.note}</p>}
                   </div>
                 );
               })}

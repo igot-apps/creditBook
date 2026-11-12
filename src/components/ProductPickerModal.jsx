@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Search, X, Plus, Check, Star, ArrowLeft, Minus } from "lucide-react";
-import { ProductService, CATEGORY_EMOJIS } from "../services/ProductService";
+import { Search, X, Plus, Check, Star, ArrowLeft, Minus, PackagePlus, Package } from "lucide-react";
+import { ProductService } from "../services/ProductService";
 import { formatCurrency } from "../utils/helpers";
 import { matchesProductSearch } from "../utils/productSearch";
 import useStore from "../store/useStore";
@@ -24,27 +24,21 @@ export const ProductPickerModal = ({
   onRequestCreateProduct
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("All");
   const [activeTab, setActiveTab] = useState("all");
   const [multiUnitProduct, setMultiUnitProduct] = useState(null);
   const [tempQuantities, setTempQuantities] = useState({});
   const [tempTotals, setTempTotals] = useState({});
+  const [tempNotes, setTempNotes] = useState({});
   const [addedProducts, setAddedProducts] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [showAddType, setShowAddType] = useState(false);
   const [typeError, setTypeError] = useState("");
   const [isSavingType, setIsSavingType] = useState(false);
   const savingType = useRef(false);
   const readOnly = useStore(state => state.readOnly);
   const canAddType = Boolean(onUnitsUpdated && currentStore?.id && !readOnly);
+  const canCreateProduct = Boolean(onRequestCreateProduct && currentStore?.id && !readOnly);
 
   const currency = currentStore?.currency || "GH₵";
-
-  useEffect(() => {
-    if (currentStore?.id) {
-      ProductService.getCategories(currentStore.id).then(setCategories);
-    }
-  }, [currentStore?.id]);
 
   const getVisibleUnits = (product) => visibleUnitsFor(product, priceType);
 
@@ -72,13 +66,11 @@ export const ProductPickerModal = ({
     else if (activeTab === "recent") result = result.filter(p => p.lastUsedAt).sort((a, b) => new Date(b.lastUsedAt) - new Date(a.lastUsedAt)).slice(0, 10);
     else if (activeTab === "most-used") result = result.filter(p => (p.usageCount || 0) > 0).sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0)).slice(0, 10);
 
-    if (selectedCategory !== "All") result = result.filter(p => p.category && p.category.toLowerCase() === selectedCategory.toLowerCase());
-
     return result.sort((a, b) => {
       if (a.isFavourite !== b.isFavourite) return b.isFavourite ? 1 : -1;
       return (b.usageCount || 0) - (a.usageCount || 0);
     });
-  }, [products, searchQuery, selectedCategory, activeTab, priceType]);
+  }, [products, searchQuery, activeTab, priceType]);
 
   const getPrice = (unit) => priceType === "purchase" ? (unit.defaultPurchasePrice || 0) : (unit.defaultSalePrice || 0);
 
@@ -164,15 +156,18 @@ export const ProductPickerModal = ({
     const existing = addedProducts.filter(p => p.productId === product.id);
     const initialQtys = {};
     const initialTotals = {};
+    const initialNotes = {};
     
     getVisibleUnits(product).forEach(u => {
       const found = existing.find(ep => ep.unitName === u.name);
       initialQtys[u.id] = found ? found.quantity : 0;
       initialTotals[u.id] = found ? found.total : 0;
+      initialNotes[u.id] = found?.note || "";
     });
     
     setTempQuantities(initialQtys);
     setTempTotals(initialTotals);
+    setTempNotes(initialNotes);
   };
 
   const saveType = async (event) => {
@@ -200,6 +195,7 @@ export const ProductPickerModal = ({
       setMultiUnitProduct(product => ({ ...product, units }));
       setTempQuantities(quantities => ({ ...quantities, [unit.id]: 1 }));
       setTempTotals(totals => ({ ...totals, [unit.id]: getPrice(unit) }));
+      setTempNotes(notes => ({ ...notes, [unit.id]: "" }));
       setShowAddType(false);
     } catch (error) {
       setTypeError(error instanceof Error ? error.message : "Could not save the type. Try again.");
@@ -254,7 +250,8 @@ export const ProductPickerModal = ({
             unitName: unit.name,
             quantity: qty,
             price: price,
-            total: Number.isFinite(Number(tempTotals[unit.id])) ? Number(tempTotals[unit.id]) : qty * price
+            total: Number.isFinite(Number(tempTotals[unit.id])) ? Number(tempTotals[unit.id]) : qty * price,
+            note: String(tempNotes[unit.id] || "").trim()
           });
         }
       });
@@ -274,7 +271,7 @@ export const ProductPickerModal = ({
 
   useEffect(() => {
     if (!isOpen) {
-      setSearchQuery(""); setSelectedCategory("All"); setActiveTab("all");
+      setSearchQuery(""); setActiveTab("all");
       setMultiUnitProduct(null); setAddedProducts([]);
     }
   }, [isOpen]);
@@ -319,6 +316,13 @@ export const ProductPickerModal = ({
               </button>
             )}
           </div>
+          {canCreateProduct && (
+            <button onClick={() => onRequestCreateProduct(searchQuery.trim())} className={`mt-2.5 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed font-bold transition active:scale-[.99] ${
+              priceType === "purchase" ? "border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300" : "border-green-300 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950/40 dark:text-green-300"
+            }`}>
+              <PackagePlus size={19}/> {searchQuery.trim() ? `Create “${searchQuery.trim()}”` : "New product"}
+            </button>
+          )}
         </div>
         
         <div className="scrollbar-hide overflow-x-auto px-4 pb-2 [&_button]:min-h-10">
@@ -330,16 +334,6 @@ export const ProductPickerModal = ({
           </div>
         </div>
         
-        <div className="scrollbar-hide overflow-x-auto px-4 pb-3 [&_button]:min-h-9">
-          <div className="flex gap-2 min-w-max">
-            <button onClick={() => setSelectedCategory("All")} className={`px-3 py-1 rounded-full text-xs font-semibold transition ${selectedCategory === "All" ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"}`}>All</button>
-            {categories.map(cat => (
-              <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-3 py-1 rounded-full text-xs font-semibold transition flex items-center gap-1 ${selectedCategory === cat ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"}`}>
-                <span>{ProductService.getCategoryEmoji(cat)}</span>{cat}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
 
       <div className="app-scroll-region min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
@@ -349,7 +343,7 @@ export const ProductPickerModal = ({
             <p className="text-gray-500 dark:text-gray-400 text-base font-medium">
               {searchQuery ? `No products found for "${searchQuery}"` : "No products in catalog"}
             </p>
-            {searchQuery && onRequestCreateProduct && (
+            {searchQuery && canCreateProduct && (
               <button onClick={() => onRequestCreateProduct(searchQuery)} className={`mt-6 w-full max-w-xs font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg text-base ${
                 priceType === "purchase" ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"
               }`}>
@@ -360,7 +354,6 @@ export const ProductPickerModal = ({
         ) : (
           <div className="mx-auto grid max-w-6xl grid-cols-[repeat(auto-fill,minmax(min(100%,10.5rem),1fr))] gap-3">
             {filteredProducts.map(product => {
-              const emoji = ProductService.getCategoryEmoji(product.category);
               const totalQty = addedProducts.filter(p => p.productId === product.id).reduce((sum, item) => sum + item.quantity, 0);
               const visibleUnits = getUnitsForDisplay(product);
               const isMultiUnit = visibleUnits.length > 1;
@@ -370,9 +363,8 @@ export const ProductPickerModal = ({
                   totalQty > 0 ? (priceType === "purchase" ? "border-indigo-500 dark:border-indigo-400 shadow-md" : "border-green-500 dark:border-green-400 shadow-md") : "border-gray-200 dark:border-gray-700"
                 }`}>
                   <div className="mb-2">
-                    <span aria-hidden="true" className="mb-1 inline-grid size-8 place-items-center rounded-lg bg-gray-100 text-lg dark:bg-gray-700">{emoji}</span>
+                    <span aria-hidden="true" className="mb-1 inline-grid size-8 place-items-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300"><Package size={17}/></span>
                     <p className="break-words text-sm font-bold text-gray-900 dark:text-white">{product.name}</p>
-                    {product.category && <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{product.category}</p>}
                     {product.brand && <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate italic">{product.brand}</p>}
                   </div>
 
@@ -568,6 +560,17 @@ export const ProductPickerModal = ({
                           />
                         </div>
                         {currentTotal > 0 && <span className="mt-1 block text-right font-normal text-gray-500 dark:text-gray-400">Quantity {currentQty}</span>}
+                      </label>
+                    )}
+                    {currentQty > 0 && (
+                      <label className="mt-3 block text-xs font-semibold text-gray-600 dark:text-gray-300">
+                        Item note <span className="font-normal text-gray-400">(optional)</span>
+                        <input
+                          value={tempNotes[unit.id] || ""}
+                          onChange={event => setTempNotes(notes => ({ ...notes, [unit.id]: event.target.value }))}
+                          placeholder={priceType === "purchase" ? "e.g. damaged carton replaced" : "e.g. cut into small pieces"}
+                          className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-normal text-gray-900 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                        />
                       </label>
                     )}
                   </div>

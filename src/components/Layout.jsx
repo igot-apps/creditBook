@@ -1,9 +1,10 @@
 import {
   Home, Users, Truck, Package, BarChart3, Settings,
-  Moon, Sun, X, ChevronRight, HelpCircle, User, Mail, LogOut, ShieldCheck
+  Moon, Sun, X, ChevronRight, HelpCircle, User, Mail, LogOut, ShieldCheck, Crown
 } from "lucide-react";
 import useStore from "../store/useStore";
 import { AuthService } from "../services/AuthService";
+import { QuickUnlockService } from "../services/QuickUnlockService";
 
 // Helper Component for Menu Items (defined outside to avoid remounting)
 const MenuItem = ({ icon: Icon, label, active, onClick, badge }) => (
@@ -40,7 +41,8 @@ export const Layout = ({ children }) => {
     setIsMenuOpen,
     refreshPage,
     showToast,
-    isSuperAdmin
+    isSuperAdmin,
+    readOnly
   } = useStore();
 
   // Handle both snake_case (Supabase) and camelCase
@@ -61,6 +63,8 @@ export const Layout = ({ children }) => {
   const handleLogout = async () => {
     if (!window.confirm("Log out of CreditBook?")) return;
     try {
+      const user = await AuthService.getCurrentUser().catch(() => null);
+      if (user?.id) QuickUnlockService.clearPin(user.id);
       await AuthService.signOut();
       useStore.getState().clearAutoDraft();
       useStore.setState({
@@ -139,6 +143,7 @@ export const Layout = ({ children }) => {
         <div>
           <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider px-2 mb-2">System</p>
           <div className="space-y-1">
+            <MenuItem icon={Crown} label={readOnly ? "Renew subscription" : "Subscription"} active={view === 'subscription'} onClick={() => navigateTo('subscription')} badge={readOnly ? "EXPIRED" : undefined} />
             <MenuItem icon={Settings} label="Settings" active={view === 'settings'} onClick={() => navigateTo('settings')} />
             <MenuItem icon={HelpCircle} label="Help & About" onClick={() => { setIsMenuOpen(false); alert("CreditBook v3.0\n\nCloud-synced with Supabase.\nYour business data is safe online!"); }} />
           </div>

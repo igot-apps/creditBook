@@ -1,9 +1,9 @@
-import { Package, BarChart3, Download, Settings, HelpCircle, FileText, ChevronRight, ShieldCheck } from "lucide-react";
+import { Package, BarChart3, Download, Settings, HelpCircle, FileText, ChevronRight, ShieldCheck, Crown } from "lucide-react";
 import useStore from "../store/useStore";
 import { TopBar } from "../components/TopBar";
 
 export const MorePage = () => {
-  const { setView, showToast, currentStore, isSuperAdmin } = useStore();
+  const { setView, showToast, currentStore, isSuperAdmin, readOnly } = useStore();
 
   const menuGroups = [
     {
@@ -51,6 +51,14 @@ export const MorePage = () => {
     {
       title: "App Settings",
       items: [
+        {
+          label: readOnly ? "Renew Subscription" : "Subscription",
+          description: readOnly ? "Plan expired — restore full access" : "View plan, expiry and payment options",
+          icon: Crown,
+          color: readOnly ? "text-amber-700 dark:text-amber-300" : "text-purple-600 dark:text-purple-400",
+          bg: readOnly ? "bg-amber-100 dark:bg-amber-900/30" : "bg-purple-50 dark:bg-purple-900/20",
+          action: () => setView("subscription")
+        },
         ...(isSuperAdmin ? [{
           label: "Manage Subscriptions",
           description: "Plans, prices, payments and store access",

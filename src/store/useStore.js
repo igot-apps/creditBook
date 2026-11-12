@@ -16,6 +16,8 @@ const useStore = create((set, get) => ({
   setView: (view) => set({ view }),
   pageKey: Date.now(),
   refreshPage: () => set({ pageKey: Date.now() }),
+  focusedProduct: null,
+  setFocusedProduct: (product) => set({ focusedProduct: product }),
 
   // --- UI State ---
   theme: localStorage.getItem('theme') || 'light',

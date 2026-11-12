@@ -1,6 +1,6 @@
 import { DiscardInvoiceModal } from "../components/DiscardInvoiceModal";
 import { useState, useEffect } from "react";
-import { Search, ArrowRight, Clock, TrendingUp, TrendingDown, AlertCircle, Pause, Trash2, ShoppingCart, Truck, Package } from "lucide-react";
+import { Search, ArrowRight, Clock, TrendingUp, TrendingDown, AlertCircle, Pause, Trash2, ShoppingCart, Truck, Package, Crown } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
@@ -26,7 +26,7 @@ const getTimeAgo = (dateString) => {
 export const HomePage = () => {
   const {
     currentStore, setView, autoDraft, showToast,
-    setSelectedCustomer, setSelectedSupplier, setPrefillTransaction, setResumedSuspendedId
+    setSelectedCustomer, setSelectedSupplier, setPrefillTransaction, setResumedSuspendedId, readOnly
   } = useStore();
   
   const [invoiceToDiscard, setInvoiceToDiscard] = useState(null);
@@ -146,6 +146,14 @@ export const HomePage = () => {
             <Search size={18} />
           </button>
         </div>
+
+        {readOnly && (
+          <button onClick={() => setView("subscription")} className="w-full rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 p-4 text-left text-white shadow-lg active:scale-[.99] transition flex items-center gap-3">
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white/20"><Crown size={23}/></span>
+            <span className="flex-1"><span className="block text-xs font-bold uppercase tracking-wider text-amber-100">Subscription expired</span><span className="block font-black text-lg">Renew to restore full access</span><span className="block text-xs text-amber-50 mt-0.5">Tap here to view plans and make payment.</span></span>
+            <ArrowRight size={22}/>
+          </button>
+        )}
 
         <div className="grid grid-cols-2 gap-2.5">
           <button onClick={() => startTransaction("record")} className="flex min-h-20 items-center gap-3 rounded-2xl bg-green-700 px-3 py-3 text-left text-white shadow-sm transition active:scale-[0.98]">

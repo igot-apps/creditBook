@@ -16,11 +16,13 @@ export const LoginPage = () => {
     setIsLoading(true);
     setError("");
     try {
+      sessionStorage.setItem('creditbook_password_login', '1');
       const { user } = await AuthService.signIn(email, password);
       const store = await AuthService.getStore(user.id);
       setCurrentStore(store);
       setView("home"); // Navigate to home using Zustand
     } catch (err) {
+      sessionStorage.removeItem('creditbook_password_login');
       setError(err.message || "Failed to sign in. Please check your credentials.");
     } finally {
       setIsLoading(false);

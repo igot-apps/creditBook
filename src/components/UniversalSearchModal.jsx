@@ -7,7 +7,7 @@ import { ProductService } from "../services/ProductService";
 import { matchesProductSearch } from "../utils/productSearch";
 
 export const UniversalSearchModal = ({ isOpen, onClose }) => {
-  const { setSelectedCustomer, setSelectedSupplier, setView } = useStore();
+  const { setSelectedCustomer, setSelectedSupplier, setView, setFocusedProduct } = useStore();
 
   const [query, setQuery] = useState("");
   const [customers, setCustomers] = useState([]);
@@ -63,7 +63,11 @@ export const UniversalSearchModal = ({ isOpen, onClose }) => {
 
   const openCustomer = (c) => { setSelectedCustomer(c); onClose(); setView("profile"); };
   const openSupplier = (s) => { setSelectedSupplier(s); onClose(); setView("supplierProfile"); };
-  const openProducts = () => { onClose(); setView("products"); };
+  const openProduct = (product) => {
+    setFocusedProduct({ id: product.id, query: query.trim(), name: product.name });
+    onClose();
+    setView("products");
+  };
 
   const hasResults = customers.length > 0 || suppliers.length > 0 || products.length > 0;
 
@@ -161,7 +165,7 @@ export const UniversalSearchModal = ({ isOpen, onClose }) => {
               </p>
               <div className="space-y-1">
                 {products.map(pr => (
-                  <button key={pr.id} onClick={openProducts} className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 text-left transition">
+                  <button key={pr.id} onClick={() => openProduct(pr)} className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 text-left transition">
                     <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
                       <Package size={16} />
                     </div>

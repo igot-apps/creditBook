@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Home, Users, Truck, MoreHorizontal, Plus, X, ShoppingCart, Banknote, DollarSign, Package, Settings, ChevronRight } from "lucide-react";
+import { Home, Users, Truck, MoreHorizontal, Plus, X, ShoppingCart, Banknote, DollarSign, Package, Settings, ChevronRight, Crown } from "lucide-react";
 import useStore from "../store/useStore";
 
 // Color styles for the quick action buttons
@@ -77,7 +77,7 @@ const NavItem = ({ icon: Icon, label, active, onClick }) => (
 );
 
 export const BottomNav = () => {
-  const { view, setView, setSelectedCustomer, setSelectedSupplier } = useStore();
+  const { view, setView, setSelectedCustomer, setSelectedSupplier, readOnly } = useStore();
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
@@ -191,6 +191,13 @@ export const BottomNav = () => {
             </div>
 
             <div className="p-4 space-y-3">
+              <MenuButton
+                icon={Crown}
+                title={readOnly ? "Renew Subscription" : "Subscription"}
+                subtitle={readOnly ? "Your plan expired — restore full access" : "View your plan, expiry and payment options"}
+                iconBg={readOnly ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" : "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"}
+                onClick={() => navigate('subscription')}
+              />
               {/* Products */}
               <MenuButton
                 icon={Package}

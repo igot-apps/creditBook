@@ -89,7 +89,7 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
       }
     } else {
       if (items.length > 0) {
-        items.forEach(i => { const qty = parseFloat(i.quantity) || 0; const price = parseFloat(i.price) || 0; L.push(`${i.name}${i.brand ? ` (${i.brand})` : ""}`); L.push(`  ${qty} ${i.unitName || ""} x ${formatCurrency(price, currency)} = ${formatCurrency(qty * price, currency)}`); });
+        items.forEach(i => { const qty = parseFloat(i.quantity) || 0; const price = parseFloat(i.price) || 0; L.push(`${i.name}${i.brand ? ` (${i.brand})` : ""}`); L.push(`  ${qty} ${i.unitName || ""} x ${formatCurrency(price, currency)} = ${formatCurrency(qty * price, currency)}`); if (i.note) L.push(`  Note: ${i.note}`); });
       } else { L.push("(No item breakdown recorded)"); }
       L.push("──────────────────────");
       L.push(`TOTAL: ${formatCurrency(totalSale, currency)}`);
@@ -262,6 +262,7 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
                           <p className="font-bold text-sm text-gray-900 dark:text-white">{formatCurrency(qty * price, currency)}</p>
                         </div>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{qty} {item.unitName || "unit"} × {formatCurrency(price, currency)}</p>
+                        {item.note && <p className="mt-1 text-xs italic text-amber-700 dark:text-amber-300">Note: {item.note}</p>}
                       </div>
                     );
                   })}

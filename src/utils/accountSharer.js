@@ -82,6 +82,7 @@ export const generateAccountShare = ({ channel, scope, contact, transactions, st
             // Two-line format per item for clean mobile reading
             L.push(`• *${i.name}*${brand}`);
             L.push(`  ${qty} ${unit} × ${formatCurrency(price, currency)} = ${formatCurrency(qty * price, currency)}`);
+            if (i.note) L.push(`  📝 ${i.note}`);
           });
         } else {
           L.push(`• (No item breakdown recorded)`);

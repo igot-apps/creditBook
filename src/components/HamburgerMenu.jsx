@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { 
   Home, Users, Truck, Package, BarChart3, Bell,
-  Moon, Sun, Settings, HelpCircle, X, TrendingUp, TrendingDown, ChevronRight, ShieldCheck
+  Moon, Sun, Settings, HelpCircle, X, TrendingUp, TrendingDown, ChevronRight, ShieldCheck, Crown
 } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
@@ -9,7 +9,7 @@ import { CustomerService } from "../services/CustomerService";
 import { SupplierService } from "../services/SupplierService";
 
 export const HamburgerMenu = ({ isOpen, onClose }) => {
-  const { currentStore, view, setView, theme, isSuperAdmin } = useStore();
+  const { currentStore, view, setView, theme, isSuperAdmin, readOnly } = useStore();
   const [metrics, setMetrics] = useState({ customerDebt: 0, supplierDebt: 0 });
 
   useEffect(() => {
@@ -118,6 +118,7 @@ export const HamburgerMenu = ({ isOpen, onClose }) => {
           <div>
             <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider px-2 mb-2">System</p>
             <div className="space-y-1">
+              <MenuItem icon={Crown} label={readOnly ? "Renew subscription" : "Subscription"} active={view === 'subscription'} onClick={() => handleNav('subscription')} badge={readOnly ? "EXPIRED" : undefined} />
               <MenuItem icon={Settings} label="Settings" active={view === 'settings'} onClick={() => handleNav('settings')} />
               <MenuItem icon={HelpCircle} label="Help & About" onClick={() => onClose()} />
             </div>

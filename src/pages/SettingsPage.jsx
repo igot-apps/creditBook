@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
-import { Save, Store, User, Phone, Mail, MapPin, DollarSign, Loader2, Crown, ChevronRight, Calendar, Zap, Check, AlertCircle, ShieldCheck } from "lucide-react";
+import { Save, Store, User, Phone, Mail, MapPin, DollarSign, Loader2, Crown, ChevronRight, Calendar, Zap, Check, AlertCircle, ShieldCheck, KeyRound, Trash2 } from "lucide-react";
 import useStore from "../store/useStore";
 import { supabase } from "../lib/supabaseClient";
 import { SubscriptionService } from "../services/SubscriptionService";
 import { TopBar } from "../components/TopBar";
+import { PinSetupModal } from "../components/QuickUnlock";
+import { QuickUnlockService } from "../services/QuickUnlockService";
 
 export const SettingsPage = () => {
   const { currentStore, setCurrentStore, showToast, setView, isSuperAdmin } = useStore();
@@ -18,6 +20,17 @@ export const SettingsPage = () => {
   });
   const [isSaving, setIsSaving] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState(null);
+  const [authUserId, setAuthUserId] = useState(null);
+  const [quickUnlockEnabled, setQuickUnlockEnabled] = useState(false);
+  const [showPinSetup, setShowPinSetup] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      const userId = data.user?.id || null;
+      setAuthUserId(userId);
+      setQuickUnlockEnabled(QuickUnlockService.hasPin(userId));
+    });
+  }, []);
 
   // Load current store data into the form
   useEffect(() => {
@@ -208,6 +221,17 @@ export const SettingsPage = () => {
           </button>
         )}
 
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-start gap-3">
+            <span className={`grid size-11 shrink-0 place-items-center rounded-xl ${quickUnlockEnabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'}`}><KeyRound size={22}/></span>
+            <div className="flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="font-black text-gray-900 dark:text-white">Quick unlock</h3><span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${quickUnlockEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{quickUnlockEnabled ? 'ON' : 'OFF'}</span></div><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Unlock this device with a 4–6 digit PIN. Your account password is still required after logout or session expiry.</p></div>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button onClick={() => setShowPinSetup(true)} disabled={!authUserId} className="flex-1 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{quickUnlockEnabled ? 'Change PIN' : 'Set up PIN'}</button>
+            {quickUnlockEnabled && <button onClick={() => { if (window.confirm('Remove quick unlock from this device?')) { QuickUnlockService.clearPin(authUserId); setQuickUnlockEnabled(false); showToast('✅ Quick unlock removed'); } }} className="grid size-11 place-items-center rounded-xl border border-red-200 text-red-600 dark:border-red-900"><Trash2 size={18}/></button>}
+          </div>
+        </div>
+
         {/* Form */}
         <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
           <div>
@@ -318,6 +342,7 @@ export const SettingsPage = () => {
           )}
         </button>
       </div>
+      {showPinSetup && authUserId && <PinSetupModal userId={authUserId} onClose={() => setShowPinSetup(false)} onSaved={() => { setQuickUnlockEnabled(true); showToast('✅ Quick unlock PIN saved'); }} />}
     </div>
   );
 };

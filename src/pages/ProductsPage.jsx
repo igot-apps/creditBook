@@ -7,9 +7,10 @@ import { TopBar } from "../components/TopBar";
 import { AddProductModal } from "../components/AddProductModal";
 
 export const ProductsPage = () => {
-  const { currentStore, setView, showToast } = useStore();
+  const { currentStore, setView, showToast, focusedProduct, setFocusedProduct } = useStore();
   const [products, setProducts] = useState([]);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(() => focusedProduct?.query || "");
+  const [highlightedProductId, setHighlightedProductId] = useState(() => focusedProduct?.id || null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
 
@@ -18,6 +19,20 @@ export const ProductsPage = () => {
       ProductService.getAll(currentStore.id).then(setProducts);
     }
   }, [currentStore?.id]);
+
+  useEffect(() => {
+    if (!focusedProduct?.id || products.length === 0) return;
+    setSearchQuery(focusedProduct.query || focusedProduct.name || "");
+    setHighlightedProductId(focusedProduct.id);
+    const scrollTimer = setTimeout(() => {
+      document.getElementById(`product-${focusedProduct.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+    const highlightTimer = setTimeout(() => {
+      setHighlightedProductId(null);
+      setFocusedProduct(null);
+    }, 3500);
+    return () => { clearTimeout(scrollTimer); clearTimeout(highlightTimer); };
+  }, [focusedProduct?.id, products.length, setFocusedProduct]);
 
   const query = searchQuery.trim();
   const results = useMemo(() => products.flatMap(product => {
@@ -128,14 +143,12 @@ export const ProductsPage = () => {
             </div>
           ) : (
             results.map(({ product, units, matchingUnits }) => (
-              <article key={product.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+              <article id={`product-${product.id}`} key={product.id} className={`rounded-2xl border bg-white p-4 shadow-sm transition-all duration-500 dark:bg-gray-800 ${highlightedProductId === product.id ? "border-indigo-500 ring-4 ring-indigo-200 dark:border-indigo-400 dark:ring-indigo-900" : "border-gray-200 dark:border-gray-700"}`}>
                 <div className="flex items-start gap-3">
-                  <div aria-hidden="true" className="shrink-0 text-3xl">{ProductService.getCategoryEmoji(product.category)}</div>
+                  <div aria-hidden="true" className="grid size-11 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300"><Package size={21}/></div>
                   <div className="min-w-0 flex-1">
                     <h2 className="break-words font-bold text-gray-900 dark:text-white">{product.name}</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {product.category || "Uncategorized"} {product.brand && `· ${product.brand}`}
-                    </p>
+                    {product.brand && <p className="text-sm text-gray-500 dark:text-gray-400">{product.brand}</p>}
                   </div>
                 </div>
                 {units.length > 0 && (

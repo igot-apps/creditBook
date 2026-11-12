@@ -235,10 +235,11 @@ export const RecordPurchasePage = () => {
           const existing = itemMap.get(key);
           existing.quantity = incomingQty;
           existing.total = existing.quantity * existing.price;
+          if (newItem.note !== undefined) existing.note = newItem.note;
         } else {
           itemMap.set(key, {
             productId: newItem.productId, name: newItem.name, brand: newItem.brand || "",
-            unitName: newItem.unitName, quantity: incomingQty, price: cleanPrice, total: incomingQty * cleanPrice
+            unitName: newItem.unitName, quantity: incomingQty, price: cleanPrice, total: incomingQty * cleanPrice, note: newItem.note || ""
           });
         }
       });
@@ -289,7 +290,7 @@ export const RecordPurchasePage = () => {
 
   const updateItem = (index, field, value) => {
     const updated = [...invoiceItems];
-    if (field !== 'name' && field !== 'unitName') {
+    if (field !== 'name' && field !== 'unitName' && field !== 'note') {
       updated[index][field] = value === "" ? "" : (parseFloat(value) || 0);
     } else {
       updated[index][field] = value;
@@ -523,6 +524,7 @@ export const RecordPurchasePage = () => {
                           <div className="flex-1 text-right min-w-[60px]"><p className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0), currency)}</p></div>
                         </div>
                         <UpdateDefaultPriceButton item={item} products={products} setProducts={setProducts} storeId={currentStore.id} priceType="purchase" currency={currency} showToast={showToast} />
+                        <input value={item.note || ""} onChange={event => updateItem(index, 'note', event.target.value)} placeholder="Add a note for this item (optional)" className="mt-2 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200" />
                       </div>
                     ))
                   )}

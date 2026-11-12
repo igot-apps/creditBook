@@ -78,6 +78,7 @@ export const DetailedInvoice = ({
           const existing = itemMap.get(key);
           existing.quantity = incomingQty; 
           existing.total = existing.price === cleanPrice ? incomingTotal : existing.quantity * existing.price;
+          if (newItem.note !== undefined) existing.note = newItem.note;
         } else {
           // New item - add it cleanly
           itemMap.set(key, {
@@ -87,7 +88,8 @@ export const DetailedInvoice = ({
             unitName: newItem.unitName,
             quantity: incomingQty,
             price: cleanPrice,
-            total: incomingTotal
+            total: incomingTotal,
+            note: newItem.note || ""
           });
         }
       });
@@ -167,7 +169,7 @@ export const DetailedInvoice = ({
         const price = parseFloat(item.price) || 0;
         item.total = total;
         item.quantity = total === "" ? "" : Number((total / price).toFixed(6));
-      } else if (field !== 'name' && field !== 'unitName') {
+      } else if (field !== 'name' && field !== 'unitName' && field !== 'note') {
         item[field] = value === "" ? "" : Math.max(0, numericValue || 0);
       } else {
         item[field] = value;
@@ -238,6 +240,7 @@ export const DetailedInvoice = ({
                 </div>
               </div>
               <UpdateDefaultPriceButton item={item} products={products} setProducts={setProducts} storeId={currentStore.id} priceType="sale" currency={currency} showToast={showToast} />
+              <input value={item.note || ""} onChange={event => updateItem(index, 'note', event.target.value)} placeholder="Add a note for this item (optional)" className="mt-2 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-800 outline-none focus:ring-2 focus:ring-green-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200" />
             </div>
           ))
         )}

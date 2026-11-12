@@ -85,7 +85,7 @@ export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProd
         {/* Header */}
         <div className="sticky top-0 bg-white dark:bg-gray-900 p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center z-10">
           <h3 className="font-bold text-lg text-gray-900 dark:text-white">
-            {editProduct ? "Edit Product Template" : "Create Product Template"}
+            {editProduct ? "Edit Product" : "Add New Product"}
           </h3>
           <button onClick={onClose} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full">
             <X size={18} className="text-gray-600 dark:text-gray-300" />
@@ -105,26 +105,15 @@ export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProd
             />
           </div>
 
-          {/* Category & Brand (Optional) */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Category (Optional)</label>
-              <input 
-                value={category} 
-                onChange={e => setCategory(e.target.value)} 
-                placeholder="e.g., Rice, Drinks" 
-                className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Brand (Optional)</label>
-              <input 
-                value={brand} 
-                onChange={e => setBrand(e.target.value)} 
-                placeholder="e.g., Royal, Nestle" 
-                className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm"
-              />
-            </div>
+          {/* Brand is useful for search; categories are intentionally omitted from daily setup. */}
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Brand or description (Optional)</label>
+            <input
+              value={brand}
+              onChange={e => setBrand(e.target.value)}
+              placeholder="e.g., Sadia, NAT, Seara Soft"
+              className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm"
+            />
           </div>
 
           {/* Units Section */}
@@ -192,7 +181,7 @@ export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProd
                 : "bg-indigo-600 hover:bg-indigo-700 text-white"
             }`}
           >
-            {editProduct ? "Update Product" : "Save Product Template"}
+            {editProduct ? "Update Product" : "Save Product"}
           </button>
         </div>
       </div>

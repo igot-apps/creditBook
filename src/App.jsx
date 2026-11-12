@@ -4,6 +4,7 @@ import useStore from "./store/useStore";
 import { BottomNav } from "./components/BottomNav";
 import { Toast } from "./components/Toast";
 import { Layout } from "./components/Layout";
+import { PinSetupModal, QuickUnlockScreen } from "./components/QuickUnlock";
 
 // Auth Pages
 import { LoginPage } from "./pages/LoginPage";
@@ -40,6 +41,7 @@ import { AuthService } from "./services/AuthService";
 import { SubscriptionService } from "./services/SubscriptionService";
 import { AdminService } from "./services/AdminService";
 import { supabase } from "./lib/supabaseClient";
+import { QuickUnlockService } from "./services/QuickUnlockService";
 
 // ==========================================
 // View-Only banner — shows once per session, auto-hides after 8s, dismissible
@@ -96,6 +98,22 @@ const AppRouter = () => {
   const { view, setView, currentStore, setCurrentStore, theme, pageKey, showToast, setReadOnly, isSuperAdmin, setIsSuperAdmin } = useStore();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [authUserId, setAuthUserId] = useState(null);
+  const [quickLocked, setQuickLocked] = useState(false);
+  const [showPinSetup, setShowPinSetup] = useState(false);
+
+  const configureQuickUnlock = (userId) => {
+    setAuthUserId(userId);
+    const passwordLogin = sessionStorage.getItem('creditbook_password_login') === '1';
+    if (passwordLogin) {
+      sessionStorage.removeItem('creditbook_password_login');
+      QuickUnlockService.markVerified(userId);
+      setQuickLocked(false);
+      if (!QuickUnlockService.hasPin(userId)) setShowPinSetup(true);
+      return;
+    }
+    setQuickLocked(QuickUnlockService.hasPin(userId) && !QuickUnlockService.isVerifiedThisSession(userId));
+  };
 
   // ==========================================
   // 1. AUTH CHECK (session + live auth changes)
@@ -106,11 +124,14 @@ const AppRouter = () => {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           setIsAuthenticated(true);
+          configureQuickUnlock(session.user.id);
           const store = await AuthService.getStore(session.user.id);
           setCurrentStore(store);
           setIsSuperAdmin(await AdminService.isSuperAdmin().catch(() => false));
         } else {
           setIsAuthenticated(false);
+          setAuthUserId(null);
+          setQuickLocked(false);
           setIsSuperAdmin(false);
         }
       } catch (error) {
@@ -130,16 +151,35 @@ const AppRouter = () => {
 
       if (session?.user) {
         setIsAuthenticated(true);
+        configureQuickUnlock(session.user.id);
         AuthService.getStore(session.user.id).then(setCurrentStore);
         AdminService.isSuperAdmin().then(setIsSuperAdmin).catch(() => setIsSuperAdmin(false));
       } else {
         setIsAuthenticated(false);
+        setAuthUserId(null);
+        setQuickLocked(false);
+        setShowPinSetup(false);
         setCurrentStore(null);
         setIsSuperAdmin(false);
       }
     });
     return () => subscription.unsubscribe();
   }, [setCurrentStore, setView, setIsSuperAdmin]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !authUserId) return;
+    let hiddenAt = 0;
+    const onVisibility = () => {
+      if (document.hidden) { hiddenAt = Date.now(); return; }
+      if (hiddenAt && Date.now() - hiddenAt >= 15 * 60 * 1000 && QuickUnlockService.hasPin(authUserId)) {
+        QuickUnlockService.clearSessionVerification(authUserId);
+        setQuickLocked(true);
+      }
+      hiddenAt = 0;
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [isAuthenticated, authUserId]);
 
   // ==========================================
   // 2. SUBSCRIPTION ACCESS → VIEW-ONLY MODE & TRIAL WELCOME
@@ -233,6 +273,13 @@ const AppRouter = () => {
     return <LoginPage />;
   }
 
+  if (quickLocked && authUserId) {
+    return <QuickUnlockScreen userId={authUserId} onUnlocked={() => setQuickLocked(false)} onUsePassword={async () => {
+      await supabase.auth.signOut({ scope: 'local' });
+      setView('home');
+    }} />;
+  }
+
   // ==========================================
   // 7. AUTHENTICATED ROUTER
   // ==========================================
@@ -268,6 +315,7 @@ const AppRouter = () => {
       <ReadOnlyBanner />
       <BottomNav />
       <Toast />
+      {showPinSetup && authUserId && <PinSetupModal userId={authUserId} onClose={() => setShowPinSetup(false)} onSaved={() => showToast('✅ Quick unlock PIN is ready')} />}
     </Layout>
   );
 };
