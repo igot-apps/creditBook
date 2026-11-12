@@ -1,6 +1,6 @@
 import {
   Home, Users, Truck, Package, BarChart3, Settings,
-  Moon, Sun, X, ChevronRight, Database, HelpCircle, User, Mail, LogOut
+  Moon, Sun, X, ChevronRight, HelpCircle, User, Mail, LogOut, ShieldCheck
 } from "lucide-react";
 import useStore from "../store/useStore";
 import { AuthService } from "../services/AuthService";
@@ -39,7 +39,8 @@ export const Layout = ({ children }) => {
     isMenuOpen,
     setIsMenuOpen,
     refreshPage,
-    showToast
+    showToast,
+    isSuperAdmin
   } = useStore();
 
   // Handle both snake_case (Supabase) and camelCase
@@ -131,13 +132,13 @@ export const Layout = ({ children }) => {
           <div className="space-y-1">
             <MenuItem icon={Package} label="Products" active={view === 'products'} onClick={() => navigateTo('products')} />
             <MenuItem icon={BarChart3} label="Reports" active={view === 'reports'} onClick={() => navigateTo('reports')} />
+            {isSuperAdmin && <MenuItem icon={ShieldCheck} label="Manage subscriptions" active={view === 'adminSubscriptions'} onClick={() => navigateTo('adminSubscriptions')} badge="ADMIN" />}
           </div>
         </div>
         {/* SYSTEM */}
         <div>
           <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider px-2 mb-2">System</p>
           <div className="space-y-1">
-            <MenuItem icon={Database} label="Backup & Restore" onClick={() => { setIsMenuOpen(false); alert("Coming soon!"); }} badge="Soon" />
             <MenuItem icon={Settings} label="Settings" active={view === 'settings'} onClick={() => navigateTo('settings')} />
             <MenuItem icon={HelpCircle} label="Help & About" onClick={() => { setIsMenuOpen(false); alert("CreditBook v3.0\n\nCloud-synced with Supabase.\nYour business data is safe online!"); }} />
           </div>

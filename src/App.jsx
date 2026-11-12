@@ -34,9 +34,11 @@ import { RecordSupplierPaymentPage } from "./pages/RecordSupplierPaymentPage";
 // Subscription Pages
 import { SubscriptionPage } from "./pages/SubscriptionPage";
 import { SubscriptionVerifyPage } from "./pages/SubscriptionVerifyPage";
+import { AdminSubscriptionPage } from "./pages/AdminSubscriptionPage";
 
 import { AuthService } from "./services/AuthService";
 import { SubscriptionService } from "./services/SubscriptionService";
+import { AdminService } from "./services/AdminService";
 import { supabase } from "./lib/supabaseClient";
 
 // ==========================================
@@ -91,7 +93,7 @@ const ReadOnlyBanner = () => {
 };
 
 const AppRouter = () => {
-  const { view, setView, currentStore, setCurrentStore, theme, pageKey, showToast, setReadOnly } = useStore();
+  const { view, setView, currentStore, setCurrentStore, theme, pageKey, showToast, setReadOnly, isSuperAdmin, setIsSuperAdmin } = useStore();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -106,8 +108,10 @@ const AppRouter = () => {
           setIsAuthenticated(true);
           const store = await AuthService.getStore(session.user.id);
           setCurrentStore(store);
+          setIsSuperAdmin(await AdminService.isSuperAdmin().catch(() => false));
         } else {
           setIsAuthenticated(false);
+          setIsSuperAdmin(false);
         }
       } catch (error) {
         console.error("Auth check failed:", error);
@@ -127,13 +131,15 @@ const AppRouter = () => {
       if (session?.user) {
         setIsAuthenticated(true);
         AuthService.getStore(session.user.id).then(setCurrentStore);
+        AdminService.isSuperAdmin().then(setIsSuperAdmin).catch(() => setIsSuperAdmin(false));
       } else {
         setIsAuthenticated(false);
         setCurrentStore(null);
+        setIsSuperAdmin(false);
       }
     });
     return () => subscription.unsubscribe();
-  }, [setCurrentStore, setView]);
+  }, [setCurrentStore, setView, setIsSuperAdmin]);
 
   // ==========================================
   // 2. SUBSCRIPTION ACCESS → VIEW-ONLY MODE & TRIAL WELCOME
@@ -248,6 +254,7 @@ const AppRouter = () => {
       case "recordSupplierPayment": return <RecordSupplierPaymentPage key={pageKey} />;
       case "subscription": return <SubscriptionPage key={pageKey} />;
       case "subscriptionVerify": return <SubscriptionVerifyPage key={pageKey} />;
+      case "adminSubscriptions": return isSuperAdmin ? <AdminSubscriptionPage key={pageKey} /> : <SettingsPage key={pageKey} />;
       // Fallback for auth pages if accessed while logged in
       case "forgotPassword": return <ForgotPasswordPage />;
       case "resetPassword": return <ResetPasswordPage />;

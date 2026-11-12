@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Check, CreditCard, Crown, Loader2, AlertCircle, Calendar, Zap, RefreshCw, Clock, Gift } from "lucide-react";
 import useStore from "../store/useStore";
-import { SubscriptionService, PLANS } from "../services/SubscriptionService";
+import { SubscriptionService } from "../services/SubscriptionService";
 import { formatCurrency } from "../utils/helpers";
 import { TopBar } from "../components/TopBar";
 
@@ -15,6 +15,7 @@ export const SubscriptionPage = () => {
   const [isVerifying, setIsVerifying] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
+  const [plans, setPlans] = useState([]);
 
   const loadSubscriptionStatus = () => {
     if (!currentStore?.id) return;
@@ -24,7 +25,21 @@ export const SubscriptionPage = () => {
       .finally(() => setLoadingStatus(false));
   };
 
-  useEffect(() => { loadSubscriptionStatus(); }, [currentStore?.id]);
+  useEffect(() => {
+    loadSubscriptionStatus();
+    SubscriptionService.getPlans()
+      .then((rows) => {
+        setPlans(rows.map((plan) => ({
+          ...plan,
+          price: Number(plan.amount),
+          duration: `${plan.duration_days} days`,
+          features: ["Customer and supplier account tracking", "Invoices and payment history", "Secure cloud sync"],
+          popular: plan.id === "yearly",
+        })));
+        if (rows.length && !rows.some((plan) => plan.id === selectedPlan)) setSelectedPlan(rows[0].id);
+      })
+      .catch((error) => showToast(`❌ ${error.message}`));
+  }, [currentStore?.id]);
 
   // 👇 A pending payment that still has its reference (and is < 24h old)
   const pendingPayment = subscriptionStatus?.status === 'pending' && subscriptionStatus?.paystack_reference;
@@ -87,24 +102,6 @@ export const SubscriptionPage = () => {
     }
   };
 
-  const plans = [
-    {
-      id: "monthly",
-      name: "Monthly",
-      price: PLANS.monthly.amount,
-      duration: "30 days",
-      features: ["Unlimited transactions", "Cloud backup", "Priority support"],
-      popular: false
-    },
-    {
-      id: "yearly",
-      name: "Yearly",
-      price: PLANS.yearly.amount,
-      duration: "365 days",
-      features: ["Unlimited transactions", "Cloud backup", "Priority support", "2 months free"],
-      popular: true
-    },
-  ];
   const selectedPlanData = plans.find(p => p.id === selectedPlan);
 
   if (loadingStatus) {
@@ -215,7 +212,7 @@ export const SubscriptionPage = () => {
         {/* Header */}
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Choose Your Plan</h1>
-          <p className="text-gray-600 dark:text-gray-400">Unlock premium features for your business</p>
+          <p className="text-gray-600 dark:text-gray-400">Keep every customer, supplier, invoice and payment record available.</p>
         </div>
 
         {/* Plan Cards */}
@@ -281,10 +278,10 @@ export const SubscriptionPage = () => {
         {/* Subscribe Button */}
         <button
           onClick={handleSubscribe}
-          disabled={isProcessing || isVerifying || !email || !phone}
+          disabled={isProcessing || isVerifying || !email || !phone || !selectedPlanData}
           className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isProcessing ? <><Loader2 className="animate-spin" size={20} /> Processing...</> : <><Zap size={20} /> Subscribe for {formatCurrency(selectedPlanData.price, "GH₵")}</>}
+          {isProcessing ? <><Loader2 className="animate-spin" size={20} /> Processing...</> : selectedPlanData ? <><Zap size={20} /> Subscribe for {formatCurrency(selectedPlanData.price, "GH₵")}</> : "No plan currently available"}
         </button>
 
         <p className="text-xs text-center text-gray-500 dark:text-gray-400">

@@ -136,6 +136,7 @@ export const HomePage = () => {
           <div>
             <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">{getGreeting()},</p>
             <h2 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">{ownerName}</h2>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Track who owes you and what you owe.</p>
           </div>
           <button
             onClick={() => setShowSearch(true)}
@@ -147,11 +148,13 @@ export const HomePage = () => {
         </div>
 
         <div className="grid grid-cols-2 gap-2.5">
-          <button onClick={() => startTransaction("record")} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-green-700 px-2.5 py-3 text-sm font-semibold text-white transition active:scale-[0.98]">
-            <ShoppingCart size={18} className="shrink-0" /> Record sale
+          <button onClick={() => startTransaction("record")} className="flex min-h-20 items-center gap-3 rounded-2xl bg-green-700 px-3 py-3 text-left text-white shadow-sm transition active:scale-[0.98]">
+            <ShoppingCart size={22} className="shrink-0" />
+            <span><strong className="block text-sm">Sell to customer</strong><span className="mt-0.5 block text-[11px] text-green-100">Track payment or amount due</span></span>
           </button>
-          <button onClick={() => startTransaction("recordSupplierPurchase")} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-2.5 py-3 text-sm font-semibold text-indigo-800 transition active:scale-[0.98] dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">
-            <Truck size={18} className="shrink-0" /> Record purchase
+          <button onClick={() => startTransaction("recordSupplierPurchase")} className="flex min-h-20 items-center gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 px-3 py-3 text-left text-indigo-900 shadow-sm transition active:scale-[0.98] dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-100">
+            <Truck size={22} className="shrink-0" />
+            <span><strong className="block text-sm">Buy from supplier</strong><span className="mt-0.5 block text-[11px] text-indigo-700 dark:text-indigo-300">Track payment or amount owed</span></span>
           </button>
         </div>
 

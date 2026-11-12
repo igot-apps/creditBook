@@ -338,7 +338,7 @@ export const RecordPurchasePage = () => {
       };
       await SuspendedTransactionService.suspendTransaction(data);
       clearAutoDraft('purchase');
-      showToast("⏸️ Purchase suspended");
+      showToast("Supplier invoice suspended");
       setView("home");
     } catch (error) {
       console.error(error);
@@ -388,7 +388,7 @@ export const RecordPurchasePage = () => {
           await SuspendedTransactionService.deleteSuspendedTransaction(suspendedId);
           setSuspendedId(null);
         }
-        showToast("✅ Transaction recorded!");
+        showToast("Supplier invoice saved");
       }
       setLastScrollPosition(window.scrollY);
       setStoreSelectedSupplier(selectedSupplier);
@@ -407,7 +407,7 @@ export const RecordPurchasePage = () => {
 
   return (
     <div className="app-screen min-h-screen bg-gray-50 dark:bg-gray-950">
-      <TopBar title={isFixing ? (transactionType === "purchase" ? "Fix Purchase" : "Fix Payment") : (transactionType === "purchase" ? "Record Purchase" : "Make Payment")} showBack={true} onBack={isFixing ? handleAbortFix : () => setView("suppliers")} />
+      <TopBar title={isFixing ? (transactionType === "purchase" ? "Fix Supplier Invoice" : "Fix Supplier Payment") : (transactionType === "purchase" ? "Buy from Supplier" : "Pay Supplier")} showBack={true} onBack={isFixing ? handleAbortFix : () => setView("suppliers")} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
         {isFixing && (
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 p-3 rounded-r-xl shadow-sm">
@@ -590,7 +590,7 @@ export const RecordPurchasePage = () => {
                     disabled={isSaving || isSuspending}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg disabled:opacity-60"
                   >
-                    {isSaving ? <><Loader2 className="animate-spin" size={24} /> Saving...</> : <><Check size={24} /> Save Purchase</>}
+                    {isSaving ? <><Loader2 className="animate-spin" size={24} /> Saving...</> : <><Check size={24} /> Save Purchase Invoice</>}
                   </button>
                 </div>
               )}

@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
-import { Save, Store, User, Phone, Mail, MapPin, DollarSign, Loader2, Crown, ChevronRight, Calendar, Zap, Check, AlertCircle } from "lucide-react";
+import { Save, Store, User, Phone, Mail, MapPin, DollarSign, Loader2, Crown, ChevronRight, Calendar, Zap, Check, AlertCircle, ShieldCheck } from "lucide-react";
 import useStore from "../store/useStore";
 import { supabase } from "../lib/supabaseClient";
 import { SubscriptionService } from "../services/SubscriptionService";
 import { TopBar } from "../components/TopBar";
 
 export const SettingsPage = () => {
-  const { currentStore, setCurrentStore, showToast, setView } = useStore();
+  const { currentStore, setCurrentStore, showToast, setView, isSuperAdmin } = useStore();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -165,7 +165,7 @@ export const SettingsPage = () => {
           </div>
         </div>
         <div className="space-y-1.5 mb-4">
-          {["Unlimited transactions", "Cloud backup & sync", "Priority support"].map((f, i) => (
+          {["Customer and supplier accounts", "Invoices and payment history", "Secure cloud sync"].map((f, i) => (
             <div key={i} className="flex items-center gap-2 text-xs text-indigo-100">
               <Check size={12} className="text-green-300" /> {f}
             </div>
@@ -199,6 +199,14 @@ export const SettingsPage = () => {
 
         {/* 👇 Subscription Card */}
         {renderSubscriptionCard()}
+
+        {isSuperAdmin && (
+          <button onClick={() => setView("adminSubscriptions")} className="w-full text-left rounded-2xl p-5 bg-slate-950 dark:bg-indigo-950 text-white shadow-lg flex items-center gap-4 active:scale-[.99] transition">
+            <span className="p-3 rounded-xl bg-indigo-500/25 text-indigo-200"><ShieldCheck size={24} /></span>
+            <span className="flex-1"><span className="block text-xs font-bold uppercase tracking-wider text-indigo-300">Superadmin only</span><span className="block font-black text-lg">Manage subscriptions</span><span className="block text-xs text-slate-300 mt-1">Prices, plan durations and store access</span></span>
+            <ChevronRight size={20} className="text-indigo-300" />
+          </button>
+        )}
 
         {/* Form */}
         <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">

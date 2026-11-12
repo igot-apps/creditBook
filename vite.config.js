@@ -7,8 +7,6 @@ export default defineConfig(({ mode }) => {
   const base = isGitHubPages ? '/creditBook/' : '/'
   return {
     base,
-    define: isGitHubPages ? { 'import.meta.env.VITE_PAYSTACK_SECRET_KEY': 'undefined' } : {},
-  
     plugins: [
       react(),
       VitePWA({

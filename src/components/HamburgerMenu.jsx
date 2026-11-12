@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { 
-  Home, Users, Truck, Package, BarChart3, Bell, Database, 
-  Moon, Sun, Settings, HelpCircle, X, TrendingUp, TrendingDown, ChevronRight
+  Home, Users, Truck, Package, BarChart3, Bell,
+  Moon, Sun, Settings, HelpCircle, X, TrendingUp, TrendingDown, ChevronRight, ShieldCheck
 } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
@@ -9,7 +9,7 @@ import { CustomerService } from "../services/CustomerService";
 import { SupplierService } from "../services/SupplierService";
 
 export const HamburgerMenu = ({ isOpen, onClose }) => {
-  const { currentStore, view, setView, theme } = useStore();
+  const { currentStore, view, setView, theme, isSuperAdmin } = useStore();
   const [metrics, setMetrics] = useState({ customerDebt: 0, supplierDebt: 0 });
 
   useEffect(() => {
@@ -110,6 +110,7 @@ export const HamburgerMenu = ({ isOpen, onClose }) => {
               <MenuItem icon={Package} label="Products" active={view === 'products'} onClick={() => handleNav('products')} />
               <MenuItem icon={BarChart3} label="Reports" active={view === 'reports'} onClick={() => handleNav('reports')} />
               <MenuItem icon={Bell} label="Follow-ups" active={view === 'followups'} onClick={() => handleNav('followups')} />
+              {isSuperAdmin && <MenuItem icon={ShieldCheck} label="Manage subscriptions" active={view === 'adminSubscriptions'} onClick={() => handleNav('adminSubscriptions')} badge="ADMIN" />}
             </div>
           </div>
 
@@ -117,7 +118,6 @@ export const HamburgerMenu = ({ isOpen, onClose }) => {
           <div>
             <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider px-2 mb-2">System</p>
             <div className="space-y-1">
-              <MenuItem icon={Database} label="Backup & Restore" onClick={() => onClose()} badge="Soon" />
               <MenuItem icon={Settings} label="Settings" active={view === 'settings'} onClick={() => handleNav('settings')} />
               <MenuItem icon={HelpCircle} label="Help & About" onClick={() => onClose()} />
             </div>

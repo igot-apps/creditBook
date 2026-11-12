@@ -1,9 +1,9 @@
-import { Package, BarChart3, Download, Database, Settings, HelpCircle, FileText, ChevronRight } from "lucide-react";
+import { Package, BarChart3, Download, Settings, HelpCircle, FileText, ChevronRight, ShieldCheck } from "lucide-react";
 import useStore from "../store/useStore";
 import { TopBar } from "../components/TopBar";
 
 export const MorePage = () => {
-  const { setView, showToast, currentStore } = useStore();
+  const { setView, showToast, currentStore, isSuperAdmin } = useStore();
 
   const menuGroups = [
     {
@@ -46,19 +46,19 @@ export const MorePage = () => {
           bg: "bg-green-50 dark:bg-green-900/20",
           action: () => showToast("Export feature coming soon") 
         },
-        { 
-          label: "Backup & Restore", 
-          description: "Secure your business data", 
-          icon: Database, 
-          color: "text-orange-600 dark:text-orange-400", 
-          bg: "bg-orange-50 dark:bg-orange-900/20",
-          action: () => showToast("Backup feature coming soon") 
-        },
       ]
     },
     {
       title: "App Settings",
       items: [
+        ...(isSuperAdmin ? [{
+          label: "Manage Subscriptions",
+          description: "Plans, prices, payments and store access",
+          icon: ShieldCheck,
+          color: "text-indigo-600 dark:text-indigo-400",
+          bg: "bg-indigo-50 dark:bg-indigo-900/20",
+          action: () => setView("adminSubscriptions")
+        }] : []),
         { 
           label: "Store Settings", 
           description: "Name, currency, and details", 

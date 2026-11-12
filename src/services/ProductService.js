@@ -1,5 +1,25 @@
 import { supabase } from '../lib/supabaseClient';
 
+const updateUnitVisibilityFields = async (productId, unitKeys, changes) => {
+  const allowedChanges = Object.fromEntries(
+    Object.entries(changes).filter(([key]) => key === 'visibleInSales' || key === 'visibleInPurchases')
+  );
+  const keys = new Set(unitKeys);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data: product, error: readError } = await supabase
+      .from('products').select('units').eq('id', productId).single();
+    if (readError) throw readError;
+    const units = product.units || [];
+    const updatedUnits = units.map(unit => keys.has(unit.id || unit.name) ? { ...unit, ...allowedChanges } : unit);
+    const update = supabase.from('products').update({ units: updatedUnits }).eq('id', productId);
+    const unchanged = product.units == null ? update.is('units', null) : update.eq('units', JSON.stringify(product.units));
+    const { data, error } = await unchanged.select('units').maybeSingle();
+    if (error) throw error;
+    if (data) return data.units;
+  }
+  throw new Error('The product changed while saving. Please try again.');
+};
+
 // 👇 Category emojis for the product picker UI
 export const CATEGORY_EMOJIS = {
   "General": "📦",
@@ -131,6 +151,12 @@ export const ProductService = {
     }
     throw new Error('The product changed while saving. Please try again.');
   },
+
+  updateUnitVisibility: async (productId, unitKey, changes) =>
+    updateUnitVisibilityFields(productId, [unitKey], changes),
+
+  bulkUpdateUnitVisibility: async (productId, unitKeys, changes) =>
+    updateUnitVisibilityFields(productId, unitKeys, changes),
 
   delete: async (id) => {
     const { error } = await supabase

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Home, Users, Truck, MoreHorizontal, Plus, X, ShoppingCart, Banknote, DollarSign, Package, Settings, Database, ChevronRight } from "lucide-react";
+import { Home, Users, Truck, MoreHorizontal, Plus, X, ShoppingCart, Banknote, DollarSign, Package, Settings, ChevronRight } from "lucide-react";
 import useStore from "../store/useStore";
 
 // Color styles for the quick action buttons
@@ -175,7 +175,7 @@ export const BottomNav = () => {
         </div>
       )}
 
-      {/* ⋯ MORE MENU BOTTOM SHEET (Products, Backup, Settings) */}
+      {/* ⋯ MORE MENU BOTTOM SHEET */}
       {showMoreMenu && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 backdrop-blur-sm lg:pl-72" onClick={() => setShowMoreMenu(false)}>
           <div
@@ -198,16 +198,6 @@ export const BottomNav = () => {
                 subtitle="Manage inventory & catalog"
                 iconBg="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400"
                 onClick={() => navigate('products')}
-              />
-
-              {/* Backup & Restore (Import / Export) */}
-              <MenuButton
-                icon={Database}
-                title="Backup & Restore"
-                subtitle="Export / Import your data"
-                iconBg="bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
-                onClick={() => { setShowMoreMenu(false); alert("Backup & Restore feature coming in the next update!"); }}
-                badge="Soon"
               />
 
               {/* Settings */}

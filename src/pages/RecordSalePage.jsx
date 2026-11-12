@@ -259,7 +259,7 @@ export const RecordSalePage = () => {
       };
       await SuspendedTransactionService.suspendTransaction(data);
       clearAutoDraft('sale');
-      showToast("️ Sale suspended");
+      showToast("Invoice suspended");
       setView("home");
     } catch (error) {
       console.error(error);
@@ -312,7 +312,7 @@ export const RecordSalePage = () => {
           await SuspendedTransactionService.deleteSuspendedTransaction(suspendedId);
           setSuspendedId(null);
         }
-        showToast("✅ Sale recorded!");
+        showToast("Customer invoice saved");
       }
       setLastScrollPosition(window.scrollY);
       setStoreSelectedCustomer(selectedCustomer);
@@ -331,7 +331,7 @@ export const RecordSalePage = () => {
 
   return (
     <div className="app-screen min-h-screen bg-gray-50 dark:bg-gray-950">
-      <TopBar title={isFixing ? "Fix Sale" : "Record Sale"} showBack={true} onBack={isFixing ? handleAbortFix : () => setView("customers")} />
+      <TopBar title={isFixing ? "Fix Customer Invoice" : "Sell to Customer"} showBack={true} onBack={isFixing ? handleAbortFix : () => setView("customers")} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-4">
         {isFixing && (
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 p-3 rounded-r-xl shadow-sm">
@@ -439,14 +439,14 @@ export const RecordSalePage = () => {
               disabled={isSuspending || isSaving}
               className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-sm disabled:opacity-60"
             >
-              {isSuspending ? <><Loader2 className="animate-spin" size={20} /> Suspending...</> : <><Pause size={20} /> Suspend Sale</>}
+              {isSuspending ? <><Loader2 className="animate-spin" size={20} /> Suspending...</> : <><Pause size={20} /> Suspend Invoice</>}
             </button>
             <button
               onClick={handleSaveInvoice}
               disabled={isSaving || isSuspending}
               className="bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg disabled:opacity-60"
             >
-              {isSaving ? <><Loader2 className="animate-spin" size={24} /> Saving...</> : <><Check size={24} /> Save Sale</>}
+              {isSaving ? <><Loader2 className="animate-spin" size={24} /> Saving...</> : <><Check size={24} /> Save Invoice</>}
             </button>
           </div>
         )}
@@ -457,7 +457,7 @@ export const RecordSalePage = () => {
             disabled={isSaving || isSuspending}
             className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg disabled:opacity-60"
           >
-            {isSaving ? <><Loader2 className="animate-spin" size={24} /> Saving...</> : <><Check size={24} /> Save Corrected Sale</>}
+            {isSaving ? <><Loader2 className="animate-spin" size={24} /> Saving...</> : <><Check size={24} /> Save Corrected Invoice</>}
           </button>
         )}
       </div>

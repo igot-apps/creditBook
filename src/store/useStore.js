@@ -4,6 +4,8 @@ const useStore = create((set, get) => ({
   // --- Auth & Store State ---
   currentStore: null,
   setCurrentStore: (store) => set({ currentStore: store }),
+  isSuperAdmin: false,
+  setIsSuperAdmin: (value) => set({ isSuperAdmin: Boolean(value) }),
 
   // --- 👇 NEW: Subscription Access (View-Only Mode) ---
   readOnly: false,

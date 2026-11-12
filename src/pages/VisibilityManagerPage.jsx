@@ -48,23 +48,27 @@ export const VisibilityManagerPage = () => {
   }, [products, searchQuery, activeFilter]);
 
   // 3. Instant Toggle Handler (Optimistic UI)
-  const handleToggle = async (productId, unitId, field) => {
+  const handleToggle = async (productId, unitKey, field) => {
     const product = products.find(p => p.id === productId);
-    const unit = product?.units.find(u => u.id === unitId);
+    const unit = product?.units.find(u => (u.id || u.name) === unitKey);
     if (!unit) return;
 
-    const newVal = !unit[field];
+    const newVal = unit[field] === false;
     
     // Optimistic local update for instant feel
     setProducts(prev => prev.map(p => p.id === productId ? {
-      ...p, units: p.units.map(u => u.id === unitId ? { ...u, [field]: newVal } : u)
+      ...p, units: p.units.map(u => (u.id || u.name) === unitKey ? { ...u, [field]: newVal } : u)
     } : p));
 
     try {
-      await ProductService.updateUnitVisibility(productId, unitId, { [field]: newVal });
+      const units = await ProductService.updateUnitVisibility(productId, unitKey, { [field]: newVal });
+      setProducts(prev => prev.map(p => p.id === productId ? { ...p, units } : p));
     } catch (error) {
       console.error("Failed to update visibility", error);
-      showToast("❌ Failed to save changes");
+      setProducts(prev => prev.map(p => p.id === productId ? {
+        ...p, units: p.units.map(u => (u.id || u.name) === unitKey ? { ...u, [field]: unit[field] } : u)
+      } : p));
+      showToast(error instanceof Error ? error.message : "Failed to save changes");
     }
   };
 
@@ -80,7 +84,7 @@ export const VisibilityManagerPage = () => {
 
   const selectAllVisible = () => {
     const allKeys = new Set();
-    processedProducts.forEach(p => p.units.forEach(u => allKeys.add(`${p.id}__${u.id}`)));
+    processedProducts.forEach(p => p.units.forEach(u => allKeys.add(`${p.id}__${u.id || u.name}`)));
     setSelectedUnits(allKeys);
   };
 
@@ -89,9 +93,12 @@ export const VisibilityManagerPage = () => {
   // 5. Bulk Action Handler
   const executeBulkAction = async (field, value) => {
     const updates = {}; // { productId: [unitIds] }
+    const previousProducts = products;
     
     selectedUnits.forEach(key => {
-      const [productId, unitId] = key.split("__");
+      const separator = key.indexOf("__");
+      const productId = key.slice(0, separator);
+      const unitId = key.slice(separator + 2);
       if (!updates[productId]) updates[productId] = [];
       updates[productId].push(unitId);
     });
@@ -109,11 +116,17 @@ export const VisibilityManagerPage = () => {
       const promises = Object.entries(updates).map(([productId, unitIds]) => 
         ProductService.bulkUpdateUnitVisibility(productId, unitIds, { [field]: value })
       );
-      await Promise.all(promises);
+      const savedUnits = await Promise.all(promises);
+      const productIds = Object.keys(updates);
+      setProducts(prev => prev.map(product => {
+        const index = productIds.indexOf(product.id);
+        return index >= 0 ? { ...product, units: savedUnits[index] } : product;
+      }));
       showToast(`✅ Updated ${selectedUnits.size} units`);
     } catch (error) {
       console.error("Bulk update failed", error);
-      showToast("❌ Failed to save bulk changes");
+      setProducts(previousProducts);
+      showToast(error instanceof Error ? error.message : "Failed to save bulk changes");
     }
 
     setIsBulkMode(false);
@@ -202,11 +215,12 @@ export const VisibilityManagerPage = () => {
                   {product.units.map(unit => {
                     const isSalesVisible = unit.visibleInSales !== false;
                     const isPurchasesVisible = unit.visibleInPurchases !== false;
-                    const selectionKey = `${product.id}__${unit.id}`;
+                    const unitKey = unit.id || unit.name;
+                    const selectionKey = `${product.id}__${unitKey}`;
                     const isSelected = selectedUnits.has(selectionKey);
 
                     return (
-                      <div key={unit.id} className={`p-3 flex items-center gap-3 ${isBulkMode ? (isSelected ? "bg-indigo-50 dark:bg-indigo-900/20" : "") : "active:bg-gray-50 dark:active:bg-gray-700/50"}`}>
+                      <div key={unit.id || unit.name} className={`p-3 flex items-center gap-3 ${isBulkMode ? (isSelected ? "bg-indigo-50 dark:bg-indigo-900/20" : "") : "active:bg-gray-50 dark:active:bg-gray-700/50"}`}>
                         
                         {/* Bulk Checkbox */}
                         {isBulkMode && (
@@ -228,7 +242,7 @@ export const VisibilityManagerPage = () => {
                         {!isBulkMode && (
                           <div className="flex gap-2 flex-shrink-0">
                             <button 
-                              onClick={() => handleToggle(product.id, unit.id, "visibleInSales")}
+                              onClick={() => handleToggle(product.id, unitKey, "visibleInSales")}
                               className={`w-9 h-9 rounded-lg flex items-center justify-center transition active:scale-90 ${
                                 isSalesVisible ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400" : "bg-gray-100 dark:bg-gray-700 text-gray-400"
                               }`}
@@ -237,7 +251,7 @@ export const VisibilityManagerPage = () => {
                               <ShoppingCart size={16} />
                             </button>
                             <button 
-                              onClick={() => handleToggle(product.id, unit.id, "visibleInPurchases")}
+                              onClick={() => handleToggle(product.id, unitKey, "visibleInPurchases")}
                               className={`w-9 h-9 rounded-lg flex items-center justify-center transition active:scale-90 ${
                                 isPurchasesVisible ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400" : "bg-gray-100 dark:bg-gray-700 text-gray-400"
                               }`}
