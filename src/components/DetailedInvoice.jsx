@@ -307,6 +307,7 @@ export const DetailedInvoice = ({
         onClose={() => setShowAddProductModal(false)}
         onSave={handleSaveProduct}
         initialName={newProductName}
+        priceType="sale"
       />
     </div>
   );

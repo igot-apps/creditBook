@@ -3,7 +3,7 @@ import { X, Plus, Trash2 } from "lucide-react";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
-export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProduct }) => {
+export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProduct, priceType = "both" }) => {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [brand, setBrand] = useState("");
@@ -146,8 +146,8 @@ export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProd
                     className="w-full px-2 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 dark:text-white"
                   />
                   
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
+                  <div className={`grid gap-2 ${priceType === "both" ? "grid-cols-2" : "grid-cols-1"}`}>
+                    {priceType !== "sale" && <div>
                       <label className="text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Buying Price</label>
                       <input 
                         type="number" step="0.01"
@@ -156,8 +156,8 @@ export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProd
                         placeholder="0.00" 
                         className={`w-full px-2 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 dark:text-white ${noSpinnerClass}`}
                       />
-                    </div>
-                    <div>
+                    </div>}
+                    {priceType !== "purchase" && <div>
                       <label className="text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Selling Price</label>
                       <input 
                         type="number" step="0.01"
@@ -166,7 +166,7 @@ export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProd
                         placeholder="0.00" 
                         className={`w-full px-2 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 dark:text-white ${noSpinnerClass}`}
                       />
-                    </div>
+                    </div>}
                   </div>
                 </div>
               ))}

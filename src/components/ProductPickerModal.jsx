@@ -489,14 +489,15 @@ export const ProductPickerModal = ({
                   <label className="block text-sm font-semibold">Type name
                     <input autoFocus required name="typeName" placeholder="e.g. Seara carton" className="mt-1 block w-full rounded-lg border border-gray-300 bg-transparent p-2 dark:border-gray-600" />
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="min-w-0 text-sm">Purchase price
+                  {priceType === "purchase" ? (
+                    <label className="block text-sm">Buying price
                       <input name="purchasePrice" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" className="mt-1 block w-full rounded-lg border border-gray-300 bg-transparent p-2 dark:border-gray-600" />
                     </label>
-                    <label className="min-w-0 text-sm">Sale price
+                  ) : (
+                    <label className="block text-sm">Selling price
                       <input name="salePrice" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" className="mt-1 block w-full rounded-lg border border-gray-300 bg-transparent p-2 dark:border-gray-600" />
                     </label>
-                  </div>
+                  )}
                   {typeError && <p role="alert" className="text-sm text-red-700 dark:text-red-400">{typeError}</p>}
                   <div className="flex justify-end gap-2">
                     <button type="button" disabled={isSavingType} onClick={() => setShowAddType(false)} className="rounded-lg px-3 py-2 text-sm font-semibold">Cancel</button>
