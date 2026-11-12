@@ -79,7 +79,7 @@ export const ReceiptModal = ({ transaction, onClose, onUpdated }) => {
         const qty = parseFloat(i.quantity) || 0;
         const price = parseFloat(i.price) || 0;
         L.push(`${i.name}${i.brand ? ` (${i.brand})` : ""}`);
-        L.push(`  ${qty} ${i.unitName || ""} x ${formatCurrency(price, currency)} = ${formatCurrency(qty * price, currency)}`);
+        L.push(i.isQuickInvoice ? `  Quick invoice total: ${formatCurrency(qty * price, currency)}` : `  ${qty} ${i.unitName || ""} x ${formatCurrency(price, currency)} = ${formatCurrency(qty * price, currency)}`);
         if (i.note) L.push(`  Note: ${i.note}`);
       });
     } else {
@@ -171,9 +171,7 @@ export const ReceiptModal = ({ transaction, onClose, onUpdated }) => {
                       </p>
                       <p className="font-bold text-sm text-gray-900 dark:text-white">{formatCurrency(qty * price, currency)}</p>
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {qty} {item.unitName || "unit"} × {formatCurrency(price, currency)}
-                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{item.isQuickInvoice ? "Quick invoice — individual items not listed" : `${qty} ${item.unitName || "unit"} × ${formatCurrency(price, currency)}`}</p>
                     {item.note && <p className="mt-1 text-xs italic text-amber-700 dark:text-amber-300">Note: {item.note}</p>}
                   </div>
                 );

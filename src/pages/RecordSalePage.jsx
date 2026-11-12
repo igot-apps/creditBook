@@ -1,6 +1,6 @@
 import { DiscardInvoiceModal } from "../components/DiscardInvoiceModal";
 import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Users, Check, Pause, Loader2 } from "lucide-react";
+import { Search, Plus, Users, Check, Pause, Loader2, List, Zap, AlertTriangle } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
@@ -9,6 +9,7 @@ import { TransactionService } from "../services/TransactionService";
 import { SuspendedTransactionService } from "../services/SuspendedTransactionService";
 import { DetailedInvoice } from "../components/DetailedInvoice";
 import { TopBar } from "../components/TopBar";
+import { InvoicePayments } from "../components/InvoicePayments";
 
 export const RecordSalePage = () => {
   const {
@@ -48,6 +49,20 @@ export const RecordSalePage = () => {
   const [saleDate, setSaleDate] = useState(() => new Date().toISOString());
   const [isSaving, setIsSaving] = useState(false);
   const [isSuspending, setIsSuspending] = useState(false);
+  const [invoiceStyle, setInvoiceStyle] = useState("itemized");
+  const [quickDescription, setQuickDescription] = useState("Items not listed");
+
+  const quickInvoiceItem = () => ({
+    productId: null,
+    name: quickDescription.trim() || "Items not listed",
+    brand: "",
+    unitName: "Quick invoice",
+    quantity: 1,
+    price: parseFloat(tx.amount) || 0,
+    total: parseFloat(tx.amount) || 0,
+    isQuickInvoice: true,
+  });
+  const effectiveItems = invoiceStyle === "quick" ? [quickInvoiceItem()] : invoiceItems;
 
   // Load Draft on Mount
   useEffect(() => { useStore.getState().loadDraft('sale'); }, []);
@@ -72,7 +87,9 @@ export const RecordSalePage = () => {
             name: susp.contactName || "Unknown Customer",
             phone: susp.contactPhone || ""
           });
-          setInvoiceItems(susp.items || []);
+          const quickItem = (susp.items || []).find(item => item.isQuickInvoice);
+          setInvoiceItems(quickItem ? [] : (susp.items || []));
+          if (quickItem) { setInvoiceStyle("quick"); setQuickDescription(quickItem.name || "Items not listed"); }
           setTx({
             amount: (susp.amount || 0).toString(),
             paid: (susp.paid || 0).toString(),
@@ -118,7 +135,9 @@ export const RecordSalePage = () => {
     const contactId = fixTransaction.contact_id || fixTransaction.contactId;
     const startFixMode = (customer) => {
       setSelectedCustomer(customer);
-      setInvoiceItems(fixTransaction.items || []);
+      const quickItem = (fixTransaction.items || []).find(item => item.isQuickInvoice);
+      setInvoiceItems(quickItem ? [] : (fixTransaction.items || []));
+      if (quickItem) { setInvoiceStyle("quick"); setQuickDescription(quickItem.name || "Items not listed"); }
       setTx({
         amount: fixTransaction.amount?.toString() || "0",
         paid: fixTransaction.paid?.toString() || "",
@@ -157,7 +176,10 @@ export const RecordSalePage = () => {
         phone: autoDraft.customerPhone || ''
       };
       setSelectedCustomer(draftCustomer);
-      setInvoiceItems(autoDraft.invoiceItems || []);
+      const quickDraftItem = (autoDraft.invoiceItems || []).find(item => item.isQuickInvoice);
+      setInvoiceItems(quickDraftItem ? [] : (autoDraft.invoiceItems || []));
+      setInvoiceStyle(autoDraft.invoiceStyle || (quickDraftItem ? "quick" : "itemized"));
+      setQuickDescription(autoDraft.quickDescription || quickDraftItem?.name || "Items not listed");
       setSuspendedId(autoDraft.suspendedId || null);
       setSaleDate(autoDraft.saleDate || autoDraft.updatedAt || new Date().toISOString());
       setTx({
@@ -179,6 +201,8 @@ export const RecordSalePage = () => {
         customerName: selectedCustomer.name,
         customerPhone: selectedCustomer.phone,
         invoiceItems,
+        invoiceStyle,
+        quickDescription,
         suspendedId,
         saleDate,
         amount: tx.amount,
@@ -191,13 +215,15 @@ export const RecordSalePage = () => {
       const timeoutId = setTimeout(() => { saveDraft(draftData, true); }, 500);
       return () => clearTimeout(timeoutId);
     }
-  }, [selectedCustomer, invoiceItems, suspendedId, saleDate, tx, mode, saveDraft, isFixing]);
+  }, [selectedCustomer, invoiceItems, invoiceStyle, quickDescription, suspendedId, saleDate, tx, mode, saveDraft, isFixing]);
 
   const resetSale = () => {
     setMode("search");
     setSelectedCustomer(null);
     setSuspendedId(null);
     setInvoiceItems([]);
+    setInvoiceStyle("itemized");
+    setQuickDescription("Items not listed");
     setTx({ amount: "0", paid: "", discount: "", note: "" });
     setSaleDate(new Date().toISOString());
     clearAutoDraft('sale');
@@ -237,7 +263,8 @@ export const RecordSalePage = () => {
     if (isSuspending || isSaving) return;
     if (!selectedCustomer) { showToast("️ Select a customer first"); return; }
     if (Number(tx.paid) < 0) { showToast("Enter a non-negative amount paid"); return; }
-    if (invoiceItems.length === 0 && !tx.note.trim() && parseFloat(tx.amount) === 0) {
+    if (invoiceStyle === "quick" && (parseFloat(tx.amount) || 0) <= 0) { showToast("⚠️ Enter the invoice total"); return; }
+    if (effectiveItems.length === 0 && !tx.note.trim() && parseFloat(tx.amount) === 0) {
       showToast("⚠️ Add items before suspending"); return;
     }
     setIsSuspending(true);
@@ -249,7 +276,7 @@ export const RecordSalePage = () => {
         contactId: selectedCustomer.id,
         contactName: selectedCustomer.name,
         contactPhone: selectedCustomer.phone,
-        items: invoiceItems,
+        items: effectiveItems,
         createdAt: saleDate,
         amount: parseFloat(tx.amount) || 0,
         paid: parseFloat(tx.paid) || 0,
@@ -283,7 +310,8 @@ export const RecordSalePage = () => {
     const finalAmount = parseFloat(tx.amount) || 0;
     const finalPaid = parseFloat(tx.paid) || 0;
     if (finalPaid < 0) { showToast("Enter a non-negative amount paid"); return; }
-    if (finalAmount === 0 && finalPaid === 0 && !tx.note.trim() && invoiceItems.length === 0) {
+    if (invoiceStyle === "quick" && finalAmount <= 0) { showToast("⚠️ Enter the invoice total"); return; }
+    if (finalAmount === 0 && finalPaid === 0 && !tx.note.trim() && effectiveItems.length === 0) {
       showToast("⚠️ Please add items, a payment amount, or a note."); return;
     }
     setIsSaving(true);
@@ -300,12 +328,12 @@ export const RecordSalePage = () => {
           paid: finalPaid,
           discount: extraData.discount,
           note: tx.note,
-          items: invoiceItems,
+          items: effectiveItems,
           invoice_payments: extraData.invoicePayments || [],
         }, fixReason);
         showToast("Correction saved");
       } else {
-        await TransactionService.create(currentStore.id, selectedCustomer.id, 'sale', invoiceItems, finalAmount, finalPaid, tx.note, extraData);
+        await TransactionService.create(currentStore.id, selectedCustomer.id, 'sale', effectiveItems, finalAmount, finalPaid, tx.note, extraData);
         await CustomerService.updateBalance(selectedCustomer.id);
         clearAutoDraft('sale');
         if (suspendedId) {
@@ -422,7 +450,28 @@ export const RecordSalePage = () => {
         )}
 
         {mode === "existing" && (
+          <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <p className="mb-2 px-1 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">How do you want to record this invoice?</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setInvoiceStyle("itemized")} className={`rounded-xl border p-3 text-left transition ${invoiceStyle === "itemized" ? "border-green-500 bg-green-50 text-green-800 ring-1 ring-green-500 dark:bg-green-950/30 dark:text-green-300" : "border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-300"}`}><List size={19}/><span className="mt-1 block text-sm font-black">Itemized</span><span className="block text-[10px] opacity-80">List each product</span></button>
+              <button onClick={() => { if (invoiceItems.length > 0 && invoiceStyle !== "quick" && !window.confirm("Use Quick Invoice instead? Your itemized products will remain in the draft if you switch back.")) return; setInvoiceStyle("quick"); setTx(prev => ({ ...prev, discount: "" })); }} className={`rounded-xl border p-3 text-left transition ${invoiceStyle === "quick" ? "border-indigo-500 bg-indigo-50 text-indigo-800 ring-1 ring-indigo-500 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-300"}`}><Zap size={19}/><span className="mt-1 block text-sm font-black">Quick Invoice</span><span className="block text-[10px] opacity-80">Enter total and payment</span></button>
+            </div>
+          </div>
+        )}
+
+        {mode === "existing" && invoiceStyle === "itemized" && (
           <DetailedInvoice tx={tx} setTx={setTx} invoiceItems={invoiceItems} setInvoiceItems={setInvoiceItems} products={products} setProducts={setProducts} currentStore={currentStore} showToast={showToast} createdAt={isFixing ? undefined : saleDate} />
+        )}
+
+        {mode === "existing" && invoiceStyle === "quick" && (
+          <div className="space-y-4 rounded-2xl border-2 border-indigo-200 bg-white p-4 shadow-sm dark:border-indigo-900 dark:bg-gray-800">
+            <div className="flex items-start gap-3 rounded-xl bg-amber-50 p-3 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><AlertTriangle size={19} className="mt-0.5 shrink-0"/><div><p className="text-sm font-bold">Quick invoice — items are not listed</p><p className="mt-0.5 text-xs">This tracks the customer’s payment and balance, but it will not update individual product records.</p></div></div>
+            <label className="block text-xs font-bold uppercase text-gray-500 dark:text-gray-400">What was bought? <span className="font-normal normal-case">(optional)</span><input value={quickDescription} onChange={event => setQuickDescription(event.target.value)} placeholder="Items not listed" className="mt-1.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"/></label>
+            <label className="block text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Invoice total *<div className="relative mt-1.5"><span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-500">{currency}</span><input type="text" inputMode="decimal" value={tx.amount} onChange={event => { const value=event.target.value.replace(/[^0-9.]/g, ''); setTx(prev => ({ ...prev, amount: value })); }} placeholder="0.00" className="w-full rounded-xl border-2 border-indigo-200 bg-indigo-50 py-3 pl-14 pr-4 text-right text-2xl font-black text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-200"/></div></label>
+            <InvoicePayments paid={tx.paid} invoicePayments={tx.invoicePayments} total={parseFloat(tx.amount) || 0} currency={currency} onChange={(paid, invoicePayments) => setTx(prev => ({ ...prev, paid, invoicePayments }))}/>
+            <div className="flex items-center justify-between border-t border-dashed border-gray-200 pt-3 text-base font-black dark:border-gray-700"><span className="text-gray-700 dark:text-gray-200">Balance remaining</span><span className="text-red-600 dark:text-red-400">{formatCurrency(Math.max(0, (parseFloat(tx.amount)||0) - (Number(tx.paid)||0)), currency)}</span></div>
+            <div className="flex justify-between text-xs text-gray-500"><span>Invoice date</span><span>{formatDate(saleDate)}</span></div>
+          </div>
         )}
 
         {mode === "existing" && (

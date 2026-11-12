@@ -4,7 +4,7 @@ import useStore from "./store/useStore";
 import { BottomNav } from "./components/BottomNav";
 import { Toast } from "./components/Toast";
 import { Layout } from "./components/Layout";
-import { PinSetupModal, QuickUnlockScreen } from "./components/QuickUnlock";
+import { PinSetupModal, QuickUnlockRecommendationModal, QuickUnlockScreen } from "./components/QuickUnlock";
 
 // Auth Pages
 import { LoginPage } from "./pages/LoginPage";
@@ -101,6 +101,7 @@ const AppRouter = () => {
   const [authUserId, setAuthUserId] = useState(null);
   const [quickLocked, setQuickLocked] = useState(false);
   const [showPinSetup, setShowPinSetup] = useState(false);
+  const [showPinRecommendation, setShowPinRecommendation] = useState(false);
 
   const configureQuickUnlock = (userId) => {
     setAuthUserId(userId);
@@ -109,7 +110,7 @@ const AppRouter = () => {
       sessionStorage.removeItem('creditbook_password_login');
       QuickUnlockService.markVerified(userId);
       setQuickLocked(false);
-      if (!QuickUnlockService.hasPin(userId)) setShowPinSetup(true);
+      if (!QuickUnlockService.hasPin(userId)) setShowPinRecommendation(true);
       return;
     }
     setQuickLocked(QuickUnlockService.hasPin(userId) && !QuickUnlockService.isVerifiedThisSession(userId));
@@ -159,6 +160,7 @@ const AppRouter = () => {
         setAuthUserId(null);
         setQuickLocked(false);
         setShowPinSetup(false);
+        setShowPinRecommendation(false);
         setCurrentStore(null);
         setIsSuperAdmin(false);
       }
@@ -315,6 +317,7 @@ const AppRouter = () => {
       <ReadOnlyBanner />
       <BottomNav />
       <Toast />
+      {showPinRecommendation && <QuickUnlockRecommendationModal onClose={() => setShowPinRecommendation(false)} onSetUp={() => { setShowPinRecommendation(false); setShowPinSetup(true); }} />}
       {showPinSetup && authUserId && <PinSetupModal userId={authUserId} onClose={() => setShowPinSetup(false)} onSaved={() => showToast('✅ Quick unlock PIN is ready')} />}
     </Layout>
   );

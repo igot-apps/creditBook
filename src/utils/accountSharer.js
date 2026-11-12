@@ -81,7 +81,7 @@ export const generateAccountShare = ({ channel, scope, contact, transactions, st
             const brand = i.brand ? ` (${i.brand})` : "";
             // Two-line format per item for clean mobile reading
             L.push(`• *${i.name}*${brand}`);
-            L.push(`  ${qty} ${unit} × ${formatCurrency(price, currency)} = ${formatCurrency(qty * price, currency)}`);
+            L.push(i.isQuickInvoice ? `  Quick invoice total: ${formatCurrency(qty * price, currency)}` : `  ${qty} ${unit} × ${formatCurrency(price, currency)} = ${formatCurrency(qty * price, currency)}`);
             if (i.note) L.push(`  📝 ${i.note}`);
           });
         } else {

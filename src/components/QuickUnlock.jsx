@@ -71,3 +71,14 @@ export const PinSetupModal = ({ userId, onClose, onSaved }) => {
     <button onClick={next} disabled={busy || current.length < 4} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3.5 font-bold text-white disabled:opacity-50">{busy ? <Loader2 className="animate-spin" size={18}/> : <ShieldCheck size={18}/>} {step === 'create' ? 'Continue' : 'Save PIN'}</button>
   </div></div>;
 };
+
+export const QuickUnlockRecommendationModal = ({ onSetUp, onClose }) => (
+  <div className="fixed inset-0 z-[205] flex items-end justify-center bg-black/55 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+    <div role="dialog" aria-modal="true" aria-labelledby="quick-unlock-recommendation" className="w-full max-w-sm rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl dark:bg-gray-900">
+      <div className="mx-auto mb-4 grid size-16 place-items-center rounded-2xl bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"><KeyRound size={30}/></div>
+      <div className="text-center"><p className="text-xs font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-300">Recommended</p><h2 id="quick-unlock-recommendation" className="mt-1 text-xl font-black text-gray-900 dark:text-white">Open CreditBook faster</h2><p className="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">Set a 4–6 digit PIN for quick access on this device. Your account password remains available as a backup.</p></div>
+      <div className="mt-6 space-y-2.5"><button onClick={onSetUp} className="w-full rounded-xl bg-indigo-600 py-3.5 font-bold text-white active:scale-[.99]">Set up PIN</button><button onClick={onClose} className="w-full rounded-xl border border-gray-200 py-3.5 font-bold text-gray-700 active:scale-[.99] dark:border-gray-700 dark:text-gray-200">Not now</button></div>
+      <p className="mt-3 text-center text-[11px] text-gray-400">You can enable Quick Unlock later from Settings.</p>
+    </div>
+  </div>
+);

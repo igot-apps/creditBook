@@ -1,7 +1,12 @@
-import { useState } from "react";
-import { Store, Mail, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Store, Mail, Lock, Eye, EyeOff, Loader2, WifiOff, Wifi } from "lucide-react";
 import { AuthService } from "../services/AuthService";
 import useStore from "../store/useStore";
+
+const withTimeout = (promise, milliseconds = 15000) => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => reject(new Error('Connection timeout')), milliseconds);
+  promise.then(value => { clearTimeout(timer); resolve(value); }, error => { clearTimeout(timer); reject(error); });
+});
 
 export const LoginPage = () => {
   const [email, setEmail] = useState("");
@@ -9,21 +14,51 @@ export const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [errorType, setErrorType] = useState("");
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const { setCurrentStore, setView } = useStore();
+
+  useEffect(() => {
+    const online = () => { setIsOnline(true); if (errorType === 'network') { setError('Connection restored. You can sign in now.'); setErrorType('restored'); } };
+    const offline = () => { setIsOnline(false); setError('No internet connection. Check your Wi-Fi or mobile data, then try again.'); setErrorType('network'); };
+    window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
+    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
+  }, [errorType]);
+
+  const friendlyLoginError = (err) => {
+    const message = String(err?.message || '').toLowerCase();
+    if (!navigator.onLine || message.includes('fetch') || message.includes('network') || message.includes('timeout') || message.includes('failed to connect')) {
+      return { type: 'network', message: 'CreditBook could not reach the internet. Check your connection and try again—your password may still be correct.' };
+    }
+    if (message.includes('invalid login credentials')) return { type: 'credentials', message: 'The email or password is incorrect. Please check them and try again.' };
+    if (message.includes('email not confirmed')) return { type: 'account', message: 'Please confirm your email address before signing in.' };
+    return { type: 'account', message: err?.message || 'Could not sign in. Please try again.' };
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
+    setErrorType("");
+    if (!navigator.onLine) {
+      setIsOnline(false);
+      setErrorType('network');
+      setError('No internet connection. Check your Wi-Fi or mobile data, then try again.');
+      setIsLoading(false);
+      return;
+    }
     try {
       sessionStorage.setItem('creditbook_password_login', '1');
-      const { user } = await AuthService.signIn(email, password);
+      const { user } = await withTimeout(AuthService.signIn(email, password));
       const store = await AuthService.getStore(user.id);
       setCurrentStore(store);
       setView("home"); // Navigate to home using Zustand
     } catch (err) {
       sessionStorage.removeItem('creditbook_password_login');
-      setError(err.message || "Failed to sign in. Please check your credentials.");
+      const friendly = friendlyLoginError(err);
+      setErrorType(friendly.type);
+      setError(friendly.message);
     } finally {
       setIsLoading(false);
     }
@@ -40,9 +75,15 @@ export const LoginPage = () => {
           <p className="text-gray-500 dark:text-gray-400 mt-1">Sign in to manage your business</p>
         </div>
 
+        {!isOnline && (
+          <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+            <WifiOff size={19} className="shrink-0"/><div><p className="text-sm font-bold">You’re offline</p><p className="text-xs">Connect to Wi-Fi or mobile data to sign in.</p></div>
+          </div>
+        )}
+
         {error && (
-          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm text-center">
-            {error}
+          <div role="alert" className={`mb-4 flex items-start gap-2 rounded-xl border p-3 text-sm ${errorType === 'restored' ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300' : errorType === 'network' ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200' : 'border-red-200 bg-red-50 text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400'}`}>
+            {errorType === 'restored' ? <Wifi size={18} className="mt-0.5 shrink-0"/> : errorType === 'network' ? <WifiOff size={18} className="mt-0.5 shrink-0"/> : null}<span>{error}</span>
           </div>
         )}
 
@@ -96,10 +137,10 @@ export const LoginPage = () => {
 
           <button
             type="submit"
-            disabled={isLoading}
+          disabled={isLoading || !isOnline}
             className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg mt-6"
           >
-            {isLoading ? <Loader2 className="animate-spin" size={20} /> : "Sign In"}
+            {isLoading ? <Loader2 className="animate-spin" size={20} /> : !isOnline ? "Waiting for internet…" : "Sign In"}
           </button>
         </form>
 
