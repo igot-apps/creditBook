@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { AlertTriangle, ArrowRight, ChevronDown } from "lucide-react";
 import { formatCurrency, formatDate } from "../../../utils/helpers";
 import { txDate } from "../utils/helpers";
+import { invoiceReference } from "../../../utils/invoiceReference";
 
 export const OutstandingInvoices = ({ invoices, onView, currency }) => {
   const [visibleCount, setVisibleCount] = useState(5);
@@ -21,6 +22,7 @@ export const OutstandingInvoices = ({ invoices, onView, currency }) => {
         {visible.map(tx => (
           <button key={tx.id} onClick={() => onView(tx)} className="w-full flex items-center justify-between p-3 active:bg-gray-50 dark:active:bg-gray-700/50 transition text-left">
             <div>
+              <p className="text-[10px] font-bold tracking-wide text-blue-700 dark:text-blue-400">{invoiceReference(tx)}</p>
               <p className="font-semibold text-sm text-gray-900 dark:text-white">{formatCurrency(tx.trueOutstanding, currency)} unpaid</p>
               <p className="text-[10px] text-gray-500 dark:text-gray-400">
                 {formatDate(txDate(tx)).split(',')[0]}

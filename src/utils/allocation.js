@@ -1,3 +1,5 @@
+import { invoiceReference } from "./invoiceReference";
+
 // ==========================================
 // PAYMENT ALLOCATION HELPERS (payment_allocations table)
 //
@@ -20,7 +22,7 @@ const TOL = 0.009; // money tolerance — never compare money with === 0
 
 const isActiveTx = (tx) => tx.status === 'active' || !tx.status;
 const isWriteOffTx = (tx) => tx.type === 'payment' && (tx.note || '').startsWith('[FORGIVEN]');
-const saleLabel = (tx) => `Sale #${(tx.id || "").slice(-6).toUpperCase()}`;
+const saleLabel = (tx) => invoiceReference(tx);
 
 // id -> transaction, for fast validity lookups
 const indexHistory = (history) => {

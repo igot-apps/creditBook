@@ -4,6 +4,7 @@ import { formatCurrency, formatDate } from "../../../utils/helpers";
 import { openWhatsApp } from "../../../utils/communication";
 import { txDate, isActive, saleLabel, isWriteOffTx } from "../utils/helpers";
 import { paymentCreditAvailable } from "../../../utils/paymentCredit";
+import { invoiceReference } from "../../../utils/invoiceReference";
 
 export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCancel, currency, history, allocations, readOnly, onCorrectionUndone, balance, onReceivePayment }) => {
   if (!tx) return null;
@@ -11,8 +12,8 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
   const totalSale = parseFloat(tx.amount) || 0;
   const discount = parseFloat(tx.discount) || 0;
   const paid = parseFloat(tx.paid) || 0;
-  const receiptNo = (tx.id || "000000").slice(-6).toUpperCase();
   const isPayment = tx.type === 'payment';
+  const documentNumber = isPayment ? `PAY-${(tx.id || "000000").slice(-6).toUpperCase()}` : invoiceReference(tx);
   const documentLabel = isPayment ? "Receipt" : "Invoice";
   const isRefund = Boolean(tx.credit_source_id);
   const creditAvailable = paymentCreditAvailable(tx, history || [], allocations || []);
@@ -67,7 +68,7 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
     if (currentStore?.owner_name || currentStore?.ownerName) L.push(currentStore?.owner_name || currentStore?.ownerName);
     if (currentStore?.phone) L.push(`Tel: ${currentStore.phone}`);
     L.push("──────────────────────");
-    L.push(`${documentLabel} #: ${receiptNo}`);
+    L.push(`${documentLabel}: ${documentNumber}`);
     L.push(`${isPayment && !forgiven ? "Date received" : "Date"}: ${formatDate(receivedDate)}`);
     if (paymentReference) L.push(`${referenceLabel}: ${paymentReference}`);
     L.push(`Customer: ${customer?.name || "Walk-in"}`);
@@ -154,7 +155,7 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
           </div>
           <div className="border-t-2 border-dashed border-gray-300 dark:border-gray-700" />
           <div className="space-y-1.5 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{documentLabel} #</span><span className="font-bold text-gray-900 dark:text-white">#{receiptNo}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-gray-500 dark:text-gray-400">{documentLabel}</span><span className="font-bold text-right text-gray-900 dark:text-white">{documentNumber}</span></div>
             <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{isPayment && !forgiven ? "Date received" : "Date"}</span><span className="font-semibold text-gray-900 dark:text-white">{formatDate(receivedDate)}</span></div>
             {isPayment && tx.received_at && (
               <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Date recorded</span><span className="font-semibold text-gray-900 dark:text-white">{formatDate(txDate(tx))}</span></div>

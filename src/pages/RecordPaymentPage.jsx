@@ -6,6 +6,7 @@ import { CustomerService } from "../services/CustomerService";
 import { TransactionService } from "../services/TransactionService";
 import { AllocationService } from "../services/AllocationService";
 import { TopBar } from "../components/TopBar";
+import { invoiceReference } from "../utils/invoiceReference";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
@@ -69,6 +70,7 @@ export const RecordPaymentPage = () => {
   const [allocations, setAllocations] = useState([]);
   const [amount, setAmount] = useState("");
   const [invoiceId, setInvoiceId] = useState(null);
+  const [allocationMode, setAllocationMode] = useState("");
   const [method, setMethod] = useState("cash");
   const [reference, setReference] = useState("");
   const [receivedAt, setReceivedAt] = useState("");
@@ -97,6 +99,7 @@ export const RecordPaymentPage = () => {
   useEffect(() => {
     if (prefillTransaction?.customerId) {
       setInvoiceId(prefillTransaction.invoiceId || null);
+      setAllocationMode(prefillTransaction.invoiceId ? "invoice" : "");
       setSelectedCustomer({
         id: prefillTransaction.customerId,
         name: prefillTransaction.name || "Unknown",
@@ -196,7 +199,8 @@ export const RecordPaymentPage = () => {
       .filter(tx => tx.type === 'sale' && isActiveTx(tx) && !tx.replacedByTransactionId)
       .map(tx => ({
         id: tx.id,
-        name: "Sale #" + String(tx.id || "").slice(-6).toUpperCase(),
+        name: invoiceReference(tx),
+        total: parseFloat(tx.amount) || 0,
         remaining: Math.max(0, (parseFloat(tx.amount) || 0) - (parseFloat(tx.paid) || 0) - (map[tx.id] || 0)),
         date: tx.created_at || tx.createdAt,
       }))
@@ -210,7 +214,9 @@ export const RecordPaymentPage = () => {
   const preview = useMemo(() => {
     let left = parseFloat(amount) || 0;
     const rows = [];
-    const invoices = invoiceId ? openInvoices.filter(invoice => invoice.id === invoiceId) : openInvoices;
+    const invoices = allocationMode === "invoice" && invoiceId
+      ? openInvoices.filter(invoice => invoice.id === invoiceId)
+      : allocationMode === "oldest" ? openInvoices : [];
     for (const inv of invoices) {
       if (left <= 0) break;
       const apply = Math.min(inv.remaining, left);
@@ -218,7 +224,7 @@ export const RecordPaymentPage = () => {
       left -= apply;
     }
     return { rows, leftover: left };
-  }, [openInvoices, amount, invoiceId]);
+  }, [openInvoices, amount, invoiceId, allocationMode]);
 
   const filteredCustomers = useMemo(() => {
     if (!Array.isArray(customers)) return [];
@@ -229,6 +235,8 @@ export const RecordPaymentPage = () => {
 
   const handleSelectCustomer = (customer) => {
     setSelectedCustomer(customer);
+    setInvoiceId(null);
+    setAllocationMode("");
     setMode("existing");
     setSearchQuery("");
   };
@@ -283,6 +291,11 @@ export const RecordPaymentPage = () => {
     if (!selectedCustomer) { showToast("⚠️ Select a customer first"); return; }
     const amt = parseFloat(amount) || 0;
     if (amt <= 0) { showToast("⚠️ Enter a payment amount"); return; }
+    if (!isFixing && openInvoices.length > 0 && !allocationMode) {
+      showToast("Choose which invoice receives this payment");
+      return;
+    }
+    if (allocationMode === "invoice" && !invoiceId) { showToast("Select an invoice"); return; }
     if (invoiceId && !selectedInvoice) {
       showToast("This invoice no longer has a balance to pay");
       return;
@@ -310,7 +323,7 @@ export const RecordPaymentPage = () => {
         reference: paymentReference || (method !== "momo" ? reference.trim() : null),
         receivedAt: paymentDate.toISOString(),
       };
-      if (invoiceId && !isFixing) {
+      if (allocationMode === "invoice" && invoiceId && !isFixing) {
         const key = JSON.stringify([invoiceId, amt, method, paymentDetails.reference, note, receivedAt]);
         if (invoicePaymentRequest.current?.key !== key) {
           invoicePaymentRequest.current = { key, id: crypto.randomUUID() };
@@ -363,7 +376,7 @@ export const RecordPaymentPage = () => {
       const fresh = normalizeList(await TransactionService.getHistory(selectedCustomer.id));
       await CustomerService.updateBalance(selectedCustomer.id, recomputeBalance(fresh));
 
-      showToast("✅ Payment recorded & applied to invoices!");
+      showToast(allocationMode === "credit" ? "✅ Payment recorded as customer credit" : "✅ Payment recorded and allocation saved");
       useStore.setState({ selectedCustomer: selectedCustomer });
       setView("profile");
     } catch (error) {
@@ -382,7 +395,7 @@ export const RecordPaymentPage = () => {
 
 
   const currentTotal = parseFloat(amount) || 0;
-  const invoiceBalance = invoiceId
+  const invoiceBalance = allocationMode === "invoice" && invoiceId
     ? selectedInvoice?.remaining || 0
     : openInvoices.reduce((sum, invoice) => sum + invoice.remaining, 0);
   const appliedAmount = preview.rows.reduce((sum, row) => sum + row.amount, 0);
@@ -453,7 +466,7 @@ export const RecordPaymentPage = () => {
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedCustomer.name || "Unknown Customer"}</p>
               </div>
               {!isFixing && (
-                <button onClick={() => { setIsChangingCustomer(true); setMode("search"); setSelectedCustomer(null); setInvoiceId(null); }} className="shrink-0 rounded-lg px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950">
+                <button onClick={() => { setIsChangingCustomer(true); setMode("search"); setSelectedCustomer(null); setInvoiceId(null); setAllocationMode(""); }} className="shrink-0 rounded-lg px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950">
                   Change
                 </button>
               )}
@@ -464,7 +477,52 @@ export const RecordPaymentPage = () => {
         {mode === "existing" && (
           <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] md:items-start md:gap-x-6">
             <div className="min-w-0 space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:p-6">
-              {invoiceId && <p className="text-sm font-semibold">Payment for {selectedInvoice?.name || "selected invoice"}</p>}
+              {!isFixing && openInvoices.length > 0 && (
+                <section aria-labelledby="payment-allocation-title" className="space-y-3">
+                  <div>
+                    <h2 id="payment-allocation-title" className="font-bold text-gray-900 dark:text-white">Where should this payment go?</h2>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose an invoice so there is no confusion later.</p>
+                  </div>
+                  <div className="space-y-2">
+                    {openInvoices.map(invoice => {
+                      const selected = allocationMode === "invoice" && invoiceId === invoice.id;
+                      return (
+                        <button
+                          type="button"
+                          key={invoice.id}
+                          aria-pressed={selected}
+                          onClick={() => { setAllocationMode("invoice"); setInvoiceId(invoice.id); }}
+                          className={`w-full rounded-xl border-2 p-3 text-left transition ${selected ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40" : "border-gray-200 hover:border-blue-300 dark:border-gray-700"}`}
+                        >
+                          <span className="flex items-start justify-between gap-3">
+                            <span>
+                              <strong className="block text-sm text-gray-900 dark:text-white">{invoice.name}</strong>
+                              <span className="text-xs text-gray-500 dark:text-gray-400">{formatDate(invoice.date)}</span>
+                            </span>
+                            <span className="text-right">
+                              <strong className="block text-sm tabular-nums text-gray-900 dark:text-white">{formatCurrency(invoice.remaining, currency)}</strong>
+                              <span className="text-xs text-gray-500 dark:text-gray-400">remaining</span>
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                    <button type="button" aria-pressed={allocationMode === "oldest"} onClick={() => { setAllocationMode("oldest"); setInvoiceId(null); }} className={`w-full rounded-xl border-2 p-3 text-left transition ${allocationMode === "oldest" ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40" : "border-gray-200 hover:border-blue-300 dark:border-gray-700"}`}>
+                      <strong className="block text-sm text-gray-900 dark:text-white">Pay oldest invoices first</strong>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">The app will show exactly how the money is divided.</span>
+                    </button>
+                    <button type="button" aria-pressed={allocationMode === "credit"} onClick={() => { setAllocationMode("credit"); setInvoiceId(null); }} className={`w-full rounded-xl border-2 p-3 text-left transition ${allocationMode === "credit" ? "border-green-500 bg-green-50 dark:bg-green-950/30" : "border-gray-200 hover:border-green-300 dark:border-gray-700"}`}>
+                      <strong className="block text-sm text-gray-900 dark:text-white">Keep as customer credit</strong>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">Do not apply it to an invoice yet.</span>
+                    </button>
+                  </div>
+                </section>
+              )}
+              {!isFixing && openInvoices.length === 0 && (
+                <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300">
+                  This customer has no unpaid invoices. The payment will be kept as customer credit.
+                </div>
+              )}
               <div>
                 <label htmlFor="payment-amount" className="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300">Payment amount</label>
                 <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 dark:border-gray-700 dark:bg-gray-900 dark:focus-within:ring-blue-900">
@@ -570,10 +628,10 @@ export const RecordPaymentPage = () => {
             {!isFixing && (parseFloat(amount) || 0) > 0 && (
               <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl p-3 space-y-1.5">
                 <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase flex items-center gap-1">
-                  <Link2 size={11} /> {invoiceId ? "Payment for selected invoice" : "Payment will be applied oldest first"}
+                  <Link2 size={11} /> {allocationMode === "invoice" ? `Payment for ${selectedInvoice?.name || "selected invoice"}` : allocationMode === "oldest" ? "Paying oldest invoices first" : "Keeping as customer credit"}
                 </p>
-                {preview.rows.length === 0 && !invoiceId && (
-                  <p className="text-xs text-gray-600 dark:text-gray-300">No unpaid invoices — full amount becomes customer credit.</p>
+                {preview.rows.length === 0 && (
+                  <p className="text-xs text-gray-600 dark:text-gray-300">The full amount will remain available as customer credit.</p>
                 )}
                 {preview.rows.map((a, i) => (
                   <div key={i} className="flex justify-between text-xs">
