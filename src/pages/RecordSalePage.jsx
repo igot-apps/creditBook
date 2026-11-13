@@ -1,6 +1,6 @@
 import { DiscardInvoiceModal } from "../components/DiscardInvoiceModal";
-import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Users, Check, Pause, Loader2, List, Zap, AlertTriangle } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Search, Plus, Users, Check, Pause, Loader2, List, Zap, AlertTriangle, WalletCards } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { CustomerService } from "../services/CustomerService";
@@ -10,6 +10,8 @@ import { SuspendedTransactionService } from "../services/SuspendedTransactionSer
 import { DetailedInvoice } from "../components/DetailedInvoice";
 import { TopBar } from "../components/TopBar";
 import { InvoicePayments } from "../components/InvoicePayments";
+import { AllocationService } from "../services/AllocationService";
+import { paymentCreditAvailable } from "../utils/paymentCredit";
 
 export const RecordSalePage = () => {
   const {
@@ -51,6 +53,14 @@ export const RecordSalePage = () => {
   const [isSuspending, setIsSuspending] = useState(false);
   const [invoiceStyle, setInvoiceStyle] = useState("itemized");
   const [quickDescription, setQuickDescription] = useState("Items not listed");
+  const [pendingCreditAmount, setPendingCreditAmount] = useState("0");
+  const [creditHistory, setCreditHistory] = useState([]);
+  const [creditAllocations, setCreditAllocations] = useState([]);
+  const [creditLoaded, setCreditLoaded] = useState(false);
+  const [creditLoadError, setCreditLoadError] = useState(false);
+  const [creditReloadKey, setCreditReloadKey] = useState(0);
+  const [showCreditEditor, setShowCreditEditor] = useState(false);
+  const finalizeIds = useRef({ invoiceId: crypto.randomUUID(), operationId: crypto.randomUUID() });
 
   const quickInvoiceItem = () => ({
     productId: null,
@@ -98,6 +108,7 @@ export const RecordSalePage = () => {
             note: susp.note || ""
           });
           setSuspendedId(susp.id);
+          setPendingCreditAmount(String(susp.pendingCreditAmount || 0));
           setSaleDate(susp.createdAt || new Date().toISOString());
           setMode("existing");
           showToast("⏸️ Resumed suspended sale");
@@ -112,6 +123,26 @@ export const RecordSalePage = () => {
       return () => { cancelled = true; };
     }
   }, [resumedSuspendedId, clearResumedSuspended, showToast]);
+
+  useEffect(() => {
+    if (!selectedCustomer?.id || !suspendedId || isFixing) {
+      setCreditHistory([]);
+      setCreditAllocations([]);
+      setCreditLoaded(false);
+      setCreditLoadError(false);
+      return;
+    }
+    setCreditLoaded(false);
+    setCreditLoadError(false);
+    Promise.all([
+      TransactionService.getHistory(selectedCustomer.id),
+      AllocationService.getByContact(selectedCustomer.id),
+    ]).then(([history, allocations]) => {
+      setCreditHistory(Array.isArray(history) ? history : []);
+      setCreditAllocations(Array.isArray(allocations) ? allocations : []);
+      setCreditLoaded(true);
+    }).catch(() => setCreditLoadError(true));
+  }, [selectedCustomer?.id, suspendedId, isFixing, creditReloadKey]);
 
   // Handle Prefill from Profile Page
   useEffect(() => {
@@ -181,6 +212,7 @@ export const RecordSalePage = () => {
       setInvoiceStyle(autoDraft.invoiceStyle || (quickDraftItem ? "quick" : "itemized"));
       setQuickDescription(autoDraft.quickDescription || quickDraftItem?.name || "Items not listed");
       setSuspendedId(autoDraft.suspendedId || null);
+      setPendingCreditAmount(String(autoDraft.pendingCreditAmount || 0));
       setSaleDate(autoDraft.saleDate || autoDraft.updatedAt || new Date().toISOString());
       setTx({
         amount: autoDraft.amount || "0",
@@ -208,6 +240,7 @@ export const RecordSalePage = () => {
         amount: tx.amount,
         paid: tx.paid,
         invoicePayments: tx.invoicePayments,
+        pendingCreditAmount,
         discount: tx.discount,
         note: tx.note,
         draftType: 'sale'
@@ -215,7 +248,7 @@ export const RecordSalePage = () => {
       const timeoutId = setTimeout(() => { saveDraft(draftData, true); }, 500);
       return () => clearTimeout(timeoutId);
     }
-  }, [selectedCustomer, invoiceItems, invoiceStyle, quickDescription, suspendedId, saleDate, tx, mode, saveDraft, isFixing]);
+  }, [selectedCustomer, invoiceItems, invoiceStyle, quickDescription, suspendedId, saleDate, pendingCreditAmount, tx, mode, saveDraft, isFixing]);
 
   const resetSale = () => {
     setMode("search");
@@ -225,6 +258,7 @@ export const RecordSalePage = () => {
     setInvoiceStyle("itemized");
     setQuickDescription("Items not listed");
     setTx({ amount: "0", paid: "", discount: "", note: "" });
+    setPendingCreditAmount("0");
     setSaleDate(new Date().toISOString());
     clearAutoDraft('sale');
   };
@@ -235,6 +269,25 @@ export const RecordSalePage = () => {
     const q = searchQuery.toLowerCase();
     return customers.filter(c => c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)));
   }, [customers, searchQuery]);
+
+  const creditSources = useMemo(() => creditHistory
+    .map(source => ({ source, available: paymentCreditAvailable(source, creditHistory, creditAllocations) }))
+    .filter(entry => entry.available > 0.009)
+    .sort((a, b) => new Date(a.source.received_at || a.source.created_at) - new Date(b.source.received_at || b.source.created_at)),
+  [creditHistory, creditAllocations]);
+  const totalCreditAvailable = creditSources.reduce((sum, entry) => sum + entry.available, 0);
+  const invoiceTotal = parseFloat(tx.amount) || 0;
+  const paidUpfront = Number(tx.paid) || 0;
+  const invoiceCreditLimit = Math.max(0, invoiceTotal - paidUpfront);
+  const maxPendingCredit = creditLoaded ? Math.min(totalCreditAvailable, invoiceCreditLimit) : invoiceCreditLimit;
+  const pendingCredit = Math.min(Number(pendingCreditAmount) || 0, maxPendingCredit);
+  const balanceAfterPendingCredit = Math.max(0, invoiceTotal - paidUpfront - pendingCredit);
+
+  useEffect(() => {
+    if (creditLoaded && (Number(pendingCreditAmount) || 0) > maxPendingCredit + 0.009) {
+      setPendingCreditAmount(maxPendingCredit.toFixed(2));
+    }
+  }, [creditLoaded, maxPendingCredit, pendingCreditAmount]);
 
   const handleSelectCustomer = (customer) => {
     setSelectedCustomer(customer);
@@ -280,6 +333,7 @@ export const RecordSalePage = () => {
         createdAt: saleDate,
         amount: parseFloat(tx.amount) || 0,
         paid: parseFloat(tx.paid) || 0,
+        pendingCreditAmount: pendingCredit,
         invoicePayments: tx.invoicePayments,
         discount: parseFloat(tx.discount) || 0,
         note: tx.note
@@ -290,8 +344,8 @@ export const RecordSalePage = () => {
       setView("home");
     } catch (error) {
       console.error(error);
-      if (error.message?.includes('invoice_payments') && ['PGRST204', '42703'].includes(error.code)) {
-        showToast("Apply the invoice payments migration in Supabase, then retry.");
+      if ((error.message?.includes('invoice_payments') || error.message?.includes('pending_credit_amount')) && ['PGRST204', '42703'].includes(error.code)) {
+        showToast("Apply the latest suspended invoice migration in Supabase, then retry.");
       } else {
         showToast("❌ Failed to suspend sale");
       }
@@ -310,6 +364,7 @@ export const RecordSalePage = () => {
     const finalAmount = parseFloat(tx.amount) || 0;
     const finalPaid = parseFloat(tx.paid) || 0;
     if (finalPaid < 0) { showToast("Enter a non-negative amount paid"); return; }
+    if (suspendedId && (Number(pendingCreditAmount) || 0) > 0 && !creditLoaded) { showToast("Wait for customer credit to finish loading, then try again."); return; }
     if (invoiceStyle === "quick" && finalAmount <= 0) { showToast("⚠️ Enter the invoice total"); return; }
     if (finalAmount === 0 && finalPaid === 0 && !tx.note.trim() && effectiveItems.length === 0) {
       showToast("⚠️ Please add items, a payment amount, or a note."); return;
@@ -333,13 +388,28 @@ export const RecordSalePage = () => {
         }, fixReason);
         showToast("Correction saved");
       } else {
-        await TransactionService.create(currentStore.id, selectedCustomer.id, 'sale', effectiveItems, finalAmount, finalPaid, tx.note, extraData);
-        await CustomerService.updateBalance(selectedCustomer.id);
-        clearAutoDraft('sale');
         if (suspendedId) {
-          await SuspendedTransactionService.deleteSuspendedTransaction(suspendedId);
+          await TransactionService.finalizeSuspendedSale({
+            invoiceId: finalizeIds.current.invoiceId,
+            operationId: finalizeIds.current.operationId,
+            suspendedId,
+            storeId: currentStore.id,
+            contactId: selectedCustomer.id,
+            items: effectiveItems,
+            amount: finalAmount,
+            paid: finalPaid,
+            discount: extraData.discount,
+            note: tx.note,
+            invoicePayments: extraData.invoicePayments,
+            createdAt: saleDate,
+            creditAmount: pendingCredit,
+          });
           setSuspendedId(null);
+        } else {
+          await TransactionService.create(currentStore.id, selectedCustomer.id, 'sale', effectiveItems, finalAmount, finalPaid, tx.note, extraData);
+          await CustomerService.updateBalance(selectedCustomer.id);
         }
+        clearAutoDraft('sale');
         showToast("Customer invoice saved");
       }
       setLastScrollPosition(window.scrollY);
@@ -347,7 +417,11 @@ export const RecordSalePage = () => {
       setView("profile");
     } catch (error) {
       console.error(error);
-      showToast(error.code === "P0001" ? error.message : "Failed to record sale.");
+      if (error.code === "PGRST202" || error.message?.includes("pending_credit_amount")) {
+        showToast("Apply the pending credit migration in Supabase, then retry.");
+      } else {
+        showToast(error.message?.includes("Available credit changed") || error.code === "P0001" ? error.message : "Failed to record sale.");
+      }
     } finally {
       setIsSaving(false);
     }
@@ -472,6 +546,43 @@ export const RecordSalePage = () => {
             <div className="flex items-center justify-between border-t border-dashed border-gray-200 pt-3 text-base font-black dark:border-gray-700"><span className="text-gray-700 dark:text-gray-200">Balance remaining</span><span className="text-red-600 dark:text-red-400">{formatCurrency(Math.max(0, (parseFloat(tx.amount)||0) - (Number(tx.paid)||0)), currency)}</span></div>
             <div className="flex justify-between text-xs text-gray-500"><span>Invoice date</span><span>{formatDate(saleDate)}</span></div>
           </div>
+        )}
+
+        {mode === "existing" && suspendedId && !isFixing && (
+          <section className="space-y-3 rounded-2xl border border-indigo-200 bg-white p-4 shadow-sm dark:border-indigo-900 dark:bg-gray-800" aria-labelledby="pending-credit-title">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="rounded-xl bg-indigo-100 p-2 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"><WalletCards size={20}/></div>
+                <div>
+                  <h2 id="pending-credit-title" className="font-bold text-gray-900 dark:text-white">Customer credit</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{creditLoaded ? `${formatCurrency(totalCreditAvailable, currency)} available` : creditLoadError ? "Credit check failed" : "Checking available credit…"}</p>
+                </div>
+              </div>
+              {creditLoaded && totalCreditAvailable > 0.009 && (
+                <button type="button" onClick={() => setShowCreditEditor(value => !value)} className="shrink-0 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white">
+                  {pendingCredit > 0 ? "Change credit" : "Apply credit"}
+                </button>
+              )}
+            </div>
+            {showCreditEditor && creditLoaded && totalCreditAvailable > 0.009 && (
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 dark:border-indigo-900 dark:bg-indigo-950/20">
+                <label className="block text-xs font-bold uppercase text-indigo-800 dark:text-indigo-300">Credit to apply
+                  <div className="relative mt-1.5"><span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-indigo-600">{currency}</span><input aria-label="Credit to apply" type="text" inputMode="decimal" value={pendingCreditAmount} onChange={event => setPendingCreditAmount(event.target.value.replace(/[^0-9.]/g, ''))} className="w-full rounded-xl border border-indigo-200 bg-white py-3 pl-12 pr-3 text-right text-lg font-bold outline-none focus:ring-2 focus:ring-indigo-500 dark:border-indigo-800 dark:bg-gray-900"/></div>
+                </label>
+                <div className="mt-2 flex items-center justify-between gap-3 text-xs text-indigo-800 dark:text-indigo-300"><span>Maximum for this invoice</span><strong>{formatCurrency(maxPendingCredit, currency)}</strong></div>
+                <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={() => { setPendingCreditAmount("0"); setShowCreditEditor(false); }} className="rounded-lg px-3 py-2 text-sm font-semibold text-gray-600 dark:text-gray-300">Remove</button><button type="button" onClick={() => setShowCreditEditor(false)} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Apply</button></div>
+              </div>
+            )}
+            {pendingCredit > 0 && (
+              <dl className="space-y-2 border-t border-gray-100 pt-3 text-sm dark:border-gray-700">
+                <div className="flex justify-between gap-3"><dt className="text-indigo-700 dark:text-indigo-300">Credit to apply</dt><dd className="font-bold text-indigo-700 dark:text-indigo-300">-{formatCurrency(pendingCredit, currency)}</dd></div>
+                <div className="flex justify-between gap-3 border-t border-dashed border-gray-200 pt-2 text-base dark:border-gray-700"><dt className="font-bold">Remaining after credit</dt><dd className="font-black text-orange-600 dark:text-orange-400">{formatCurrency(balanceAfterPendingCredit, currency)}</dd></div>
+              </dl>
+            )}
+            {pendingCredit > 0 && <p className="rounded-lg bg-amber-50 p-2.5 text-xs font-semibold text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">Pending — credit will be applied oldest first only when this invoice is saved.</p>}
+            {creditLoadError && <div className="flex items-center justify-between gap-3 rounded-lg bg-red-50 p-2.5 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-300"><span>Could not check customer credit.</span><button type="button" onClick={() => setCreditReloadKey(value => value + 1)} className="font-bold underline">Retry</button></div>}
+            {creditLoaded && totalCreditAvailable <= 0.009 && <p className="text-sm text-gray-500 dark:text-gray-400">No customer credit is currently available.</p>}
+          </section>
         )}
 
         {mode === "existing" && (

@@ -11,6 +11,7 @@ export const SuspendedTransactionService = {
           items: data.items,
           amount: data.amount,
           paid: data.paid,
+          pending_credit_amount: data.pendingCreditAmount || 0,
           ...(data.invoicePayments && { invoice_payments: data.invoicePayments }),
           discount: data.discount,
           note: data.note,
@@ -32,6 +33,7 @@ export const SuspendedTransactionService = {
             items: data.items,
             amount: data.amount,
             paid: data.paid,
+            pending_credit_amount: data.pendingCreditAmount || 0,
             ...(data.invoicePayments?.length && { invoice_payments: data.invoicePayments }),
             discount: data.discount,
             note: data.note,
@@ -64,6 +66,7 @@ export const SuspendedTransactionService = {
       items: s.items,
       amount: s.amount,
       paid: s.paid,
+      pendingCreditAmount: s.pending_credit_amount || 0,
       invoicePayments: s.invoice_payments,
       discount: s.discount,
       note: s.note,
@@ -95,6 +98,7 @@ export const SuspendedTransactionService = {
       items: data.items,
       amount: data.amount,
       paid: data.paid,
+      pendingCreditAmount: data.pending_credit_amount || 0,
       discount: data.discount,
       note: data.note
     };

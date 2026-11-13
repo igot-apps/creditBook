@@ -234,7 +234,8 @@ export const HomePage = () => {
                       {tx.type === 'sale' && (
                         <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-gray-600 dark:text-gray-300">
                           <span>Paid {formatCurrency(tx.paid, currency)}</span>
-                          <span className="font-semibold">Remaining {formatCurrency(Math.max(0, (Number(tx.amount) || 0) - (Number(tx.paid) || 0)), currency)}</span>
+                          {(Number(tx.pendingCreditAmount) || 0) > 0 && <span className="font-semibold text-indigo-600 dark:text-indigo-400">Credit pending {formatCurrency(tx.pendingCreditAmount, currency)}</span>}
+                          <span className="font-semibold">Remaining {formatCurrency(Math.max(0, (Number(tx.amount) || 0) - (Number(tx.paid) || 0) - (Number(tx.pendingCreditAmount) || 0)), currency)}</span>
                         </p>
                       )}
                     </div>

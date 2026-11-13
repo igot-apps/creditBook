@@ -1,5 +1,5 @@
 import { CorrectionHistory } from "../../../components/CorrectionHistory";
-import { FileText, Ban, HeartHandshake, Smartphone, CreditCard, Banknote, Share2, Edit3, X, Link2 } from "lucide-react";
+import { FileText, Ban, HeartHandshake, Smartphone, CreditCard, Banknote, Share2, Edit3, X, Link2, WalletCards } from "lucide-react";
 import { formatCurrency, formatDate } from "../../../utils/helpers";
 import { openWhatsApp } from "../../../utils/communication";
 import { txDate, isActive, saleLabel, isWriteOffTx } from "../utils/helpers";
@@ -56,6 +56,8 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
 
   // Split: real money vs forgiven money (historically distinguishable)
   const paidAllocs = appliedToThisSale.filter(a => !isWriteOffTx(payById(a.payment_id)));
+  const creditAllocs = paidAllocs.filter(a => Array.isArray(a.credit_operation_ids) && a.credit_operation_ids.length > 0);
+  const regularPaidAllocs = paidAllocs.filter(a => !Array.isArray(a.credit_operation_ids) || a.credit_operation_ids.length === 0);
   const forgivenAllocs = appliedToThisSale.filter(a => isWriteOffTx(payById(a.payment_id)));
   const paidViaPayments = paidAllocs.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
   const forgivenTotal = forgivenAllocs.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
@@ -216,7 +218,7 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
                   })}
                 </div>
               )}
-              {!isPayment && (invoicePayments.length > 0 || paidAllocs.length > 0) && (
+              {!isPayment && (invoicePayments.length > 0 || regularPaidAllocs.length > 0) && (
                 <div className="bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/30 rounded-xl p-3 space-y-1.5">
                   <p className="text-[10px] font-bold text-green-700 dark:text-green-400 uppercase flex items-center gap-1"><Link2 size={11} /> Payments applied to this invoice</p>
                   {invoicePayments.map(payment => (
@@ -225,7 +227,7 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
                       <strong>{formatCurrency(payment.amount, currency)}</strong>
                     </div>
                   ))}
-                  {paidAllocs.map((a, i) => {
+                  {regularPaidAllocs.map((a, i) => {
                     const p = payById(a.payment_id);
                     return (
                       <div key={i} className="flex justify-between text-xs">
@@ -233,6 +235,16 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
                         <span className="font-semibold text-green-700 dark:text-green-400">-{formatCurrency(parseFloat(a.amount) || 0, currency)}</span>
                       </div>
                     );
+                  })}
+                </div>
+              )}
+              {!isPayment && creditAllocs.length > 0 && (
+                <div className="space-y-1.5 rounded-xl border border-indigo-100 bg-indigo-50 p-3 dark:border-indigo-900 dark:bg-indigo-950/20">
+                  <p className="flex items-center gap-1 text-[10px] font-bold uppercase text-indigo-700 dark:text-indigo-300"><WalletCards size={11}/> Credit applied</p>
+                  {creditAllocs.map((allocation, index) => {
+                    const payment = payById(allocation.payment_id);
+                    const sourceReference = payment?.reference || (payment ? `${payment.type === 'sale' ? saleLabel(payment) : `PAY-${payment.id.slice(-6).toUpperCase()}`}` : "Customer credit");
+                    return <div key={index} className="flex justify-between gap-3 text-xs"><span className="min-w-0 break-words text-gray-600 dark:text-gray-300">{payment ? formatDate(payment.received_at || txDate(payment)) : "Credit source"} · {sourceReference}</span><strong className="text-indigo-700 dark:text-indigo-300">-{formatCurrency(parseFloat(allocation.amount) || 0, currency)}</strong></div>;
                   })}
                 </div>
               )}
@@ -283,7 +295,7 @@ export const ReceiptModal = ({ tx, customer, currentStore, onClose, onFix, onCan
                     {discount > 0 && <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Discount</span><span className="font-semibold text-purple-600 dark:text-purple-400">-{formatCurrency(discount, currency)}</span></div>}
                     {paid > 0 && <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Paid Upfront</span><span className="font-semibold text-green-600 dark:text-green-400">-{formatCurrency(paid, currency)}</span></div>}
                     {paid > totalSale + 0.009 && <div className="flex justify-between text-sm"><span>Applied to this invoice upfront</span><strong>{formatCurrency(totalSale, currency)}</strong></div>}
-                    {paidViaPayments > 0 && <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Paid via Payments</span><span className="font-semibold text-green-600 dark:text-green-400">-{formatCurrency(paidViaPayments, currency)}</span></div>}
+                    {paidViaPayments > 0 && <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Payments and credit applied</span><span className="font-semibold text-green-600 dark:text-green-400">-{formatCurrency(paidViaPayments, currency)}</span></div>}
                     {forgivenTotal > 0 && <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">🤝 Forgiven</span><span className="font-semibold text-purple-600 dark:text-purple-400">-{formatCurrency(forgivenTotal, currency)}</span></div>}
                     <div className="flex justify-between text-base pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
                       <span className="font-bold text-gray-700 dark:text-gray-200">Outstanding</span>

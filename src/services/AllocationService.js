@@ -17,7 +17,7 @@ export const AllocationService = {
   getByContact: async (contactId) => {
     const { data, error } = await supabase
       .from('payment_allocations')
-      .select('id, payment_id, sale_id, contact_id, amount, created_at')
+      .select('id, payment_id, sale_id, contact_id, amount, credit_operation_ids, created_at')
       .eq('contact_id', contactId);
     if (error) throw error;
     return data || [];
