@@ -7,7 +7,7 @@ alter table public.payment_allocations
 create or replace function public.use_payment_credit(
   p_source uuid, p_invoice uuid, p_amount numeric,
   p_operation_id uuid, p_reference text, p_received_at timestamptz
-) returns void language plpgsql security invoker set search_path = '' as $$
+) returns void language plpgsql security invoker set search_path = public, pg_temp as $$
 declare
   source_row public.transactions%rowtype;
   invoice_row public.transactions%rowtype;
@@ -113,7 +113,7 @@ grant execute on function public.use_payment_credit(uuid, uuid, numeric, uuid, t
 create or replace function public.record_invoice_payment(
   p_id uuid, p_invoice uuid, p_amount numeric, p_method text,
   p_reference text, p_note text, p_received_at timestamptz
-) returns void language plpgsql security invoker set search_path = '' as $$
+) returns void language plpgsql security invoker set search_path = public, pg_temp as $$
 declare
   invoice_row public.transactions%rowtype;
   invoice_type text;

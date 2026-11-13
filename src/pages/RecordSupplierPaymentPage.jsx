@@ -183,8 +183,8 @@ export const RecordSupplierPaymentPage = () => {
       useStore.setState({ selectedSupplier: selectedSupplier });
       setView("supplierProfile");
     } catch (error) {
-      console.error(error);
-      showToast(error.code === "P0001" ? error.message : "Failed to record payment.");
+      console.error("Supplier payment save failed", { code: error?.code, message: error?.message, details: error?.details, hint: error?.hint });
+      showToast(error?.message || "Failed to record payment.");
     } finally {
       setIsSaving(false);
     }

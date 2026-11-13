@@ -8,7 +8,7 @@ alter table public.transactions
 
 create or replace function public.save_transaction_correction(
   p_original uuid, p_replacement uuid, p_changes jsonb, p_reason text
-) returns uuid language plpgsql security invoker set search_path = '' as $$
+) returns uuid language plpgsql security invoker set search_path = public, pg_temp as $$
 declare
   original public.transactions%rowtype;
   replacement public.transactions%rowtype;
@@ -109,7 +109,7 @@ end;
 $$;
 
 create or replace function public.refresh_correction_balance(p_contact uuid, p_type text)
-returns void language sql security invoker set search_path = '' as $$
+returns void language sql security invoker set search_path = public, pg_temp as $$
   update public.contacts
   set balance = (
     select coalesce(sum(coalesce(t.amount, 0) - coalesce(t.paid, 0)), 0)
@@ -124,7 +124,7 @@ returns void language sql security invoker set search_path = '' as $$
 $$;
 
 create or replace function public.undo_transaction_correction(p_replacement uuid)
-returns uuid language plpgsql security invoker set search_path = '' as $$
+returns uuid language plpgsql security invoker set search_path = public, pg_temp as $$
 declare
   original public.transactions%rowtype;
   replacement public.transactions%rowtype;
