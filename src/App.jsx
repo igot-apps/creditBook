@@ -42,6 +42,7 @@ import { SubscriptionService } from "./services/SubscriptionService";
 import { AdminService } from "./services/AdminService";
 import { supabase } from "./lib/supabaseClient";
 import { QuickUnlockService } from "./services/QuickUnlockService";
+import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
 
 // ==========================================
 // View-Only banner — shows once per session, auto-hides after 8s, dismissible
@@ -317,6 +318,7 @@ const AppRouter = () => {
       <ReadOnlyBanner />
       <BottomNav />
       <Toast />
+      <PwaUpdatePrompt />
       {showPinRecommendation && <QuickUnlockRecommendationModal onClose={() => setShowPinRecommendation(false)} onSetUp={() => { setShowPinRecommendation(false); setShowPinSetup(true); }} />}
       {showPinSetup && authUserId && <PinSetupModal userId={authUserId} onClose={() => setShowPinSetup(false)} onSaved={() => showToast('✅ Quick unlock PIN is ready')} />}
     </Layout>
