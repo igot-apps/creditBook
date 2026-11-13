@@ -111,12 +111,12 @@ export const RecordSalePage = () => {
           setPendingCreditAmount(String(susp.pendingCreditAmount || 0));
           setSaleDate(susp.createdAt || new Date().toISOString());
           setMode("existing");
-          showToast("⏸️ Resumed suspended sale");
+          showToast("⏸️ Resumed suspended invoice");
         } else {
-          showToast("Suspended sale is no longer available");
+          showToast("Suspended invoice is no longer available");
         }
       }).catch(() => {
-        if (!cancelled) showToast("Failed to load suspended sale");
+        if (!cancelled) showToast("Failed to load suspended invoice");
       }).finally(() => {
         if (!cancelled) clearResumedSuspended();
       });
@@ -436,7 +436,7 @@ export const RecordSalePage = () => {
       if (error.code === "PGRST202" || error.message?.includes("pending_credit_amount")) {
         showToast("Apply the pending credit migration in Supabase, then retry.");
       } else {
-        showToast(error?.message || "Failed to record sale.");
+        showToast(error?.message || "Failed to save invoice.");
       }
     } finally {
       setIsSaving(false);
@@ -469,7 +469,7 @@ export const RecordSalePage = () => {
         )}
 
         {mode === "search" && resumedSuspendedId && (
-          <p role="status" className="text-sm text-gray-500 dark:text-gray-400">Loading suspended sale…</p>
+          <p role="status" className="text-sm text-gray-500 dark:text-gray-400">Loading suspended invoice…</p>
         )}
 
         {mode === "search" && !resumedSuspendedId && (

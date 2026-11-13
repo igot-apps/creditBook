@@ -1,6 +1,7 @@
 import { Edit3, Ban, Check, FileText, ChevronDown, ChevronUp, ArrowRight } from "lucide-react";
 import { formatCurrency, formatDate } from "../../../utils/helpers";
 import { txDate } from "../utils/helpers";
+import { invoiceReference } from "../../../utils/invoiceReference";
 
 export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setViewingTransaction, currency, hasMore, onLoadMore, shownCount, totalCount }) => {
   const getTimelineIcon = (tx) => {
@@ -25,9 +26,11 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
             const isBeingCorrected = tx.status === 'being_corrected';
             const isCancelled = tx.status === 'cancelled';
             const isInvalid = isBeingCorrected || isCancelled;
+            const isInvoice = tx.type === 'purchase';
+            const activityTitle = tx.credit_source_id ? 'Refund received' : tx.type === 'supplier_payment' ? 'Payment' : invoiceReference(tx);
             return (
               <div key={tx.id} className="space-y-2">
-                <div role="button" tabIndex={0} onClick={() => onView(tx)} className={`w-full text-left p-3 rounded-xl border transition-all active:scale-[0.98] cursor-pointer ${
+                <div role="button" tabIndex={0} onClick={() => onView(tx)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onView(tx); } }} aria-label={`Open ${activityTitle}`} className={`w-full text-left p-3 rounded-xl border transition-all active:scale-[0.98] cursor-pointer ${
                   isCancelled ? 'border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20' :
                   isBeingCorrected ? 'border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20' :
                   'border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
@@ -39,9 +42,9 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
                       </div>
                       <div>
                         <p className={`font-bold text-sm ${isInvalid ? 'text-gray-500 line-through' : 'text-gray-900 dark:text-white'}`}>
-                          {tx.credit_source_id ? 'Refund received' : tx.type === 'supplier_payment' ? 'Payment' : 'Purchase'}
+                          {activityTitle}
                         </p>
-                        <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDate(txDate(tx)).split(',')[0]}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">{isInvoice && 'Purchase invoice · '}{formatDate(txDate(tx)).split(',')[0]}</p>
                       </div>
                     </div>
                     <div className="text-right">

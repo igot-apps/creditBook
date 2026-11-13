@@ -2,10 +2,12 @@ import { useId, useRef, useState } from "react";
 import { AllocationService } from "../services/AllocationService";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { paymentCreditAvailable } from "../utils/paymentCredit";
+import { invoiceReference } from "../utils/invoiceReference";
 
 const live = tx => tx && (!tx.status || tx.status === "active") && !tx.replaced_by_transaction_id && !tx.replacedByTransactionId;
 const money = value => Number(value) || 0;
 const number = tx => `#${tx.id.slice(-6).toUpperCase()}`;
+const sourceReference = (tx, invoiceType) => tx.type === invoiceType ? invoiceReference(tx) : `PAY-${tx.id.slice(-6).toUpperCase()}`;
 const fieldClass = "mt-1 block w-full rounded-xl border border-gray-300 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-900";
 
 export function PaymentCredit({ history, allocations, invoices, currency, isSupplier = false, readOnly, onSaved }) {
@@ -92,7 +94,7 @@ export function PaymentCredit({ history, allocations, invoices, currency, isSupp
       {sources.map(tx => (
         <div key={tx.id} className="space-y-2 border-t border-gray-200 pt-3 text-sm dark:border-gray-700">
           <div className="flex justify-between gap-3">
-            <span>{tx.type === invoiceType ? "Invoice" : "Payment"} {number(tx)}</span>
+            <span>{sourceReference(tx, invoiceType)}</span>
             <strong>{formatCurrency(tx.available, currency)}</strong>
           </div>
           <p className="break-words text-xs text-gray-500 dark:text-gray-400">
@@ -120,13 +122,13 @@ export function PaymentCredit({ history, allocations, invoices, currency, isSupp
       <dialog ref={dialog} aria-labelledby={titleId} onCancel={event => { if (saving) event.preventDefault(); }} className="m-auto w-[calc(100%_-_2rem)] max-w-md rounded-2xl bg-white p-5 text-gray-900 shadow-xl backdrop:bg-black/50 dark:bg-gray-800 dark:text-white">
         <form onSubmit={save} className="space-y-4">
           <h2 id={titleId} className="text-lg font-bold">{isRefund ? "Record refund" : "Apply credit"}</h2>
-          <p className="text-sm">{formatCurrency(source?.available, currency)} available from {source && number(source)}</p>
+          <p className="text-sm">{formatCurrency(source?.available, currency)} available from {source && sourceReference(source, invoiceType)}</p>
           {!isRefund && (
             <label className="block text-sm">Invoice
               <select className={fieldClass} required value={invoiceId} onChange={event => setInvoiceId(event.target.value)}>
                 <option value="">Choose an invoice</option>
                 {invoices.filter(tx => tx.id !== source?.id).map(tx => (
-                  <option key={tx.id} value={tx.id}>{number(tx)} · {formatDate(tx.created_at)} · {formatCurrency(tx.trueOutstanding, currency)} due</option>
+                  <option key={tx.id} value={tx.id}>{invoiceReference(tx)} · {formatDate(tx.created_at)} · {formatCurrency(tx.trueOutstanding, currency)} due</option>
                 ))}
               </select>
             </label>

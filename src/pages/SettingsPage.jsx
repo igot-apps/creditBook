@@ -206,7 +206,7 @@ export const SettingsPage = () => {
           </div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Store Profile</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            This information will appear on receipts and shared account statements.
+            This information will appear on invoices, payment receipts and shared account statements.
           </p>
         </div>
 

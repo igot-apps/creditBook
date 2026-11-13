@@ -27,7 +27,7 @@ export const MorePage = () => {
         },
         { 
           label: "Saved Drafts", 
-          description: "Unfinished sales & purchases", 
+          description: "Unfinished customer & purchase invoices",
           icon: FileText, 
           color: "text-gray-600 dark:text-gray-400", 
           bg: "bg-gray-100 dark:bg-gray-800",

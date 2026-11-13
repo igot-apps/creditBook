@@ -82,7 +82,7 @@ export const DeleteContactModal = ({ isOpen, onClose, onConfirm, contact, type =
               {stats.totalSales > 0 && (
                 <li className="flex items-start gap-2">
                   <span className="text-red-500 font-bold">•</span>
-                  <span>{formatCurrency(stats.totalSales, currency)} in {type === "supplier" ? "purchases" : "sales"} history</span>
+                  <span>{formatCurrency(stats.totalSales, currency)} in {type === "supplier" ? "purchase invoice" : "customer invoice"} history</span>
                 </li>
               )}
               {stats.totalPaid > 0 && (

@@ -5,7 +5,7 @@ import { openWhatsApp } from "../../../utils/communication";
 import { txDate, isActive, purchaseLabel } from "../utils/helpers";
 import { paymentCreditAvailable } from "../../../utils/paymentCredit";
 
-export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, onPayment, currency, history, allocations, readOnly, onCorrectionUndone }) => {
+export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, onPayment, currency, history, allocations, readOnly, onCorrectionUndone, onViewTransaction }) => {
   if (!tx) return null;
   const items = Array.isArray(tx.items) ? tx.items : [];
   const totalPurchase = parseFloat(tx.amount) || 0;
@@ -144,7 +144,9 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
                 const s = purchaseById(a.sale_id);
                 return (
                   <div key={i} className="flex justify-between text-xs">
-                    <span className="text-gray-600 dark:text-gray-300">{s ? purchaseLabel(s) : "Invoice"}</span>
+                    {s && onViewTransaction ? (
+                      <button type="button" onClick={() => onViewTransaction(s)} className="font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2 dark:text-blue-400">{purchaseLabel(s)}</button>
+                    ) : <span className="text-gray-600 dark:text-gray-300">{s ? purchaseLabel(s) : "Invoice"}</span>}
                     <span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(parseFloat(a.amount) || 0, currency)}</span>
                   </div>
                 );

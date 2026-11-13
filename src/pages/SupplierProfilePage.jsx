@@ -288,6 +288,7 @@ export const SupplierProfilePage = () => {
           history={history}
           allocations={allocations}
           onPayment={handleMakePayment}
+          onViewTransaction={setViewingTransaction}
         />
       )}
       <FixReasonModal isOpen={showFixModal} onClose={() => setShowFixModal(false)} onConfirm={confirmFix} fixReason={fixReason} setFixReason={setFixReason} />

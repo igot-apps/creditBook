@@ -305,6 +305,7 @@ export const CustomerProfilePage = () => {
           allocations={allocations}
           balance={trueBalance}
           onReceivePayment={handleReceivePayment}
+          onViewTransaction={setViewingTransaction}
         />
       )}
       <FixReasonModal isOpen={showFixModal} onClose={() => setShowFixModal(false)} onConfirm={confirmFix} fixReason={fixReason} setFixReason={setFixReason} />

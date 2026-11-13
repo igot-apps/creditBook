@@ -1,3 +1,5 @@
+import { invoiceReference } from "../../../utils/invoiceReference";
+
 export const normalizeTx = (tx) => {
   if (!tx) return tx;
   return {
@@ -15,7 +17,7 @@ export const normalizeTx = (tx) => {
 export const normalizeList = (list) => (Array.isArray(list) ? list : []).map(normalizeTx);
 export const txDate = (tx) => tx.createdAt || tx.created_at || tx.date;
 export const isActive = (tx) => tx.status === 'active' || !tx.status;
-export const purchaseLabel = (tx) => `Purchase #${(tx.id || "").slice(-6).toUpperCase()}`;
+export const purchaseLabel = (tx) => invoiceReference({ ...tx, type: 'purchase' });
 
 // ==========================================
 // LOCAL ALLOCATION HELPERS (supplier side)

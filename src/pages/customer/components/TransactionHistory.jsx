@@ -1,6 +1,7 @@
 import { Edit3, Ban, HeartHandshake, Check, FileText, ChevronDown, ChevronUp, ArrowRight } from "lucide-react";
 import { formatCurrency, formatDate } from "../../../utils/helpers";
 import { txDate, isWriteOffTx } from "../utils/helpers";
+import { invoiceReference } from "../../../utils/invoiceReference";
 
 export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setViewingTransaction, currency, hasMore, onLoadMore, shownCount, totalCount }) => {
   const getTimelineIcon = (tx) => {
@@ -28,9 +29,18 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
             const isInvalid = isBeingCorrected || isCancelled;
             const forgiven = isWriteOffTx(tx);
             const isCorrection = !!tx.correctsTransactionId; // 👈 this row replaced an older one
+            const isInvoice = tx.type === 'sale' || tx.type === 'purchase';
+            const activityTitle = tx.credit_source_id
+              ? 'Refund returned'
+              : forgiven
+                ? 'Debt Forgiven'
+                : tx.type === 'payment'
+                  ? 'Payment'
+                  : invoiceReference(tx);
+            const activityKind = tx.type === 'purchase' ? 'Purchase invoice' : 'Customer invoice';
             return (
               <div key={tx.id} className="space-y-2">
-                <div role="button" tabIndex={0} onClick={() => onView(tx)} className={`w-full text-left p-3 rounded-xl border transition-all active:scale-[0.98] cursor-pointer ${
+                <div role="button" tabIndex={0} onClick={() => onView(tx)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onView(tx); } }} aria-label={`Open ${activityTitle}`} className={`w-full text-left p-3 rounded-xl border transition-all active:scale-[0.98] cursor-pointer ${
                   isCancelled ? 'border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20' :
                   isBeingCorrected ? 'border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20' :
                   forgiven ? 'border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20' :
@@ -44,9 +54,9 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
                       </div>
                       <div>
                         <p className={`font-bold text-sm ${isInvalid ? 'text-gray-500 line-through' : forgiven ? 'text-purple-700 dark:text-purple-400' : 'text-gray-900 dark:text-white'}`}>
-                          {tx.credit_source_id ? 'Refund returned' : forgiven ? 'Debt Forgiven' : tx.type === 'payment' ? 'Payment' : tx.type === 'purchase' ? 'Purchase' : 'Sale'}
+                          {activityTitle}
                         </p>
-                        <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDate(tx.received_at || txDate(tx)).split(',')[0]}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">{isInvoice && `${activityKind} · `}{formatDate(tx.received_at || txDate(tx)).split(',')[0]}</p>
                         {/* 👇 NEW: prominent CORRECTED badge */}
                         {isCorrection && (
                           <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[9px] font-bold uppercase tracking-wide">

@@ -2,7 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import { ReasonPicker } from "../../../components/ReasonPicker";
 
 const paymentReasons = ["Entered by mistake", "Duplicate payment", "Payment was reversed", "Wrong customer"];
-const saleReasons = ["Entered by mistake", "Duplicate invoice", "Sale did not happen", "Customer returned the order"];
+const saleReasons = ["Entered by mistake", "Duplicate invoice", "Customer cancelled the order", "Customer returned the order"];
 
 export const CancelModal = ({ isOpen, onClose, onConfirm, cancelReason, setCancelReason, type }) => {
   if (!isOpen) return null;

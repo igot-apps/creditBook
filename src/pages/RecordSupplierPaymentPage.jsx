@@ -6,6 +6,7 @@ import { SupplierService } from "../services/SupplierService";
 import { TransactionService } from "../services/TransactionService";
 import { AllocationService } from "../services/AllocationService";
 import { TopBar } from "../components/TopBar";
+import { invoiceReference } from "../utils/invoiceReference";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
@@ -113,7 +114,7 @@ export const RecordSupplierPaymentPage = () => {
         );
         return {
           id: tx.id,
-          name: "Purchase #" + String(tx.id || "").slice(-6).toUpperCase(),
+          name: invoiceReference(tx),
           remaining: remaining,
           date: tx.created_at || tx.createdAt,
         };

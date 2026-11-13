@@ -198,7 +198,7 @@ export const HomePage = () => {
               <div>
                 <p className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase">Continue Working</p>
                 <p className="font-bold text-gray-900 dark:text-white text-sm">
-                  {autoDraft.draftType === 'sale' ? 'Draft Sale' : 'Draft Purchase'}
+                  {autoDraft.draftType === 'sale' ? 'Draft Customer Invoice' : 'Draft Purchase Invoice'}
                 </p>
                 {autoDraft.updatedAt && <p className="text-xs text-gray-500 dark:text-gray-400">Edited {getTimeAgo(autoDraft.updatedAt).toLowerCase()}</p>}
               </div>
@@ -226,7 +226,7 @@ export const HomePage = () => {
                     </div>
                     <div className="min-w-0">
                       <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
-                        {tx.type === 'sale' ? 'Sale' : 'Purchase'} • {tx.contactName || "Unknown"}
+                        {tx.type === 'sale' ? 'Customer Invoice' : 'Purchase Invoice'} • {tx.contactName || "Unknown"}
                       </p>
                       <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
                         {tx.items?.length || 0} items • {tx.type === 'sale' ? formatDate(tx.createdAt) : getTimeAgo(tx.createdAt || tx.created_at)}
