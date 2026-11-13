@@ -43,6 +43,26 @@ export const TransactionService = {
     if (error) throw error;
     return data;
   },
+  finalizeSuspendedPurchase: async ({ invoiceId, suspendedId, storeId, contactId, items, amount, paid, discount, note, invoicePayments, creditAmount, operationId }) => {
+    const { data, error } = await supabase.rpc('finalize_suspended_purchase_with_credit', {
+      p_invoice_id: invoiceId, p_suspended_id: suspendedId, p_store: storeId, p_contact: contactId,
+      p_items: items || [], p_amount: parseFloat(amount) || 0, p_paid: parseFloat(paid) || 0,
+      p_discount: parseFloat(discount) || 0, p_note: note || '', p_invoice_payments: invoicePayments || [],
+      p_credit_amount: parseFloat(creditAmount) || 0, p_operation_id: operationId,
+    });
+    if (error) throw error;
+    return data;
+  },
+  createInvoiceWithCredit: async ({ invoiceId, storeId, contactId, invoiceType, items, amount, paid, discount, note, invoicePayments, createdAt, creditAmount, operationId }) => {
+    const { data, error } = await supabase.rpc('create_invoice_with_credit', {
+      p_invoice_id: invoiceId, p_store: storeId, p_contact: contactId, p_invoice_type: invoiceType,
+      p_items: items || [], p_amount: parseFloat(amount) || 0, p_paid: parseFloat(paid) || 0,
+      p_discount: parseFloat(discount) || 0, p_note: note || '', p_invoice_payments: invoicePayments || [],
+      p_created_at: createdAt || null, p_credit_amount: parseFloat(creditAmount) || 0, p_operation_id: operationId,
+    });
+    if (error) throw error;
+    return data;
+  },
   correct: async (originalId, replacementId, changes, reason) => {
     const { data, error } = await supabase.rpc('save_transaction_correction', {
       p_original: originalId,

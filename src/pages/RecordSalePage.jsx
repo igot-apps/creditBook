@@ -125,7 +125,7 @@ export const RecordSalePage = () => {
   }, [resumedSuspendedId, clearResumedSuspended, showToast]);
 
   useEffect(() => {
-    if (!selectedCustomer?.id || !suspendedId || isFixing) {
+    if (!selectedCustomer?.id || isFixing) {
       setCreditHistory([]);
       setCreditAllocations([]);
       setCreditLoaded(false);
@@ -343,7 +343,7 @@ export const RecordSalePage = () => {
       showToast("Invoice suspended");
       setView("home");
     } catch (error) {
-      console.error(error);
+      console.error("Sale save failed", { code: error?.code, message: error?.message, details: error?.details, hint: error?.hint });
       if ((error.message?.includes('invoice_payments') || error.message?.includes('pending_credit_amount')) && ['PGRST204', '42703'].includes(error.code)) {
         showToast("Apply the latest suspended invoice migration in Supabase, then retry.");
       } else {
@@ -364,7 +364,7 @@ export const RecordSalePage = () => {
     const finalAmount = parseFloat(tx.amount) || 0;
     const finalPaid = parseFloat(tx.paid) || 0;
     if (finalPaid < 0) { showToast("Enter a non-negative amount paid"); return; }
-    if (suspendedId && (Number(pendingCreditAmount) || 0) > 0 && !creditLoaded) { showToast("Wait for customer credit to finish loading, then try again."); return; }
+    if ((Number(pendingCreditAmount) || 0) > 0 && !creditLoaded) { showToast("Wait for customer credit to finish loading, then try again."); return; }
     if (invoiceStyle === "quick" && finalAmount <= 0) { showToast("⚠️ Enter the invoice total"); return; }
     if (finalAmount === 0 && finalPaid === 0 && !tx.note.trim() && effectiveItems.length === 0) {
       showToast("⚠️ Please add items, a payment amount, or a note."); return;
@@ -405,6 +405,22 @@ export const RecordSalePage = () => {
             creditAmount: pendingCredit,
           });
           setSuspendedId(null);
+        } else if (pendingCredit > 0) {
+          await TransactionService.createInvoiceWithCredit({
+            invoiceId: finalizeIds.current.invoiceId,
+            operationId: finalizeIds.current.operationId,
+            storeId: currentStore.id,
+            contactId: selectedCustomer.id,
+            invoiceType: 'sale',
+            items: effectiveItems,
+            amount: finalAmount,
+            paid: finalPaid,
+            discount: extraData.discount,
+            note: tx.note,
+            invoicePayments: extraData.invoicePayments,
+            createdAt: saleDate,
+            creditAmount: pendingCredit,
+          });
         } else {
           await TransactionService.create(currentStore.id, selectedCustomer.id, 'sale', effectiveItems, finalAmount, finalPaid, tx.note, extraData);
           await CustomerService.updateBalance(selectedCustomer.id);
@@ -420,7 +436,7 @@ export const RecordSalePage = () => {
       if (error.code === "PGRST202" || error.message?.includes("pending_credit_amount")) {
         showToast("Apply the pending credit migration in Supabase, then retry.");
       } else {
-        showToast(error.message?.includes("Available credit changed") || error.code === "P0001" ? error.message : "Failed to record sale.");
+        showToast(error?.message || "Failed to record sale.");
       }
     } finally {
       setIsSaving(false);
@@ -548,7 +564,7 @@ export const RecordSalePage = () => {
           </div>
         )}
 
-        {mode === "existing" && suspendedId && !isFixing && (
+        {mode === "existing" && !isFixing && (
           <section className="space-y-3 rounded-2xl border border-indigo-200 bg-white p-4 shadow-sm dark:border-indigo-900 dark:bg-gray-800" aria-labelledby="pending-credit-title">
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 items-start gap-3">

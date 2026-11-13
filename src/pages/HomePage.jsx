@@ -238,6 +238,12 @@ export const HomePage = () => {
                           <span className="font-semibold">Remaining {formatCurrency(Math.max(0, (Number(tx.amount) || 0) - (Number(tx.paid) || 0) - (Number(tx.pendingCreditAmount) || 0)), currency)}</span>
                         </p>
                       )}
+                      {tx.type === 'purchase' && (Number(tx.pendingCreditAmount) || 0) > 0 && (
+                        <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-gray-600 dark:text-gray-300">
+                          <span className="font-semibold text-indigo-600 dark:text-indigo-400">Supplier credit pending {formatCurrency(tx.pendingCreditAmount, currency)}</span>
+                          <span className="font-semibold">Remaining {formatCurrency(Math.max(0, (Number(tx.amount) || 0) - (Number(tx.paid) || 0) - (Number(tx.pendingCreditAmount) || 0)), currency)}</span>
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">

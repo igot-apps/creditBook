@@ -25,7 +25,7 @@ create or replace function public.finalize_suspended_sale_with_credit(
 ) returns uuid
 language plpgsql
 security invoker
-set search_path = ''
+set search_path = public, pg_temp
 as $$
 declare
   draft public.suspended_transactions%rowtype;
