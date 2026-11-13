@@ -168,20 +168,20 @@ export const HomePage = () => {
 
         {/* 2. TODAY'S ACTIVITY (Tiny Stats) */}
         <div className="grid grid-cols-3 gap-2">
-          <div className="bg-green-50 dark:bg-green-900/10 p-3 rounded-xl border border-green-100 dark:border-green-900/30">
+          <div className="min-w-0 bg-green-50 dark:bg-green-900/10 px-2.5 py-3 sm:p-3 rounded-xl border border-green-100 dark:border-green-900/30">
             <TrendingUp size={14} className="text-green-600 dark:text-green-400 mb-1" />
             <p className="text-xs font-medium text-gray-600 dark:text-gray-400">Received today</p>
-            <p className="break-words text-sm font-bold tabular-nums text-gray-900 dark:text-white">{formatCurrency(todayStats.received, currency)}</p>
+            <p className="whitespace-nowrap text-[clamp(0.72rem,3vw,0.875rem)] font-bold tracking-tight tabular-nums text-gray-900 dark:text-white">{formatCurrency(todayStats.received, currency)}</p>
           </div>
-          <div className="bg-indigo-50 dark:bg-indigo-900/10 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
+          <div className="min-w-0 bg-indigo-50 dark:bg-indigo-900/10 px-2.5 py-3 sm:p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
             <TrendingDown size={14} className="text-indigo-600 dark:text-indigo-400 mb-1" />
             <p className="text-xs font-medium text-gray-600 dark:text-gray-400">Bought today</p>
-            <p className="break-words text-sm font-bold tabular-nums text-gray-900 dark:text-white">{formatCurrency(todayStats.purchases, currency)}</p>
+            <p className="whitespace-nowrap text-[clamp(0.72rem,3vw,0.875rem)] font-bold tracking-tight tabular-nums text-gray-900 dark:text-white">{formatCurrency(todayStats.purchases, currency)}</p>
           </div>
-          <div className="bg-orange-50 dark:bg-orange-900/10 p-3 rounded-xl border border-orange-100 dark:border-orange-900/30">
+          <div className="min-w-0 bg-orange-50 dark:bg-orange-900/10 px-2.5 py-3 sm:p-3 rounded-xl border border-orange-100 dark:border-orange-900/30">
             <AlertCircle size={14} className="text-orange-600 dark:text-orange-400 mb-1" />
             <p className="text-xs font-medium text-gray-600 dark:text-gray-400">Outstanding</p>
-            <p className="break-words text-sm font-bold tabular-nums text-gray-900 dark:text-white">{formatCurrency(todayStats.outstanding, currency)}</p>
+            <p className="whitespace-nowrap text-[clamp(0.72rem,3vw,0.875rem)] font-bold tracking-tight tabular-nums text-gray-900 dark:text-white">{formatCurrency(todayStats.outstanding, currency)}</p>
           </div>
         </div>
 
@@ -226,10 +226,10 @@ export const HomePage = () => {
                     </div>
                     <div className="min-w-0">
                       <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
-                        {tx.type === 'sale' ? 'Customer Invoice' : 'Purchase Invoice'} • {tx.contactName || "Unknown"}
+                        {tx.contactName || (tx.type === 'sale' ? "Unknown customer" : "Unknown supplier")}
                       </p>
                       <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-                        {tx.items?.length || 0} items • {tx.type === 'sale' ? formatDate(tx.createdAt) : getTimeAgo(tx.createdAt || tx.created_at)}
+                        {tx.items?.length || 0} {(tx.items?.length || 0) === 1 ? 'item' : 'items'} • {tx.type === 'sale' ? formatDate(tx.createdAt) : getTimeAgo(tx.createdAt || tx.created_at)}
                       </p>
                       {tx.type === 'sale' && (
                         <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-gray-600 dark:text-gray-300">
