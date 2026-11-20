@@ -33,7 +33,7 @@ export const AuthService = {
   // 2. Sign In
   signIn: async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({
-      email,
+      email: String(email || "").trim(),
       password,
     });
     if (error) throw error;
