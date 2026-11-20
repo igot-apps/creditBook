@@ -46,7 +46,7 @@ export const ResetPasswordPage = () => {
       setTimeout(() => setView("login"), 2000);
     } catch (error) {
       console.error(error);
-      showToast("❌ Failed to update password. Please try again.");
+      showToast(`❌ ${error?.message || "Failed to update password. Please try again."}`);
     } finally {
       setIsLoading(false);
     }
