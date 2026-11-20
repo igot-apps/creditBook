@@ -5,10 +5,12 @@ import { ProductService } from "../services/ProductService";
 import { matchesProductSearch } from "../utils/productSearch";
 import { TopBar } from "../components/TopBar";
 import { AddProductModal } from "../components/AddProductModal";
+import { SkeletonList } from "../components/Skeleton";
 
 export const ProductsPage = () => {
   const { currentStore, setView, showToast, focusedProduct, setFocusedProduct, readOnly } = useStore();
   const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(() => focusedProduct?.query || "");
   const [highlightedProductId, setHighlightedProductId] = useState(() => focusedProduct?.id || null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -16,7 +18,7 @@ export const ProductsPage = () => {
 
   useEffect(() => {
     if (currentStore?.id) {
-      ProductService.getAll(currentStore.id).then(setProducts);
+      ProductService.getAll(currentStore.id).then(setProducts).catch(console.error).finally(() => setLoading(false));
     }
   }, [currentStore?.id]);
 
@@ -147,7 +149,9 @@ export const ProductsPage = () => {
           {results.length} {query ? "matching " : ""}{results.length === 1 ? "product" : "products"}
         </p>
         <div className="grid items-start gap-3 lg:grid-cols-2">
-          {results.length === 0 ? (
+          {loading ? (
+            <div className="col-span-full"><SkeletonList rows={5} label="Loading products" /></div>
+          ) : results.length === 0 ? (
             <div className="col-span-full rounded-2xl border border-dashed border-gray-300 py-12 text-center text-gray-500 dark:border-gray-700 dark:text-gray-400">
               <Package size={48} className="mx-auto mb-3 opacity-50" />
               <p className="font-medium">{query ? "No matching products" : "No products yet"}</p>

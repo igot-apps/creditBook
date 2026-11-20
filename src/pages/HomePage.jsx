@@ -1,5 +1,6 @@
 import { DiscardInvoiceModal } from "../components/DiscardInvoiceModal";
 import { useState, useEffect } from "react";
+import { Skeleton, SkeletonList } from "../components/Skeleton";
 import { Search, ArrowRight, Clock, TrendingUp, TrendingDown, AlertCircle, Pause, Trash2, ShoppingCart, Truck, Package, Crown } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
@@ -41,6 +42,7 @@ export const HomePage = () => {
   const [recentCustomers, setRecentCustomers] = useState([]);
   const [suspended, setSuspended] = useState([]);
   const [products, setProducts] = useState([]); // Track products
+  const [loaded, setLoaded] = useState(false); // first dashboard load finished (success or error)
   const currency = currentStore?.currency || "GH₵";
 
   // Handle both snake_case (Supabase) and camelCase
@@ -95,6 +97,8 @@ export const HomePage = () => {
         setSuspended(Array.isArray(suspendedTx) ? suspendedTx : []);
       } catch (error) {
         console.error("Failed to load dashboard data", error);
+      } finally {
+        setLoaded(true);
       }
     };
     loadData();
@@ -177,17 +181,17 @@ export const HomePage = () => {
           <div className="min-w-0 bg-green-50 dark:bg-green-900/10 px-2.5 py-3 sm:p-3 rounded-xl border border-green-100 dark:border-green-900/30">
             <TrendingUp size={14} className="text-green-600 dark:text-green-400 mb-1" />
             <p className="text-xs font-medium text-gray-600 dark:text-gray-400">Received today</p>
-            <p className="whitespace-nowrap text-[clamp(0.72rem,3vw,0.875rem)] font-bold tracking-tight tabular-nums text-gray-900 dark:text-white">{formatCurrency(todayStats.received, currency)}</p>
+            <p className="whitespace-nowrap text-[clamp(0.72rem,3vw,0.875rem)] font-bold tracking-tight tabular-nums text-gray-900 dark:text-white">{loaded ? formatCurrency(todayStats.received, currency) : <Skeleton className="mt-1 h-4 w-16" />}</p>
           </div>
           <div className="min-w-0 bg-indigo-50 dark:bg-indigo-900/10 px-2.5 py-3 sm:p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
             <TrendingDown size={14} className="text-indigo-600 dark:text-indigo-400 mb-1" />
             <p className="text-xs font-medium text-gray-600 dark:text-gray-400">Bought today</p>
-            <p className="whitespace-nowrap text-[clamp(0.72rem,3vw,0.875rem)] font-bold tracking-tight tabular-nums text-gray-900 dark:text-white">{formatCurrency(todayStats.purchases, currency)}</p>
+            <p className="whitespace-nowrap text-[clamp(0.72rem,3vw,0.875rem)] font-bold tracking-tight tabular-nums text-gray-900 dark:text-white">{loaded ? formatCurrency(todayStats.purchases, currency) : <Skeleton className="mt-1 h-4 w-16" />}</p>
           </div>
           <div className="min-w-0 bg-orange-50 dark:bg-orange-900/10 px-2.5 py-3 sm:p-3 rounded-xl border border-orange-100 dark:border-orange-900/30">
             <AlertCircle size={14} className="text-orange-600 dark:text-orange-400 mb-1" />
             <p className="text-xs font-medium text-gray-600 dark:text-gray-400">Outstanding</p>
-            <p className="whitespace-nowrap text-[clamp(0.72rem,3vw,0.875rem)] font-bold tracking-tight tabular-nums text-gray-900 dark:text-white">{formatCurrency(todayStats.outstanding, currency)}</p>
+            <p className="whitespace-nowrap text-[clamp(0.72rem,3vw,0.875rem)] font-bold tracking-tight tabular-nums text-gray-900 dark:text-white">{loaded ? formatCurrency(todayStats.outstanding, currency) : <Skeleton className="mt-1 h-4 w-16" />}</p>
           </div>
         </div>
 
@@ -285,6 +289,8 @@ export const HomePage = () => {
             <span className="text-[10px] font-medium opacity-90">You need products to record sales</span>
           </button>
         )}
+
+        {!loaded && <SkeletonList rows={3} label="Loading dashboard" />}
 
         {/* 6. RECENT CUSTOMERS (Horizontal Scroll) */}
         {recentCustomers.length > 0 && (

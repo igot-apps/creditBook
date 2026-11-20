@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, Plus, Star, Phone, Loader2, Truck } from "lucide-react";
+import { SkeletonList } from "../components/Skeleton";
+import { Search, Plus, Star, Phone, Truck } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { AddSupplierModal } from "../components/supplier/AddSupplierModal";
@@ -22,7 +23,7 @@ export const SuppliersPage = () => {
   const [suppliers, setSuppliers] = useState([]);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // true on first render: show skeleton, not the empty state
 
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -174,10 +175,7 @@ export const SuppliersPage = () => {
         {/* Infinite Scroll Sentinel & Loading States */}
         <div className="py-6 flex flex-col items-center gap-2">
           {isLoading && (
-            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
-              <Loader2 className="animate-spin" size={20} />
-              <span className="text-sm font-semibold">Loading more...</span>
-            </div>
+            <div className="w-full"><SkeletonList rows={suppliers.length === 0 ? 6 : 2} label="Loading suppliers" /></div>
           )}
           {!isLoading && !hasMore && suppliers.length > 0 && (
             <p className="text-xs text-gray-400 dark:text-gray-500 font-medium">

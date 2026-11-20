@@ -13,6 +13,7 @@ import { AddCustomerModal } from "../components/customer/AddCustomerModal";
 import { DeleteContactModal } from "../components/DeleteContactModal";
 import { TopBar } from "../components/TopBar";
 import { PaymentCredit } from "../components/PaymentCredit";
+import { SkeletonBalance, SkeletonList } from "../components/Skeleton";
 import { paymentCreditAvailable } from "../utils/paymentCredit";
 // Modular, allocation-aware components
 import { CustomerHeader } from "./customer/components/CustomerHeader";
@@ -61,6 +62,8 @@ export const CustomerProfilePage = () => {
   const [customerData, setCustomerData] = useState(selectedCustomer);
   const [history, setHistory] = useState([]);
   const [allocations, setAllocations] = useState([]);
+  const [loadedId, setLoadedId] = useState(null); // which contact's history has finished loading
+  const historyLoaded = loadedId === selectedCustomer?.id;
   const [expandedOldTx, setExpandedOldTx] = useState(null);
   const [showFixModal, setShowFixModal] = useState(false);
   const [fixReason, setFixReason] = useState("");
@@ -78,7 +81,7 @@ export const CustomerProfilePage = () => {
       Promise.all([
         TransactionService.getHistory(selectedCustomer.id).then(res => normalizeList(res)).catch(() => []),
         AllocationService.getByContact(selectedCustomer.id).catch(() => []),
-      ]).then(([h, a]) => { setHistory(h); setAllocations(a); });
+      ]).then(([h, a]) => { setHistory(h); setAllocations(a); setLoadedId(selectedCustomer.id); });
     }
   }, [selectedCustomer?.id]);
 
@@ -242,6 +245,7 @@ export const CustomerProfilePage = () => {
       <TopBar title="Customer Profile" showBack={true} onBack={() => { setView("customers"); setSelectedCustomer(null); }} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
         <CustomerHeader customer={customerData} daysSinceLastActive={daysSinceLastActive} onEdit={() => { if (!blockIfReadOnly()) setIsEditModalOpen(true); }} />
+        {!historyLoaded ? <SkeletonBalance /> : <>
         <BalanceCard unpaidInvoices={unpaidInvoicesTotal} availableCredit={availableCredit} lastPayment={lastPayment} currency={currency} />
         <PaymentCredit history={history} allocations={allocations} invoices={outstandingInvoices} currency={currency} readOnly={readOnly} onSaved={async () => {
           const [rows, updatedAllocations] = await Promise.all([TransactionService.getHistory(customerData.id), AllocationService.getByContact(customerData.id)]);
@@ -249,6 +253,7 @@ export const CustomerProfilePage = () => {
           setAllocations(updatedAllocations);
           showToast("Credit updated");
         }} />
+        </>}
 
         {trueBalance > 0 && (
           <button
@@ -260,7 +265,8 @@ export const CustomerProfilePage = () => {
         )}
 
         <QuickActions onSale={handleRecordSale} onPayment={handleReceivePayment} onCall={() => openDialer(customerData.phone)} onShare={() => setShowShareModal(true)} />
-        <OutstandingInvoices invoices={outstandingInvoices} onView={setViewingTransaction} currency={currency} />
+        {historyLoaded && <OutstandingInvoices invoices={outstandingInvoices} onView={setViewingTransaction} currency={currency} />}
+        {!historyLoaded ? <SkeletonList rows={4} label="Loading history" /> : (
         <TransactionHistory
           history={pagedHistory}
           fullHistory={history}
@@ -275,6 +281,7 @@ export const CustomerProfilePage = () => {
           shownCount={pagedHistory.length}
           totalCount={visibleHistory.length}
         />
+        )}
         <MoreInformation totalSales={totalSales} totalPayments={totalPayments} historyLength={visibleHistory.length} createdAt={customerData.created_at || customerData.createdAt} currency={currency} />
 
         <div className="pt-2">

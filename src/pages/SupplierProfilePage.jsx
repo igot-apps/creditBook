@@ -12,6 +12,7 @@ import { AddSupplierModal } from "../components/supplier/AddSupplierModal";
 import { DeleteContactModal } from "../components/DeleteContactModal";
 import { TopBar } from "../components/TopBar";
 import { PaymentCredit } from "../components/PaymentCredit";
+import { SkeletonBalance, SkeletonList } from "../components/Skeleton";
 import { paymentCreditAvailable } from "../utils/paymentCredit";
 
 // Import our new clean components
@@ -44,6 +45,8 @@ export const SupplierProfilePage = () => {
   const [supplierData, setSupplierData] = useState(selectedSupplier);
   const [history, setHistory] = useState([]);
   const [allocations, setAllocations] = useState([]);
+  const [loadedId, setLoadedId] = useState(null); // which contact's history has finished loading
+  const historyLoaded = loadedId === selectedSupplier?.id;
   const [expandedOldTx, setExpandedOldTx] = useState(null);
   const [showFixModal, setShowFixModal] = useState(false);
   const [fixReason, setFixReason] = useState("");
@@ -60,7 +63,7 @@ export const SupplierProfilePage = () => {
       Promise.all([
         TransactionService.getHistory(selectedSupplier.id).then(res => normalizeList(res)).catch(() => []),
         AllocationService.getByContact(selectedSupplier.id).catch(() => []),
-      ]).then(([h, a]) => { setHistory(h); setAllocations(a); });
+      ]).then(([h, a]) => { setHistory(h); setAllocations(a); setLoadedId(selectedSupplier.id); });
     }
   }, [selectedSupplier?.id]);
 
@@ -231,6 +234,7 @@ export const SupplierProfilePage = () => {
       <TopBar title="Supplier Profile" showBack={true} onBack={() => { setView("suppliers"); setSelectedSupplier(null); }} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
         <SupplierHeader supplier={supplierData} daysSinceLastActive={daysSinceLastActive} onEdit={() => { if (!blockIfReadOnly()) setIsEditModalOpen(true); }} />
+        {!historyLoaded ? <SkeletonBalance /> : <>
         <BalanceCard unpaidInvoices={unpaidInvoicesTotal} availableCredit={availableCredit} lastPayment={lastPayment} currency={currency} />
         <PaymentCredit history={history} allocations={allocations} invoices={outstandingInvoices} currency={currency} readOnly={readOnly} isSupplier onSaved={async () => {
           const [rows, updatedAllocations] = await Promise.all([TransactionService.getHistory(supplierData.id), AllocationService.getByContact(supplierData.id)]);
@@ -238,13 +242,15 @@ export const SupplierProfilePage = () => {
           setAllocations(updatedAllocations);
           showToast("Credit updated");
         }} />
+        </>}
         <QuickActions
           onPurchase={handleRecordPurchase}
           onPayment={handleMakePayment}
           onCall={() => openDialer(supplierData.phone)}
           onShare={() => setShowShareModal(true)}
         />
-        <OutstandingInvoices invoices={outstandingInvoices} onView={setViewingTransaction} currency={currency} />
+        {historyLoaded && <OutstandingInvoices invoices={outstandingInvoices} onView={setViewingTransaction} currency={currency} />}
+        {!historyLoaded ? <SkeletonList rows={4} label="Loading history" /> : (
         <TransactionHistory
           history={pagedHistory}
           fullHistory={history}
@@ -259,6 +265,7 @@ export const SupplierProfilePage = () => {
           shownCount={pagedHistory.length}
           totalCount={visibleHistory.length}
         />
+        )}
         <MoreInformation totalPurchases={totalPurchases} totalPayments={totalPayments} historyLength={visibleHistory.length} createdAt={supplierData.created_at || supplierData.createdAt} currency={currency} />
 
         <div className="pt-2">

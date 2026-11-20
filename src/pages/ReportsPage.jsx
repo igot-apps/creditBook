@@ -6,6 +6,7 @@ import { TransactionService } from "../services/TransactionService";
 import { CustomerService } from "../services/CustomerService";
 import { SupplierService } from "../services/SupplierService";
 import { TopBar } from "../components/TopBar";
+import { SkeletonStats, SkeletonList } from "../components/Skeleton";
 
 // Debt forgiveness is recorded as a payment with a write_off marker. It reduces
 // outstanding debt but is not money that actually came in.
@@ -25,19 +26,22 @@ export const ReportsPage = () => {
   const [transactions, setTransactions] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // 1. Fetch transactions + contact balances directly (Single Source of Truth)
   useEffect(() => {
     if (currentStore?.id) {
-      TransactionService.getAll(currentStore.id)
-        .then(setTransactions)
-        .catch(() => setTransactions([]));
-      CustomerService.getAll({ fetchAll: true })
-        .then(setCustomers)
-        .catch(() => setCustomers([]));
-      SupplierService.getAll({ fetchAll: true })
-        .then(setSuppliers)
-        .catch(() => setSuppliers([]));
+      Promise.allSettled([
+        TransactionService.getAll(currentStore.id)
+          .then(setTransactions)
+          .catch(() => setTransactions([])),
+        CustomerService.getAll({ fetchAll: true })
+          .then(setCustomers)
+          .catch(() => setCustomers([])),
+        SupplierService.getAll({ fetchAll: true })
+          .then(setSuppliers)
+          .catch(() => setSuppliers([])),
+      ]).finally(() => setLoading(false));
     }
   }, [currentStore?.id]);
 
@@ -135,6 +139,13 @@ export const ReportsPage = () => {
           ))}
         </div>
 
+        {loading ? (
+          <div className="space-y-6">
+            <SkeletonStats count={2} label="Loading reports" />
+            <SkeletonStats count={2} label="Loading balances" />
+            <SkeletonList rows={3} label="Loading top contacts" />
+          </div>
+        ) : (<>
         {/* MONEY IN vs MONEY OUT SPLIT */}
         <div className="grid grid-cols-2 gap-3">
           {/* Money In */}
@@ -238,6 +249,7 @@ export const ReportsPage = () => {
             <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Try selecting "All Time" to see older data.</p>
           </div>
         )}
+        </>)}
       </div>
     </div>
   );

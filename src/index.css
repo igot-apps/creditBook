@@ -64,3 +64,25 @@ button, a, [role="button"], .cursor-pointer {
   .print\:rounded-none { border-radius: 0 !important; }
   .print\:shadow-none { box-shadow: none !important; }
 }
+
+/* Skeleton loading (shared by components/Skeleton.jsx) */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: rgb(229 231 235); /* gray-200 */
+  border-radius: 0.5rem;
+}
+.dark .skeleton { background-color: rgb(31 41 55); } /* gray-800 */
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.dark .skeleton::after { background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.06), transparent); }
+@keyframes skeleton-shimmer { 100% { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { animation: none; display: none; }
+}
