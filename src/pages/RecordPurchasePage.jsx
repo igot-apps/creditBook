@@ -30,7 +30,7 @@ export const RecordPurchasePage = () => {
   // 👇 VIEW-ONLY GUARD
   const blockIfReadOnly = () => {
     if (readOnly) {
-      showToast("🔒 Subscription expired — please renew to continue.");
+      showToast("👁️ View-only mode — renew your subscription to make changes");
       return true;
     }
     return false;
@@ -521,7 +521,7 @@ export const RecordPurchasePage = () => {
                 <p className="text-xs text-indigo-600 dark:text-indigo-400 uppercase font-bold">{isFixing ? "Correcting" : (transactionType === "purchase" ? "Buying from" : "Paying to")}</p>
                 <p className="font-bold text-gray-900 dark:text-white text-lg truncate">{selectedSupplier.name || "Unknown Supplier"}</p>
               </div>
-              {!isFixing && (
+              {!isFixing && (suspendedId || (autoDraft?.draftType === 'purchase' && autoDraft?.supplierId === selectedSupplier.id)) && (
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setInvoiceToDiscard({ id: suspendedId, type: "purchase", contactName: selectedSupplier.name })}

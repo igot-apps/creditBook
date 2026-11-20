@@ -3,28 +3,41 @@ import { TrendingUp, TrendingDown, Users, Truck, ArrowUpRight, Calendar } from "
 import useStore from "../store/useStore";
 import { formatCurrency } from "../utils/helpers";
 import { TransactionService } from "../services/TransactionService";
+import { CustomerService } from "../services/CustomerService";
+import { SupplierService } from "../services/SupplierService";
 import { TopBar } from "../components/TopBar";
 
+// Debt forgiveness is recorded as a payment with a write_off marker. It reduces
+// outstanding debt but is not money that actually came in.
+const isWriteOff = (tx) =>
+  tx.payment_method === "write_off" || (tx.note || "").startsWith("[FORGIVEN]");
+
 export const ReportsPage = () => {
-  const { 
-    currentStore, 
-    customers = [], 
-    suppliers = [], 
-    setView, 
-    setSelectedCustomer, 
-    setSelectedSupplier 
+  const {
+    currentStore,
+    setView,
+    setSelectedCustomer,
+    setSelectedSupplier
   } = useStore();
-  
+
   const currency = currentStore?.currency || "GH₵";
   const [timeframe, setTimeframe] = useState("today");
   const [transactions, setTransactions] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
 
-  // 1. Fetch Transactions directly (Single Source of Truth)
+  // 1. Fetch transactions + contact balances directly (Single Source of Truth)
   useEffect(() => {
     if (currentStore?.id) {
       TransactionService.getAll(currentStore.id)
         .then(setTransactions)
         .catch(() => setTransactions([]));
+      CustomerService.getAll({ fetchAll: true })
+        .then(setCustomers)
+        .catch(() => setCustomers([]));
+      SupplierService.getAll({ fetchAll: true })
+        .then(setSuppliers)
+        .catch(() => setSuppliers([]));
     }
   }, [currentStore?.id]);
 
@@ -32,7 +45,7 @@ export const ReportsPage = () => {
   const isDateInRange = (dateString) => {
     if (timeframe === "all") return true;
     if (!dateString) return false;
-    
+
     const date = new Date(dateString);
     const now = new Date();
     
@@ -61,17 +74,18 @@ export const ReportsPage = () => {
         const isActive = tx.status === 'active' || !tx.status;
         if (!isActive || tx.isVoid) return;
 
-        if (isDateInRange(tx.date || tx.createdAt)) {
+        if (isDateInRange(tx.created_at || tx.createdAt || tx.date)) {
+          const paid = isWriteOff(tx) ? 0 : (parseFloat(tx.paid) || 0);
           if (tx.type === 'sale') {
             totalSales += (parseFloat(tx.amount) || 0);
-            paymentsReceived += (parseFloat(tx.paid) || 0);
+            paymentsReceived += paid;
           } else if (tx.type === 'purchase') {
             totalPurchases += (parseFloat(tx.amount) || 0);
-            paymentsMade += (parseFloat(tx.paid) || 0);
+            paymentsMade += paid;
           } else if (tx.type === 'payment') {
-            paymentsReceived += (parseFloat(tx.paid) || 0);
+            paymentsReceived += paid;
           } else if (tx.type === 'supplier_payment') {
-            paymentsMade += (parseFloat(tx.paid) || 0);
+            paymentsMade += paid;
           }
         }
       });
@@ -79,14 +93,14 @@ export const ReportsPage = () => {
 
     // Get top 5 customers currently owing money (Safe fallbacks)
     const topDebtors = (Array.isArray(customers) ? customers : [])
-      .filter(c => !c.isArchived && (c.balance || 0) > 0)
-      .sort((a, b) => (b.balance || 0) - (a.balance || 0))
+      .filter(c => !(c.is_archived || c.isArchived) && (parseFloat(c.balance) || 0) > 0)
+      .sort((a, b) => (parseFloat(b.balance) || 0) - (parseFloat(a.balance) || 0))
       .slice(0, 5);
 
     // Get top 5 suppliers currently owed money (Safe fallbacks)
     const topCreditors = (Array.isArray(suppliers) ? suppliers : [])
-      .filter(s => !s.isArchived && (s.balance || 0) > 0)
-      .sort((a, b) => (b.balance || 0) - (a.balance || 0))
+      .filter(s => !(s.is_archived || s.isArchived) && (parseFloat(s.balance) || 0) > 0)
+      .sort((a, b) => (parseFloat(b.balance) || 0) - (parseFloat(a.balance) || 0))
       .slice(0, 5);
 
     return { totalSales, totalPurchases, paymentsReceived, paymentsMade, topDebtors, topCreditors };
@@ -94,7 +108,7 @@ export const ReportsPage = () => {
 
   const timeframes = [
     { key: "today", label: "Today" },
-    { key: "week", label: "This Week" },
+    { key: "week", label: "Last 7 Days" },
     { key: "month", label: "This Month" },
     { key: "all", label: "All Time" },
   ];
@@ -167,11 +181,11 @@ export const ReportsPage = () => {
                   className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition text-left"
                 >
                   <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full flex items-center justify-center font-bold flex-shrink-0">
-                    {customer.name.charAt(0)}
+                    {(customer.name || "?").charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900 dark:text-white truncate">{customer.name}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{customer.phone}</p>
+                    <p className="font-semibold text-gray-900 dark:text-white truncate">{customer.name || "Unknown"}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{customer.phone || "No phone"}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="font-bold text-red-600 dark:text-red-400">{formatCurrency(customer.balance, currency)}</p>
@@ -201,11 +215,11 @@ export const ReportsPage = () => {
                   className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition text-left"
                 >
                   <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded-full flex items-center justify-center font-bold flex-shrink-0">
-                    {supplier.name.charAt(0)}
+                    {(supplier.name || "?").charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900 dark:text-white truncate">{supplier.name}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{supplier.phone}</p>
+                    <p className="font-semibold text-gray-900 dark:text-white truncate">{supplier.name || "Unknown"}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{supplier.phone || "No phone"}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="font-bold text-orange-600 dark:text-orange-400">{formatCurrency(supplier.balance, currency)}</p>

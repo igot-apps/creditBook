@@ -88,7 +88,7 @@ export function PaymentCredit({ history, allocations, invoices, currency, isSupp
   return (
     <section className="space-y-3 rounded-2xl border border-indigo-200 bg-white p-4 dark:border-indigo-900 dark:bg-gray-800">
       <div className="flex justify-between gap-3 font-bold">
-        <h2>{isSupplier ? "Credit with supplier" : "Customer credit available"}</h2>
+        <h2>{isSupplier ? "Available supplier credit" : "Customer credit available"}</h2>
         <span>{formatCurrency(totalCredit, currency)}</span>
       </div>
       {sources.map(tx => (
@@ -100,6 +100,7 @@ export function PaymentCredit({ history, allocations, invoices, currency, isSupp
           <p className="break-words text-xs text-gray-500 dark:text-gray-400">
             {[formatDate(tx.received_at || tx.created_at), tx.reference].filter(Boolean).join(" · ")}
           </p>
+          {tx.note && <p className="break-words text-xs italic text-gray-500 dark:text-gray-400">{tx.note}</p>}
           {!readOnly && (
             <div className="flex flex-wrap gap-2">
               {invoices.some(invoice => invoice.id !== tx.id) && <button type="button" onClick={() => open(tx, false)} className="rounded-lg bg-indigo-600 px-3 py-2 font-semibold text-white">Apply credit</button>}

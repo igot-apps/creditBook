@@ -34,8 +34,24 @@ Deno.serve(async (req) => {
     if (!paystackKey) return json({ error: 'Payments are not configured yet. Contact the administrator.' }, 503);
 
     if (body.action === 'initialize') {
-      const { data: store } = await admin.from('stores').select('id, user_id').eq('id', body.storeId).single();
+      const { data: store } = await admin.from('stores').select('id, user_id, subscription_status, subscription_expires_at').eq('id', body.storeId).single();
       if (!store || store.user_id !== user.id) return json({ error: 'Store access denied.' }, 403);
+      // Prevent duplicate active subscriptions. A recent pending payment is
+      // still allowed through so "Pay Again" keeps working; expired plans can
+      // renew normally.
+      const activeUntil = store.subscription_expires_at ? new Date(store.subscription_expires_at).getTime() : 0;
+      if (store.subscription_status === 'active' && activeUntil > Date.now()) {
+        const { data: recentPending } = await admin.from('subscriptions')
+          .select('id')
+          .eq('store_id', store.id)
+          .eq('status', 'pending')
+          .not('paystack_reference', 'is', null)
+          .gte('created_at', new Date(Date.now() - 86400000).toISOString())
+          .limit(1);
+        if (!recentPending?.length) {
+          return json({ error: 'Your subscription is already active — no new payment is needed.' }, 409);
+        }
+      }
       const { data: plan } = await admin.from('subscription_plans').select('*').eq('id', body.plan).eq('is_active', true).single();
       if (!plan) return json({ error: 'That subscription plan is no longer available.' }, 400);
       const email = String(body.email || user.email || '').trim();

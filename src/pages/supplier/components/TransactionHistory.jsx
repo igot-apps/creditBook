@@ -45,6 +45,7 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
                           {activityTitle}
                         </p>
                         <p className="text-[10px] text-gray-500 dark:text-gray-400">{isInvoice && 'Purchase invoice · '}{formatDate(txDate(tx)).split(',')[0]}</p>
+                        {tx.type === 'supplier_payment' && tx.note && <p className="max-w-[180px] truncate text-[10px] italic text-gray-500 dark:text-gray-400">{tx.note}</p>}
                       </div>
                     </div>
                     <div className="text-right">

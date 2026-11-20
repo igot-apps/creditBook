@@ -225,6 +225,7 @@ export const TransactionService = {
           note: note || '',
           payment_method: extraData.paymentMethod || 'cash',
           reference: extraData.reference || null,
+          ...(extraData.receivedAt && { received_at: extraData.receivedAt }),
           status: 'active',
         }
       ])

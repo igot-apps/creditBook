@@ -10,6 +10,11 @@ import { ProductService } from "../services/ProductService";
 import { TopBar } from "../components/TopBar";
 import { UniversalSearchModal } from "../components/UniversalSearchModal";
 
+// Debt forgiveness is recorded as a payment with a write_off marker. It reduces
+// outstanding debt but is not money that actually came in.
+const isWriteOff = (tx) =>
+  tx.payment_method === "write_off" || (tx.note || "").startsWith("[FORGIVEN]");
+
 // Helper to format time ago (e.g., "15m ago", "2h ago")
 const getTimeAgo = (dateString) => {
   if (!dateString) return "Just now";
@@ -66,8 +71,9 @@ export const HomePage = () => {
           const isActive = tx.status === 'active' || !tx.status;
           if (!isActive) return;
           if (new Date(tx.created_at || tx.createdAt).toDateString() === today) {
-            if (tx.type === 'sale' || tx.type === 'payment') received += (parseFloat(tx.paid) || 0);
-            if (tx.type === 'purchase' || tx.type === 'supplier_payment') purchases += (parseFloat(tx.paid) || 0);
+            const paid = isWriteOff(tx) ? 0 : (parseFloat(tx.paid) || 0);
+            if (tx.type === 'sale' || tx.type === 'payment') received += paid;
+            if (tx.type === 'purchase' || tx.type === 'supplier_payment') purchases += paid;
           }
         });
 

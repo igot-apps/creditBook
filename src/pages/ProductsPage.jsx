@@ -7,7 +7,7 @@ import { TopBar } from "../components/TopBar";
 import { AddProductModal } from "../components/AddProductModal";
 
 export const ProductsPage = () => {
-  const { currentStore, setView, showToast, focusedProduct, setFocusedProduct } = useStore();
+  const { currentStore, setView, showToast, focusedProduct, setFocusedProduct, readOnly } = useStore();
   const [products, setProducts] = useState([]);
   const [searchQuery, setSearchQuery] = useState(() => focusedProduct?.query || "");
   const [highlightedProductId, setHighlightedProductId] = useState(() => focusedProduct?.id || null);
@@ -45,12 +45,22 @@ export const ProductsPage = () => {
     return matchesProduct || matchingUnits.length ? [{ product, units, matchingUnits }] : [];
   }), [products, query]);
 
+  const guardReadOnly = () => {
+    if (readOnly) {
+      showToast("👁️ View-only mode — renew your subscription to make changes");
+      return true;
+    }
+    return false;
+  };
+
   const handleEdit = (product) => {
+    if (guardReadOnly()) return;
     setEditingProduct(product);
     setShowAddModal(true);
   };
 
   const handleDelete = async (product) => {
+    if (guardReadOnly()) return;
     if (window.confirm(`Delete "${product.name}"? This cannot be undone.`)) {
       try {
         await ProductService.delete(product.id);
@@ -63,6 +73,7 @@ export const ProductsPage = () => {
   };
 
   const handleToggleFavourite = async (product) => {
+    if (guardReadOnly()) return;
     try {
       const isFavourite = !product.is_favourite;
       await ProductService.update(product.id, { is_favourite: isFavourite });
@@ -73,6 +84,7 @@ export const ProductsPage = () => {
   };
 
   const handleSaveProduct = async (productData) => {
+    if (guardReadOnly()) return;
     try {
       if (productData.id) {
         await ProductService.update(productData.id, productData);
@@ -104,7 +116,7 @@ export const ProductsPage = () => {
             <span className="font-bold text-sm text-gray-900 dark:text-white">Manage Visibility</span>
           </button>
           <button 
-            onClick={() => { setEditingProduct(null); setShowAddModal(true); }}
+            onClick={() => { if (guardReadOnly()) return; setEditingProduct(null); setShowAddModal(true); }}
             className="bg-indigo-600 text-white p-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-md"
           >
             <Plus size={18} />

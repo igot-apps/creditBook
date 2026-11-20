@@ -31,7 +31,7 @@ export const SupplierProfilePage = () => {
 
   const blockIfReadOnly = () => {
     if (readOnly) {
-      showToast("🔒 Subscription expired — please renew to continue.");
+      showToast("👁️ View-only mode — renew your subscription to make changes");
       return true;
     }
     return false;

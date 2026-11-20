@@ -5,6 +5,10 @@ import { SubscriptionService } from "../services/SubscriptionService";
 import { formatCurrency } from "../utils/helpers";
 import { TopBar } from "../components/TopBar";
 
+// Paystack charges subscription plans in GHS regardless of the store's
+// accounting currency, so prices must always be shown in cedis.
+const BILLING_CURRENCY = "GH₵";
+
 export const SubscriptionPage = () => {
   const { currentStore, setView, showToast } = useStore();
 
@@ -43,6 +47,8 @@ export const SubscriptionPage = () => {
 
   // 👇 A pending payment that still has its reference (and is < 24h old)
   const pendingPayment = subscriptionStatus?.status === 'pending' && subscriptionStatus?.paystack_reference;
+  const isActive = subscriptionStatus?.status === 'active' ||
+    (subscriptionStatus?.status === 'pending' && Boolean(subscriptionStatus?.access));
 
   // 1️⃣ Verify the pending payment using the SAVED reference
   const handleVerifyPending = async () => {
@@ -85,6 +91,10 @@ export const SubscriptionPage = () => {
 
   // 3️⃣ New subscription
   const handleSubscribe = async () => {
+    if (isActive) {
+      showToast("✅ Your subscription is already active — no new payment is needed.");
+      return;
+    }
     if (!email || !phone) { showToast("⚠️ Please fill in email and phone number"); return; }
     setIsProcessing(true);
     try {
@@ -183,7 +193,7 @@ export const SubscriptionPage = () => {
               <div className="flex-1">
                 <h3 className="font-bold text-lg text-gray-900 dark:text-white">Pending Payment</h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {formatCurrency(subscriptionStatus.amount || 0, "GH₵")} • {new Date(subscriptionStatus.created_at).toLocaleString()}
+                  {formatCurrency(subscriptionStatus.amount || 0, BILLING_CURRENCY)} • {new Date(subscriptionStatus.created_at).toLocaleString()}
                 </p>
               </div>
             </div>
@@ -209,6 +219,14 @@ export const SubscriptionPage = () => {
           </div>
         )}
 
+        {isActive ? (
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-green-200 dark:border-green-800 text-center">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              You already have access, so no new payment is needed. Renewal options will appear once your current access expires.
+            </p>
+          </div>
+        ) : (
+          <>
         {/* Header */}
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Choose Your Plan</h1>
@@ -237,7 +255,7 @@ export const SubscriptionPage = () => {
                   <h3 className="text-xl font-bold text-gray-900 dark:text-white">{plan.name}</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{plan.duration}</p>
                 </div>
-                <span className="text-3xl font-bold text-gray-900 dark:text-white">{formatCurrency(plan.price, "GH₵")}</span>
+                <span className="text-3xl font-bold text-gray-900 dark:text-white">{formatCurrency(plan.price, BILLING_CURRENCY)}</span>
               </div>
               <div className="space-y-2">
                 {plan.features.map((feature, idx) => (
@@ -281,12 +299,14 @@ export const SubscriptionPage = () => {
           disabled={isProcessing || isVerifying || !email || !phone || !selectedPlanData}
           className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isProcessing ? <><Loader2 className="animate-spin" size={20} /> Processing...</> : selectedPlanData ? <><Zap size={20} /> Subscribe for {formatCurrency(selectedPlanData.price, "GH₵")}</> : "No plan currently available"}
+          {isProcessing ? <><Loader2 className="animate-spin" size={20} /> Processing...</> : selectedPlanData ? <><Zap size={20} /> Subscribe for {formatCurrency(selectedPlanData.price, BILLING_CURRENCY)}</> : "No plan currently available"}
         </button>
 
         <p className="text-xs text-center text-gray-500 dark:text-gray-400">
           You'll be redirected to Paystack to complete payment, then returned here for automatic confirmation.
         </p>
+          </>
+        )}
       </div>
     </div>
   );

@@ -15,7 +15,7 @@ export const normalizeTx = (tx) => {
 };
 
 export const normalizeList = (list) => (Array.isArray(list) ? list : []).map(normalizeTx);
-export const txDate = (tx) => tx.createdAt || tx.created_at || tx.date;
+export const txDate = (tx) => tx.received_at || tx.receivedAt || tx.createdAt || tx.created_at || tx.date;
 export const isActive = (tx) => tx.status === 'active' || !tx.status;
 export const purchaseLabel = (tx) => invoiceReference({ ...tx, type: 'purchase' });
 

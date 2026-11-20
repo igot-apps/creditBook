@@ -50,7 +50,7 @@ export const CustomerProfilePage = () => {
   const currency = currentStore?.currency || "GH₵";
 
   const blockIfReadOnly = () => {
-    if (readOnly) { showToast("🔒 Subscription expired — please renew to continue."); return true; }
+    if (readOnly) { showToast("👁️ View-only mode — renew your subscription to make changes"); return true; }
     return false;
   };
 

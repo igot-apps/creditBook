@@ -6,7 +6,7 @@ import { formatCurrency } from "../utils/helpers";
 import { TopBar } from "../components/TopBar";
 
 export const VisibilityManagerPage = () => {
-  const { currentStore, setView, showToast } = useStore();
+  const { currentStore, setView, showToast, readOnly } = useStore();
   
   const [products, setProducts] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -49,6 +49,10 @@ export const VisibilityManagerPage = () => {
 
   // 3. Instant Toggle Handler (Optimistic UI)
   const handleToggle = async (productId, unitKey, field) => {
+    if (readOnly) {
+      showToast("👁️ View-only mode — renew your subscription to make changes");
+      return;
+    }
     const product = products.find(p => p.id === productId);
     const unit = product?.units.find(u => (u.id || u.name) === unitKey);
     if (!unit) return;
@@ -92,6 +96,10 @@ export const VisibilityManagerPage = () => {
 
   // 5. Bulk Action Handler
   const executeBulkAction = async (field, value) => {
+    if (readOnly) {
+      showToast("👁️ View-only mode — renew your subscription to make changes");
+      return;
+    }
     const updates = {}; // { productId: [unitIds] }
     const previousProducts = products;
     
@@ -165,7 +173,14 @@ export const VisibilityManagerPage = () => {
               )}
             </div>
             <button 
-              onClick={() => { setIsBulkMode(!isBulkMode); clearSelection(); }}
+              onClick={() => {
+                if (readOnly) {
+                  showToast("👁️ View-only mode — renew your subscription to make changes");
+                  return;
+                }
+                setIsBulkMode(!isBulkMode);
+                clearSelection();
+              }}
               className={`px-3 py-2 rounded-xl font-bold text-sm flex items-center gap-1.5 transition active:scale-95 ${
                 isBulkMode ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
               }`}

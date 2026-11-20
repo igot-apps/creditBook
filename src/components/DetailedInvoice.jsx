@@ -19,7 +19,7 @@ export const DetailedInvoice = ({
   const [showSummary, setShowSummary] = useState(true);
   // Time Lock Ref to prevent double-execution
   const lastActionTime = useRef(0);
-  const currency = currentStore?.currency || "GH";
+  const currency = currentStore?.currency || "GH₵";
 
   // Calculate totals dynamically
   const totalInvoiceAmount = useMemo(() => {

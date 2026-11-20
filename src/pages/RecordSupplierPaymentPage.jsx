@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Search, Plus, Truck, Check, Loader2, Banknote, Smartphone, CreditCard } from "lucide-react";
+import { Search, Plus, Truck, Check, Loader2, Banknote, Smartphone, CreditCard, WalletCards } from "lucide-react";
 import useStore from "../store/useStore";
 import { formatCurrency, formatDate } from "../utils/helpers";
 import { SupplierService } from "../services/SupplierService";
@@ -7,8 +7,14 @@ import { TransactionService } from "../services/TransactionService";
 import { AllocationService } from "../services/AllocationService";
 import { TopBar } from "../components/TopBar";
 import { invoiceReference } from "../utils/invoiceReference";
+import { paymentCreditAvailable } from "../utils/paymentCredit";
 
 const noSpinnerClass = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+
+const toLocalDateTime = (value = new Date()) => {
+  const date = new Date(value);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+};
 
 const normalizeList = (list) => (Array.isArray(list) ? list : []).map(tx => ({
   ...tx,
@@ -34,13 +40,14 @@ export const RecordSupplierPaymentPage = () => {
 
   const blockIfReadOnly = () => {
     if (readOnly) {
-      showToast("🔒 Subscription expired — please renew to continue.");
+      showToast("👁️ View-only mode — renew your subscription to make changes");
       return true;
     }
     return false;
   };
 
   const [mode, setMode] = useState("search");
+  const [paymentType, setPaymentType] = useState("invoice");
   const [searchQuery, setSearchQuery] = useState("");
   const [suppliers, setSuppliers] = useState([]);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
@@ -48,11 +55,14 @@ export const RecordSupplierPaymentPage = () => {
   const [allocations, setAllocations] = useState([]);
   const [amount, setAmount] = useState("");
   const [invoiceId, setInvoiceId] = useState("");
+  const [creditToApply, setCreditToApply] = useState("");
   const [reference, setReference] = useState("");
   const [method, setMethod] = useState("cash");
   const [note, setNote] = useState("");
+  const [receivedAt, setReceivedAt] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const invoicePaymentRequest = useRef(null);
+  const creditRequest = useRef(null);
 
   useEffect(() => {
     if (currentStore?.id) {
@@ -125,6 +135,28 @@ export const RecordSupplierPaymentPage = () => {
 
   const selectedInvoice = openInvoices.find(invoice => invoice.id === invoiceId);
 
+  const creditSources = useMemo(() => history
+    .map(source => ({ source, available: paymentCreditAvailable(source, history, allocations) }))
+    .filter(entry => entry.available > 0.009)
+    .sort((a, b) => new Date(a.source.received_at || a.source.created_at) - new Date(b.source.received_at || b.source.created_at)),
+  [history, allocations]);
+  const usableCreditSources = useMemo(
+    () => creditSources.filter(entry => entry.source.id !== invoiceId),
+    [creditSources, invoiceId]
+  );
+  const usableCreditTotal = usableCreditSources.reduce((sum, entry) => sum + entry.available, 0);
+  const cashAmount = parseFloat(amount) || 0;
+  const maxCreditForInvoice = selectedInvoice
+    ? Math.min(usableCreditTotal, Math.max(0, selectedInvoice.remaining - cashAmount))
+    : 0;
+  const creditAmount = Math.min(parseFloat(creditToApply) || 0, maxCreditForInvoice);
+
+  useEffect(() => {
+    if ((parseFloat(creditToApply) || 0) > maxCreditForInvoice + 0.009) {
+      setCreditToApply(maxCreditForInvoice.toFixed(2));
+    }
+  }, [maxCreditForInvoice, creditToApply]);
+
   const filteredSuppliers = useMemo(() => {
     if (!Array.isArray(suppliers)) return [];
     if (!searchQuery.trim()) return suppliers;
@@ -134,6 +166,8 @@ export const RecordSupplierPaymentPage = () => {
 
   const handleSelectSupplier = (supplier) => {
     setInvoiceId("");
+    setPaymentType("invoice");
+    setCreditToApply("");
     setSelectedSupplier(supplier);
     setMode("existing");
     setSearchQuery("");
@@ -153,38 +187,95 @@ export const RecordSupplierPaymentPage = () => {
     }
   };
 
+  const applyCreditToInvoice = async (invoice, creditValue, requestKey) => {
+    if (creditValue <= 0.009) return;
+    if (creditRequest.current?.key !== requestKey) {
+      creditRequest.current = { key: requestKey, ids: {} };
+    }
+    let remaining = creditValue;
+    for (const { source, available } of usableCreditSources) {
+      if (remaining <= 0.009) break;
+      const useAmount = Math.min(available, remaining);
+      const operationId = creditRequest.current.ids[source.id] ||
+        (creditRequest.current.ids[source.id] = crypto.randomUUID());
+      await AllocationService.useCredit({
+        sourceId: source.id,
+        invoiceId: invoice.id,
+        amount: useAmount,
+        operationId,
+      });
+      remaining -= useAmount;
+    }
+    if (remaining > 0.009) throw new Error("Available supplier credit changed. Review the amount and try again.");
+  };
+
   const handleSavePayment = async () => {
     if (blockIfReadOnly()) return;
     if (isSaving) return;
     if (!selectedSupplier) { showToast("⚠️ Select a supplier first"); return; }
     const amt = parseFloat(amount) || 0;
-    if (amt <= 0) { showToast("⚠️ Enter a payment amount"); return; }
-    if (!selectedInvoice) { showToast("Select a purchase invoice"); return; }
+    const isAdvance = paymentType === "advance";
+    if (isAdvance) {
+      if (amt <= 0) { showToast("⚠️ Enter an advance amount"); return; }
+      if (!note.trim()) { showToast("⚠️ Enter a reason for this advance"); return; }
+    } else {
+      if (!selectedInvoice) { showToast("Select a purchase invoice"); return; }
+      if (amt <= 0 && creditAmount <= 0) { showToast("⚠️ Enter a payment amount or apply credit"); return; }
+    }
     const paymentReference = reference.trim();
     if (method === "momo" && !paymentReference) {
       showToast("Enter the MoMo transaction ID");
       return;
     }
+    const paymentDate = receivedAt ? new Date(receivedAt) : new Date();
+    if (!Number.isFinite(paymentDate.getTime()) || paymentDate > new Date()) {
+      showToast("Enter a valid payment date and time");
+      return;
+    }
     setIsSaving(true);
     try {
-      const key = JSON.stringify([invoiceId, amt, method, paymentReference, note]);
-      if (invoicePaymentRequest.current?.key !== key) {
-        invoicePaymentRequest.current = { key, id: crypto.randomUUID() };
+      if (isAdvance) {
+        await TransactionService.recordSupplierPayment(currentStore.id, selectedSupplier.id, amt, note.trim(), {
+          paymentMethod: method,
+          reference: paymentReference,
+          receivedAt: paymentDate.toISOString(),
+        });
+        await SupplierService.updateBalance(selectedSupplier.id);
+        showToast("✅ Advance saved as supplier credit");
+      } else {
+        const key = JSON.stringify([invoiceId, amt, creditAmount, method, paymentReference, note, receivedAt]);
+        if (amt > 0) {
+          if (invoicePaymentRequest.current?.key !== key) {
+            invoicePaymentRequest.current = { key, id: crypto.randomUUID() };
+          }
+          await TransactionService.recordInvoicePayment({
+            id: invoicePaymentRequest.current.id,
+            invoiceId,
+            amount: amt,
+            method,
+            reference: paymentReference,
+            note,
+            receivedAt: paymentDate.toISOString(),
+          });
+        }
+        if (creditAmount > 0) {
+          await applyCreditToInvoice(selectedInvoice, creditAmount, key);
+        }
+        showToast(creditAmount > 0 ? "✅ Payment and supplier credit applied" : "Payment added to the selected invoice");
       }
-      await TransactionService.recordInvoicePayment({
-        id: invoicePaymentRequest.current.id,
-        invoiceId,
-        amount: amt,
-        method,
-        reference: paymentReference,
-        note,
-      });
-
-      showToast("Payment added to the selected invoice");
       useStore.setState({ selectedSupplier: selectedSupplier });
       setView("supplierProfile");
     } catch (error) {
       console.error("Supplier payment save failed", { code: error?.code, message: error?.message, details: error?.details, hint: error?.hint });
+      if (selectedSupplier?.id) {
+        Promise.all([
+          TransactionService.getHistory(selectedSupplier.id).then(res => normalizeList(res)).catch(() => null),
+          AllocationService.getByContact(selectedSupplier.id).catch(() => null),
+        ]).then(([h, a]) => {
+          if (h) setHistory(h);
+          if (a) setAllocations(a);
+        });
+      }
       showToast(error?.message || "Failed to record payment.");
     } finally {
       setIsSaving(false);
@@ -244,9 +335,28 @@ export const RecordSupplierPaymentPage = () => {
         )}
 
         {mode === "existing" && (
+          <div className="grid grid-cols-2 gap-2 rounded-2xl border border-gray-200 bg-white p-1.5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <button
+              type="button"
+              onClick={() => setPaymentType("invoice")}
+              className={`rounded-xl px-3 py-2.5 text-sm font-bold transition ${paymentType === "invoice" ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}
+            >
+              Pay an existing invoice
+            </button>
+            <button
+              type="button"
+              onClick={() => setPaymentType("advance")}
+              className={`rounded-xl px-3 py-2.5 text-sm font-bold transition ${paymentType === "advance" ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}
+            >
+              Keep as supplier credit (advance)
+            </button>
+          </div>
+        )}
+
+        {mode === "existing" && (
           <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
             <div>
-              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Payment Amount *</label>
+              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">{paymentType === "advance" ? "Advance Amount *" : "Cash Payment"}</label>
               <input
                 type="number"
                 inputMode="decimal"
@@ -258,29 +368,81 @@ export const RecordSupplierPaymentPage = () => {
               />
             </div>
 
-            <label className="block text-sm font-medium">
-              Purchase invoice
-              <select value={invoiceId} onChange={e => setInvoiceId(e.target.value)} className="mt-1 block w-full rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
-                <option value="">Select an unpaid invoice</option>
-                {openInvoices.map(invoice => (
-                  <option key={invoice.id} value={invoice.id}>{invoice.name} · {formatDate(invoice.date)} · {formatCurrency(invoice.remaining, currency)} due</option>
-                ))}
-              </select>
-            </label>
-            {selectedInvoice && (
-              <div className="space-y-2 rounded-xl bg-indigo-50 p-3 text-sm dark:bg-indigo-900/20">
-                <div className="flex justify-between"><span>Current balance</span><strong>{formatCurrency(selectedInvoice.remaining, currency)}</strong></div>
-                <div className="flex justify-between"><span>Remaining after payment</span><strong>{formatCurrency(Math.max(0, selectedInvoice.remaining - (Number(amount) || 0)), currency)}</strong></div>
-                {Number(amount) > selectedInvoice.remaining + 0.009 && (
-                  <div className="flex justify-between"><span>Supplier credit added</span><strong>{formatCurrency(Number(amount) - selectedInvoice.remaining, currency)}</strong></div>
-                )}
+            {paymentType === "advance" ? (
+              <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200">
+                <p className="font-bold">Money given before goods arrive</p>
+                <p>This is kept as available supplier credit. Use it later on a purchase or an unpaid invoice.</p>
               </div>
+            ) : (
+              <>
+                {openInvoices.length === 0 && (
+                  <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                    <p>This supplier has no unpaid purchase invoices. You can keep this payment as supplier credit instead.</p>
+                    <button type="button" onClick={() => setPaymentType("advance")} className="font-bold underline">Switch to advance</button>
+                  </div>
+                )}
+
+                <label className="block text-sm font-medium">
+                  Purchase invoice
+                  <select value={invoiceId} onChange={e => setInvoiceId(e.target.value)} className="mt-1 block w-full rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
+                    <option value="">Select an unpaid invoice</option>
+                    {openInvoices.map(invoice => (
+                      <option key={invoice.id} value={invoice.id}>{invoice.name} · {formatDate(invoice.date)} · {formatCurrency(invoice.remaining, currency)} due</option>
+                    ))}
+                  </select>
+                </label>
+                {selectedInvoice && (
+                  <div className="space-y-2 rounded-xl bg-indigo-50 p-3 text-sm dark:bg-indigo-900/20">
+                    <div className="flex justify-between"><span>Current balance</span><strong>{formatCurrency(selectedInvoice.remaining, currency)}</strong></div>
+                    {creditAmount > 0 && (
+                      <div className="flex justify-between"><span>Supplier credit applied</span><strong>-{formatCurrency(creditAmount, currency)}</strong></div>
+                    )}
+                    <div className="flex justify-between"><span>Remaining after payment</span><strong>{formatCurrency(Math.max(0, selectedInvoice.remaining - cashAmount - creditAmount), currency)}</strong></div>
+                    {cashAmount > selectedInvoice.remaining + 0.009 && (
+                      <div className="flex justify-between"><span>Supplier credit added</span><strong>{formatCurrency(cashAmount - selectedInvoice.remaining, currency)}</strong></div>
+                    )}
+                  </div>
+                )}
+                {selectedInvoice && usableCreditTotal > 0.009 && maxCreditForInvoice > 0.009 && (
+                  <div className="space-y-2 rounded-xl border border-indigo-200 p-3 text-sm dark:border-indigo-800">
+                    <div className="flex justify-between font-semibold">
+                      <span className="flex items-center gap-1"><WalletCards size={14} /> Available supplier credit</span>
+                      <strong>{formatCurrency(usableCreditTotal, currency)}</strong>
+                    </div>
+                    <label className="block text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                      Use credit (optional)
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        max={maxCreditForInvoice}
+                        value={creditToApply}
+                        onChange={e => setCreditToApply(e.target.value)}
+                        placeholder="0.00"
+                        className={`mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-3 text-base font-bold dark:border-gray-700 dark:bg-gray-900 dark:text-white ${noSpinnerClass}`}
+                      />
+                    </label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Maximum for this invoice: {formatCurrency(maxCreditForInvoice, currency)}</p>
+                  </div>
+                )}
+              </>
             )}
 
             <div>
               <label className="block text-sm font-medium">{method === "momo" ? "MoMo transaction ID" : "Payment reference (optional)"}
                 <input value={reference} onChange={e => setReference(e.target.value)} className="mt-1 block w-full rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
               </label>
+            </div>
+            <div>
+              <label htmlFor="supplier-payment-received-at" className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Date and time paid</label>
+              <input
+                id="supplier-payment-received-at"
+                type="datetime-local"
+                value={receivedAt || toLocalDateTime()}
+                max={toLocalDateTime()}
+                onChange={e => setReceivedAt(e.target.value)}
+                className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl dark:text-white"
+              />
             </div>
             <div>
               <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Payment Method</label>
@@ -306,16 +468,24 @@ export const RecordSupplierPaymentPage = () => {
             </div>
 
             <div>
-              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Note (optional)</label>
-              <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Add a note (optional)..." className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm resize-none" rows="2" />
+              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">
+                {paymentType === "advance" ? "Reason for advance *" : "Note (optional)"}
+              </label>
+              <textarea
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                placeholder={paymentType === "advance" ? "Why are you giving this money now?" : "Add a note (optional)..."}
+                className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm resize-none"
+                rows="2"
+              />
             </div>
 
             <button
               onClick={handleSavePayment}
-              disabled={isSaving || !selectedInvoice}
+              disabled={isSaving || (paymentType === "invoice" && !selectedInvoice) || (paymentType === "advance" && (!amount || !note.trim()))}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition shadow-lg disabled:opacity-60"
             >
-              {isSaving ? <><Loader2 className="animate-spin" size={24} /> Saving...</> : <><Check size={24} /> Save Payment</>}
+              {isSaving ? <><Loader2 className="animate-spin" size={24} /> Saving...</> : <><Check size={24} /> {paymentType === "advance" ? "Save Advance" : "Save Payment"}</>}
             </button>
           </div>
         )}

@@ -44,7 +44,7 @@ export const QuickUnlockScreen = ({ userId, onUnlocked, onUsePassword }) => {
     <div className="text-center"><div className="mx-auto mb-4 grid size-16 place-items-center rounded-2xl bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"><LockKeyhole size={31}/></div><h1 className="text-2xl font-black text-gray-900 dark:text-white">Quick unlock</h1><p className="mt-1 text-sm text-gray-500">Enter your device PIN to open CreditBook.</p></div>
     <PinDots value={pin} length={pinLength}/>{error && <p className="rounded-xl bg-red-50 p-3 text-center text-sm font-medium text-red-700 dark:bg-red-950/30 dark:text-red-300">{error}</p>}
     {busy ? <div className="flex h-48 items-center justify-center"><Loader2 className="animate-spin text-indigo-600"/></div> : <Keypad disabled={busy} onDigit={digit => pin.length < pinLength && setPin(value => value + digit)} onDelete={() => setPin(value => value.slice(0,-1))}/>} 
-    <button onClick={onUsePassword} className="w-full py-3 text-sm font-bold text-indigo-700 dark:text-indigo-300">Use account password instead</button>
+    <button onClick={onUsePassword} className="w-full py-3 text-sm font-bold text-indigo-700 dark:text-indigo-300">Log out and use account password</button>
   </div></div>;
 };
 

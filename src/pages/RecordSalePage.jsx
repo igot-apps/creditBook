@@ -314,7 +314,7 @@ export const RecordSalePage = () => {
   const handleSuspendSale = async () => {
     if (blockIfReadOnly()) return;
     if (isSuspending || isSaving) return;
-    if (!selectedCustomer) { showToast("️ Select a customer first"); return; }
+    if (!selectedCustomer) { showToast("⚠️ Select a customer first"); return; }
     if (Number(tx.paid) < 0) { showToast("Enter a non-negative amount paid"); return; }
     if (invoiceStyle === "quick" && (parseFloat(tx.amount) || 0) <= 0) { showToast("⚠️ Enter the invoice total"); return; }
     if (effectiveItems.length === 0 && !tx.note.trim() && parseFloat(tx.amount) === 0) {
@@ -517,7 +517,7 @@ export const RecordSalePage = () => {
                   </p>
                 )}
               </div>
-              {!isFixing && (
+              {!isFixing && (suspendedId || (autoDraft?.draftType === 'sale' && autoDraft?.customerId === selectedCustomer.id)) && (
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setInvoiceToDiscard({ id: suspendedId, type: "sale", contactName: selectedCustomer.name })}

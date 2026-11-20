@@ -3,6 +3,7 @@ import { Save, Store, User, Phone, Mail, MapPin, DollarSign, Loader2, Crown, Che
 import useStore from "../store/useStore";
 import { supabase } from "../lib/supabaseClient";
 import { SubscriptionService } from "../services/SubscriptionService";
+import { TransactionService } from "../services/TransactionService";
 import { TopBar } from "../components/TopBar";
 import { PinSetupModal } from "../components/QuickUnlock";
 import { QuickUnlockService } from "../services/QuickUnlockService";
@@ -19,6 +20,7 @@ export const SettingsPage = () => {
     currency: "GH₵"
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [hasTransactions, setHasTransactions] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState(null);
   const [authUserId, setAuthUserId] = useState(null);
   const [quickUnlockEnabled, setQuickUnlockEnabled] = useState(false);
@@ -46,6 +48,15 @@ export const SettingsPage = () => {
       });
     }
   }, [currentStore]);
+
+  // Currency cannot be relabelled once financial records exist
+  useEffect(() => {
+    if (currentStore?.id) {
+      TransactionService.getAll()
+        .then((txs) => setHasTransactions((txs || []).length > 0))
+        .catch(() => setHasTransactions(false));
+    }
+  }, [currentStore?.id]);
 
   // Load subscription status
   useEffect(() => {
@@ -284,7 +295,8 @@ export const SettingsPage = () => {
                 name="currency"
                 value={formData.currency}
                 onChange={handleChange}
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white appearance-none"
+                disabled={hasTransactions}
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white appearance-none disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="GH₵">GH₵ (Cedi)</option>
                 <option value="$">$ (USD)</option>
@@ -293,6 +305,11 @@ export const SettingsPage = () => {
                 <option value="₦">₦ (Naira)</option>
                 <option value="KSh">KSh (Shilling)</option>
               </select>
+              {hasTransactions && (
+                <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  Currency is locked because financial records already exist. Changing it would relabel historical amounts.
+                </p>
+              )}
             </div>
           </div>
 

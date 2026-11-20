@@ -8,7 +8,7 @@ export const BalanceCard = ({ balance, lastPayment, currency }) => (
     "bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800"
   }`}>
     <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
-      {balance > 0 ? "You Owe This Supplier" : balance < 0 ? "Supplier Owes You (Credit)" : "All Settled"}
+      {balance > 0 ? "You Owe This Supplier" : balance < 0 ? "Available Supplier Credit" : "All Settled"}
     </p>
     <p className={`text-3xl font-bold ${
       balance > 0 ? "text-orange-600 dark:text-orange-400" :
