@@ -445,6 +445,18 @@ export const RecordSupplierPaymentPage = () => {
               />
             </div>
             <div>
+              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">
+                {paymentType === "advance" ? "Reason for advance *" : "Note (optional)"}
+              </label>
+              <textarea
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                placeholder={paymentType === "advance" ? "Why are you giving this money now?" : "Add a note (optional)..."}
+                className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm resize-none"
+                rows="2"
+              />
+            </div>
+            <div>
               <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Payment Method</label>
               <div className="grid grid-cols-3 gap-2">
                 {METHODS.map(m => {
@@ -467,18 +479,6 @@ export const RecordSupplierPaymentPage = () => {
               </div>
             </div>
 
-            <div>
-              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">
-                {paymentType === "advance" ? "Reason for advance *" : "Note (optional)"}
-              </label>
-              <textarea
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                placeholder={paymentType === "advance" ? "Why are you giving this money now?" : "Add a note (optional)..."}
-                className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm resize-none"
-                rows="2"
-              />
-            </div>
 
             <button
               onClick={handleSavePayment}
