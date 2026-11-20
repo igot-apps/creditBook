@@ -27,7 +27,6 @@ export function PaymentCredit({ history, allocations, invoices, currency, isSupp
   const sources = history
     .map(tx => ({ ...tx, available: paymentCreditAvailable(tx, history, allocations) }))
     .filter(tx => tx.available > 0.009);
-  const totalCredit = sources.reduce((sum, tx) => sum + tx.available, 0);
   const isRefund = invoiceId === "refund";
   const selectedInvoice = invoices.find(invoice => invoice.id === invoiceId);
   const max = Math.min(source?.available || 0, selectedInvoice?.trueOutstanding ?? Infinity);
@@ -87,10 +86,7 @@ export function PaymentCredit({ history, allocations, invoices, currency, isSupp
 
   return (
     <section className="space-y-3 rounded-2xl border border-indigo-200 bg-white p-4 dark:border-indigo-900 dark:bg-gray-800">
-      <div className="flex justify-between gap-3 font-bold">
-        <h2>{isSupplier ? "Available supplier credit" : "Customer credit available"}</h2>
-        <span>{formatCurrency(totalCredit, currency)}</span>
-      </div>
+      <h2 className="font-bold">{isSupplier ? "Where your supplier credit came from" : "Where the customer's credit came from"}</h2>
       {sources.map(tx => (
         <div key={tx.id} className="space-y-2 border-t border-gray-200 pt-3 text-sm dark:border-gray-700">
           <div className="flex justify-between gap-3">

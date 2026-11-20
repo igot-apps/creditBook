@@ -231,7 +231,7 @@ export const SupplierProfilePage = () => {
       <TopBar title="Supplier Profile" showBack={true} onBack={() => { setView("suppliers"); setSelectedSupplier(null); }} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
         <SupplierHeader supplier={supplierData} daysSinceLastActive={daysSinceLastActive} onEdit={() => { if (!blockIfReadOnly()) setIsEditModalOpen(true); }} />
-        <BalanceCard balance={trueBalance} unpaidInvoices={unpaidInvoicesTotal} availableCredit={availableCredit} lastPayment={lastPayment} currency={currency} />
+        <BalanceCard unpaidInvoices={unpaidInvoicesTotal} availableCredit={availableCredit} lastPayment={lastPayment} currency={currency} />
         <PaymentCredit history={history} allocations={allocations} invoices={outstandingInvoices} currency={currency} readOnly={readOnly} isSupplier onSaved={async () => {
           const [rows, updatedAllocations] = await Promise.all([TransactionService.getHistory(supplierData.id), AllocationService.getByContact(supplierData.id)]);
           setHistory(normalizeList(rows));

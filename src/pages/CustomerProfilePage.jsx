@@ -13,6 +13,7 @@ import { AddCustomerModal } from "../components/customer/AddCustomerModal";
 import { DeleteContactModal } from "../components/DeleteContactModal";
 import { TopBar } from "../components/TopBar";
 import { PaymentCredit } from "../components/PaymentCredit";
+import { paymentCreditAvailable } from "../utils/paymentCredit";
 // Modular, allocation-aware components
 import { CustomerHeader } from "./customer/components/CustomerHeader";
 import { BalanceCard } from "./customer/components/BalanceCard";
@@ -105,6 +106,13 @@ export const CustomerProfilePage = () => {
 
   // Customer-level: aggregate only (single source of truth for the balance card)
   const trueBalance = useMemo(() => recomputeBalance(history), [history]);
+
+  // Summary figures: unpaid invoices already exclude applied payments/credit; credit is only unallocated money
+  const unpaidInvoicesTotal = outstandingInvoices.reduce((sum, tx) => sum + tx.trueOutstanding, 0);
+  const availableCredit = history.reduce((sum, tx) => {
+    const available = paymentCreditAvailable(tx, history, allocations);
+    return available > 0.009 ? sum + available : sum;
+  }, 0);
 
   const totalSales = history.reduce((sum, t) =>
     sum + ((parseFloat(t.amount) || 0) > 0 && t.type === 'sale' && isLive(t) ? (parseFloat(t.amount) || 0) : 0), 0);
@@ -234,7 +242,7 @@ export const CustomerProfilePage = () => {
       <TopBar title="Customer Profile" showBack={true} onBack={() => { setView("customers"); setSelectedCustomer(null); }} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
         <CustomerHeader customer={customerData} daysSinceLastActive={daysSinceLastActive} onEdit={() => { if (!blockIfReadOnly()) setIsEditModalOpen(true); }} />
-        <BalanceCard balance={trueBalance} lastPayment={lastPayment} currency={currency} />
+        <BalanceCard unpaidInvoices={unpaidInvoicesTotal} availableCredit={availableCredit} lastPayment={lastPayment} currency={currency} />
         <PaymentCredit history={history} allocations={allocations} invoices={outstandingInvoices} currency={currency} readOnly={readOnly} onSaved={async () => {
           const [rows, updatedAllocations] = await Promise.all([TransactionService.getHistory(customerData.id), AllocationService.getByContact(customerData.id)]);
           setHistory(normalizeList(rows));
