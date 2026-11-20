@@ -2,8 +2,9 @@ import { Edit3, Ban, HeartHandshake, Check, FileText, ChevronDown, ChevronUp, Ar
 import { formatCurrency, formatDate } from "../../../utils/helpers";
 import { txDate, isWriteOffTx } from "../utils/helpers";
 import { invoiceReference } from "../../../utils/invoiceReference";
+import { HistorySummary, CancelledNote } from "../../../components/MoneyTrail";
 
-export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx, setViewingTransaction, currency, hasMore, onLoadMore, shownCount, totalCount }) => {
+export const TransactionHistory = ({ history, fullHistory, allocations, onView, onToggleOld, expandedOldTx, setViewingTransaction, currency, hasMore, onLoadMore, shownCount, totalCount }) => {
   const getTimelineIcon = (tx) => {
     if (tx.status === 'being_corrected') return <Edit3 size={16} className="text-yellow-600" />;
     if (tx.status === 'cancelled') return <Ban size={16} className="text-red-500" />;
@@ -67,9 +68,10 @@ export const TransactionHistory = ({ history, onView, onToggleOld, expandedOldTx
                     </div>
                     <div className="text-right">
                       <p className={`text-sm font-bold ${isInvalid ? 'text-gray-400' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(tx.amount || tx.paid, currency)}</p>
-                      {tx.type === 'sale' && (parseFloat(tx.paid) || 0) > 0 && !isInvalid && <p className="text-[10px] text-green-600 dark:text-green-400">Paid: {formatCurrency(tx.paid, currency)}</p>}
                     </div>
                   </div>
+                  <HistorySummary tx={tx} history={fullHistory || history} allocations={allocations || []} currency={currency} />
+                  {isCancelled && <CancelledNote tx={tx} className="mt-1 text-[10px] text-red-600 dark:text-red-400" />}
                   <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-100 dark:border-gray-700/50">
                     {tx.correctsTransactionId && (
                       <button onClick={(e) => { e.stopPropagation(); onToggleOld(tx); }} className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1">

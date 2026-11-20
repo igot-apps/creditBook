@@ -255,6 +255,8 @@ export const CustomerProfilePage = () => {
         <OutstandingInvoices invoices={outstandingInvoices} onView={setViewingTransaction} currency={currency} />
         <TransactionHistory
           history={pagedHistory}
+          fullHistory={history}
+          allocations={allocations}
           onView={setViewingTransaction}
           onToggleOld={toggleOldReceipt}
           expandedOldTx={expandedOldTx}

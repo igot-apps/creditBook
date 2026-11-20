@@ -12,6 +12,7 @@ import { AddSupplierModal } from "../components/supplier/AddSupplierModal";
 import { DeleteContactModal } from "../components/DeleteContactModal";
 import { TopBar } from "../components/TopBar";
 import { PaymentCredit } from "../components/PaymentCredit";
+import { paymentCreditAvailable } from "../utils/paymentCredit";
 
 // Import our new clean components
 import { SupplierHeader } from "./supplier/components/SupplierHeader";
@@ -100,6 +101,13 @@ export const SupplierProfilePage = () => {
     });
     return bal;
   }, [history]);
+
+  // Summary figures: unpaid invoices already exclude applied credit; available credit is only unallocated payment money
+  const unpaidInvoicesTotal = useMemo(() => outstandingInvoices.reduce((sum, tx) => sum + tx.trueOutstanding, 0), [outstandingInvoices]);
+  const availableCredit = useMemo(() => history.reduce((sum, tx) => {
+    const available = paymentCreditAvailable(tx, history, allocations);
+    return available > 0.009 ? sum + available : sum;
+  }, 0), [history, allocations]);
 
   const totalPurchases = history.reduce((sum, t) => sum + ((parseFloat(t.amount) || 0) > 0 && t.type === 'purchase' && isActive(t) ? (parseFloat(t.amount) || 0) : 0), 0);
   const totalPayments = history.reduce((sum, t) => sum + ((parseFloat(t.paid) || 0) > 0 && t.type === 'supplier_payment' && isActive(t) ? (parseFloat(t.paid) || 0) : 0), 0);
@@ -223,7 +231,7 @@ export const SupplierProfilePage = () => {
       <TopBar title="Supplier Profile" showBack={true} onBack={() => { setView("suppliers"); setSelectedSupplier(null); }} />
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
         <SupplierHeader supplier={supplierData} daysSinceLastActive={daysSinceLastActive} onEdit={() => { if (!blockIfReadOnly()) setIsEditModalOpen(true); }} />
-        <BalanceCard balance={trueBalance} lastPayment={lastPayment} currency={currency} />
+        <BalanceCard balance={trueBalance} unpaidInvoices={unpaidInvoicesTotal} availableCredit={availableCredit} lastPayment={lastPayment} currency={currency} />
         <PaymentCredit history={history} allocations={allocations} invoices={outstandingInvoices} currency={currency} readOnly={readOnly} isSupplier onSaved={async () => {
           const [rows, updatedAllocations] = await Promise.all([TransactionService.getHistory(supplierData.id), AllocationService.getByContact(supplierData.id)]);
           setHistory(normalizeList(rows));
@@ -239,6 +247,8 @@ export const SupplierProfilePage = () => {
         <OutstandingInvoices invoices={outstandingInvoices} onView={setViewingTransaction} currency={currency} />
         <TransactionHistory
           history={pagedHistory}
+          fullHistory={history}
+          allocations={allocations}
           onView={setViewingTransaction}
           onToggleOld={toggleOldReceipt}
           expandedOldTx={expandedOldTx}

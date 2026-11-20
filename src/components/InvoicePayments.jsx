@@ -2,7 +2,7 @@ import { useId, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { formatCurrency, formatDate } from "../utils/helpers";
 
-export const InvoicePayments = ({ paid, invoicePayments = [], total, currency, onChange, isPurchase = false }) => {
+export const InvoicePayments = ({ paid, invoicePayments = [], total, currency, onChange, isPurchase = false, hideHeader = false }) => {
   const titleId = useId();
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
@@ -62,10 +62,10 @@ export const InvoicePayments = ({ paid, invoicePayments = [], total, currency, o
 
   return (
     <>
-      <div className="space-y-2 border-t border-gray-200 dark:border-gray-700 pt-3">
-        <div className="flex justify-between text-sm font-semibold">
+      <div className={hideHeader ? "space-y-2" : "space-y-2 border-t border-gray-200 dark:border-gray-700 pt-3"}>
+        {!hideHeader && <div className="flex justify-between text-sm font-semibold">
           <span>Amount paid</span><span>{formatCurrency(amountPaid, currency)}</span>
-        </div>
+        </div>}
         {earlierPaid > 0.009 && <p className="text-xs text-gray-500">Previously recorded payment · {formatCurrency(earlierPaid, currency)}</p>}
         {invoicePayments.map(payment => (
           <div key={payment.id} className="flex items-center justify-between gap-2 text-sm">

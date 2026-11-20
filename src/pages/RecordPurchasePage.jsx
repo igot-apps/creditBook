@@ -587,68 +587,53 @@ export const RecordPurchasePage = () => {
               </div>
             )}
             <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
-              {transactionType === "purchase" && invoiceItems.length > 0 && (
-                <div className="flex justify-between items-center text-lg font-bold">
-                  <span className="text-gray-700 dark:text-gray-300">Total Purchase:</span>
-                  <span className="text-indigo-600 dark:text-indigo-400">{formatCurrency(totalAmount, currency)}</span>
-                </div>
-              )}
-              {/* 👇 Supplier Discount input */}
-              {transactionType === "purchase" && (
-                <div>
-                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 flex items-center gap-1">
-                    <Percent size={12} /> Supplier Discount (Optional)
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    value={discount}
-                    onChange={e => setDiscount(e.target.value)}
-                    placeholder="0.00"
-                    className={`w-full text-lg font-bold text-purple-700 dark:text-purple-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`}
-                  />
-                  {discountValue > 0 && (
-                    <div className="flex justify-between items-center mt-2 text-sm font-bold">
-                      <span className="text-gray-600 dark:text-gray-300">Net Total (after discount):</span>
-                      <span className="text-green-600 dark:text-green-400">{formatCurrency(netTotal, currency)}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-              <div>
-                {transactionType === "purchase" ? (
-                  <InvoicePayments paid={amountPaid} invoicePayments={invoicePayments} total={netTotal} currency={currency} isPurchase onChange={(paid, payments) => {
+              {transactionType === "purchase" ? (
+                <div className="space-y-2 text-sm">
+                  {/* 1–3: Items total − Discount = Total Purchase */}
+                  <div className="flex justify-between text-gray-600 dark:text-gray-300"><span>Items total</span><span className="font-semibold">{formatCurrency(totalAmount, currency)}</span></div>
+                  <div className="flex items-center justify-between gap-3 text-gray-600 dark:text-gray-300">
+                    <label htmlFor="purchase-discount" className="flex items-center gap-1"><Percent size={12} /> Discount</label>
+                    <div className="flex items-center gap-1"><span className="text-purple-700 dark:text-purple-400">−</span><input id="purchase-discount" type="number" inputMode="decimal" value={discount} onChange={e => setDiscount(e.target.value)} placeholder="0.00" className={`w-24 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-right font-semibold text-purple-700 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-purple-400 ${noSpinnerClass}`} /></div>
+                  </div>
+                  <div className="flex justify-between border-t border-gray-200 pt-2 text-base font-bold dark:border-gray-700"><span className="text-gray-800 dark:text-gray-200">Total Purchase</span><span className="text-indigo-600 dark:text-indigo-400">{formatCurrency(netTotal, currency)}</span></div>
+
+                  {/* 4: Payments & credit */}
+                  <p className="pt-2 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Payments &amp; credit</p>
+                  <InvoicePayments hideHeader paid={amountPaid} invoicePayments={invoicePayments} total={netTotal} currency={currency} isPurchase onChange={(paid, payments) => {
                     setAmountPaid(paid);
                     setInvoicePayments(payments);
                   }} />
-                ) : (
-                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Payment amount
-                    <input type="number" inputMode="decimal" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="0.00" className={`w-full text-xl font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`} autoFocus />
-                  </label>
-                )}
-                {transactionType === "purchase" && (
-                  <p className="mt-2 flex justify-between text-sm font-semibold">
-                    <span>Balance remaining</span><span>{formatCurrency(Math.max(0, netTotal - (Number(amountPaid) || 0)), currency)}</span>
-                  </p>
-                )}
-              </div>
-              {transactionType === "purchase" && !isFixing && (
-                <section className="space-y-3 rounded-2xl border border-indigo-200 p-4 dark:border-indigo-900" aria-labelledby="supplier-credit-title">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3"><div className="rounded-xl bg-indigo-100 p-2 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"><WalletCards size={20}/></div><div><h3 id="supplier-credit-title" className="font-bold text-gray-900 dark:text-white">Credit with supplier</h3><p className="text-sm text-gray-500 dark:text-gray-400">{creditLoaded ? `${formatCurrency(totalCreditAvailable, currency)} available` : creditLoadError ? "Credit check failed" : "Checking available credit…"}</p></div></div>
-                    {creditLoaded && totalCreditAvailable > 0.009 && <button type="button" onClick={() => setShowCreditEditor(value => !value)} className="shrink-0 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white">{pendingCredit > 0 ? "Change credit" : "Apply credit"}</button>}
-                  </div>
-                  {showCreditEditor && creditLoaded && totalCreditAvailable > 0.009 && (
-                    <div className="rounded-xl bg-indigo-50 p-3 dark:bg-indigo-950/20">
-                      <label className="block text-xs font-bold uppercase text-indigo-800 dark:text-indigo-300">Credit to apply<div className="relative mt-1.5"><span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-indigo-600">{currency}</span><input aria-label="Supplier credit to apply" type="text" inputMode="decimal" value={pendingCreditAmount} onChange={event => setPendingCreditAmount(event.target.value.replace(/[^0-9.]/g, ''))} className="w-full rounded-xl border border-indigo-200 bg-white py-3 pl-12 pr-3 text-right text-lg font-bold outline-none focus:ring-2 focus:ring-indigo-500 dark:border-indigo-800 dark:bg-gray-900"/></div></label>
-                      <div className="mt-2 flex justify-between text-xs text-indigo-800 dark:text-indigo-300"><span>Maximum for this purchase</span><strong>{formatCurrency(maxPendingCredit, currency)}</strong></div>
-                      <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={() => { setPendingCreditAmount("0"); setShowCreditEditor(false); }} className="rounded-lg px-3 py-2 text-sm font-semibold">Remove</button><button type="button" onClick={() => setShowCreditEditor(false)} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Apply</button></div>
+                  {!isFixing && (
+                    <div className="space-y-2">
+                      {pendingCredit > 0 && (
+                        <div className="flex justify-between text-indigo-700 dark:text-indigo-300"><span>Supplier credit applied</span><span className="font-bold">−{formatCurrency(pendingCredit, currency)}</span></div>
+                      )}
+                      <div className="flex items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
+                        <span className="flex items-center gap-1"><WalletCards size={14}/>{creditLoaded ? `${formatCurrency(Math.max(0, totalCreditAvailable - pendingCredit), currency)} supplier credit ${pendingCredit > 0 ? "left" : "available"}` : creditLoadError ? "Could not check supplier credit." : "Checking supplier credit…"}</span>
+                        {creditLoaded && totalCreditAvailable > 0.009 && <button type="button" onClick={() => setShowCreditEditor(value => !value)} className="shrink-0 font-semibold text-indigo-600 underline dark:text-indigo-400">{pendingCredit > 0 ? "Change credit" : "Apply credit"}</button>}
+                        {creditLoadError && <button type="button" onClick={() => setCreditReloadKey(value => value + 1)} className="shrink-0 font-bold text-red-600 underline">Retry</button>}
+                      </div>
+                      {showCreditEditor && creditLoaded && totalCreditAvailable > 0.009 && (
+                        <div className="rounded-xl bg-indigo-50 p-3 dark:bg-indigo-950/20">
+                          <label className="block text-xs font-bold uppercase text-indigo-800 dark:text-indigo-300">Credit to apply<div className="relative mt-1.5"><span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-indigo-600">{currency}</span><input aria-label="Supplier credit to apply" type="text" inputMode="decimal" value={pendingCreditAmount} onChange={event => setPendingCreditAmount(event.target.value.replace(/[^0-9.]/g, ''))} className="w-full rounded-xl border border-indigo-200 bg-white py-3 pl-12 pr-3 text-right text-lg font-bold outline-none focus:ring-2 focus:ring-indigo-500 dark:border-indigo-800 dark:bg-gray-900"/></div></label>
+                          <div className="mt-2 flex justify-between text-xs text-indigo-800 dark:text-indigo-300"><span>Maximum for this purchase</span><strong>{formatCurrency(maxPendingCredit, currency)}</strong></div>
+                          <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={() => { setPendingCreditAmount("0"); setShowCreditEditor(false); }} className="rounded-lg px-3 py-2 text-sm font-semibold">Remove</button><button type="button" onClick={() => setShowCreditEditor(false)} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Apply</button></div>
+                        </div>
+                      )}
                     </div>
                   )}
-                  {pendingCredit > 0 && <><dl className="space-y-2 border-t border-gray-100 pt-3 text-sm dark:border-gray-700"><div className="flex justify-between"><dt className="text-indigo-700 dark:text-indigo-300">Credit to apply</dt><dd className="font-bold text-indigo-700 dark:text-indigo-300">-{formatCurrency(pendingCredit, currency)}</dd></div><div className="flex justify-between border-t border-dashed border-gray-200 pt-2 text-base dark:border-gray-700"><dt className="font-bold">Remaining after credit</dt><dd className="font-black text-orange-600 dark:text-orange-400">{formatCurrency(balanceAfterPendingCredit, currency)}</dd></div></dl><p className="rounded-lg bg-amber-50 p-2.5 text-xs font-semibold text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">Pending — supplier credit will be applied oldest first only when this purchase is saved.</p></>}
-                  {creditLoaded && totalCreditAvailable <= 0.009 && <p className="text-sm text-gray-500 dark:text-gray-400">No supplier credit is currently available.</p>}
-                  {creditLoadError && <div className="flex items-center justify-between gap-3 rounded-lg bg-red-50 p-2.5 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-300"><span>Could not check supplier credit.</span><button type="button" onClick={() => setCreditReloadKey(value => value + 1)} className="font-bold underline">Retry</button></div>}
-                </section>
+                  {(paidUpfront > 0 || pendingCredit > 0) && (
+                    <div className="flex justify-between border-t border-gray-200 pt-2 font-semibold text-gray-700 dark:border-gray-700 dark:text-gray-200"><span>Total paid &amp; credited</span><span>−{formatCurrency(paidUpfront + pendingCredit, currency)}</span></div>
+                  )}
+
+                  {/* 5: Balance to pay */}
+                  <div className="flex items-center justify-between border-t-2 border-gray-800 pt-3 dark:border-gray-200"><span className="text-base font-black text-gray-900 dark:text-white">Balance to pay</span><span className="text-2xl font-black text-orange-600 dark:text-orange-400">{formatCurrency(balanceAfterPendingCredit, currency)}</span></div>
+                  {pendingCredit > 0 && <p className="text-xs text-amber-700 dark:text-amber-300">Credit is applied (oldest first) when you save this purchase.</p>}
+                </div>
+              ) : (
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Payment amount
+                  <input type="number" inputMode="decimal" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="0.00" className={`w-full text-xl font-bold text-green-700 dark:text-green-400 outline-none bg-transparent border-b border-gray-200 dark:border-gray-700 pb-2 ${noSpinnerClass}`} autoFocus />
+                </label>
               )}
               <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Add a note (optional)..." className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm resize-none" rows="2" />
               {mode === "existing" && !isFixing && transactionType === "purchase" && (
