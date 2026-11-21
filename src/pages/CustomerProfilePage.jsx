@@ -13,6 +13,7 @@ import { AddCustomerModal } from "../components/customer/AddCustomerModal";
 import { DeleteContactModal } from "../components/DeleteContactModal";
 import { TopBar } from "../components/TopBar";
 import { PaymentCredit } from "../components/PaymentCredit";
+import { SuspendedTransactionService } from "../services/SuspendedTransactionService";
 import { SkeletonBalance, SkeletonList } from "../components/Skeleton";
 import { paymentCreditAvailable } from "../utils/paymentCredit";
 // Modular, allocation-aware components
@@ -62,6 +63,7 @@ export const CustomerProfilePage = () => {
   const [customerData, setCustomerData] = useState(selectedCustomer);
   const [history, setHistory] = useState([]);
   const [allocations, setAllocations] = useState([]);
+  const [plannedCredit, setPlannedCredit] = useState(0); // credit that suspended invoices plan to use
   const [loadedId, setLoadedId] = useState(null); // which contact's history has finished loading
   const historyLoaded = loadedId === selectedCustomer?.id;
   const [expandedOldTx, setExpandedOldTx] = useState(null);
@@ -77,6 +79,9 @@ export const CustomerProfilePage = () => {
   // Load history + allocations together
   useEffect(() => {
     if (selectedCustomer?.id) {
+      SuspendedTransactionService.getSuspendedTransactions()
+        .then(rows => setPlannedCredit((rows || []).filter(row => row.contactId === selectedCustomer.id).reduce((sum, row) => sum + (Number(row.pendingCreditAmount) || 0), 0)))
+        .catch(() => setPlannedCredit(0));
       CustomerService.getById(selectedCustomer.id).then(setCustomerData);
       Promise.all([
         TransactionService.getHistory(selectedCustomer.id).then(res => normalizeList(res)).catch(() => []),
@@ -246,8 +251,8 @@ export const CustomerProfilePage = () => {
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
         <CustomerHeader customer={customerData} daysSinceLastActive={daysSinceLastActive} onEdit={() => { if (!blockIfReadOnly()) setIsEditModalOpen(true); }} />
         {!historyLoaded ? <SkeletonBalance /> : <>
-        <BalanceCard unpaidInvoices={unpaidInvoicesTotal} availableCredit={availableCredit} lastPayment={lastPayment} currency={currency} />
-        <PaymentCredit history={history} allocations={allocations} invoices={outstandingInvoices} currency={currency} readOnly={readOnly} onSaved={async () => {
+        <BalanceCard unpaidInvoices={unpaidInvoicesTotal} availableCredit={availableCredit} plannedCredit={plannedCredit} lastPayment={lastPayment} currency={currency} />
+        <PaymentCredit onView={setViewingTransaction} history={history} allocations={allocations} invoices={outstandingInvoices} currency={currency} readOnly={readOnly} onSaved={async () => {
           const [rows, updatedAllocations] = await Promise.all([TransactionService.getHistory(customerData.id), AllocationService.getByContact(customerData.id)]);
           setHistory(normalizeList(rows));
           setAllocations(updatedAllocations);

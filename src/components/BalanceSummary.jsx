@@ -2,7 +2,7 @@ import { formatCurrency } from "../utils/helpers";
 
 // Compact top-of-profile summary. Unpaid invoices and credit stay separate: credit only
 // reduces an invoice when it is actually applied, so both figures are shown as they are.
-export function BalanceSummary({ unpaidInvoices = 0, availableCredit = 0, currency, isSupplier = false, children }) {
+export function BalanceSummary({ unpaidInvoices = 0, availableCredit = 0, plannedCredit = 0, currency, isSupplier = false, children }) {
   const net = unpaidInvoices - availableCredit;
   const state = net > 0.009 ? "owe" : net < -0.009 ? "credit" : "settled";
   const text = isSupplier
@@ -34,6 +34,11 @@ export function BalanceSummary({ unpaidInvoices = 0, availableCredit = 0, curren
       </div>
       {state === "credit" && unpaidInvoices > 0.009 && (
         <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">The unpaid invoices stay unpaid until credit is applied to them.</p>
+      )}
+      {plannedCredit > 0.009 && availableCredit > 0.009 && (
+        <p className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] font-medium text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+          {formatCurrency(Math.min(plannedCredit, availableCredit), currency)} of this credit is planned for a suspended {isSupplier ? "purchase" : "sale"}. It is not used until that invoice is saved.
+        </p>
       )}
       {children}
     </section>

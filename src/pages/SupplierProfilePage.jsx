@@ -12,6 +12,7 @@ import { AddSupplierModal } from "../components/supplier/AddSupplierModal";
 import { DeleteContactModal } from "../components/DeleteContactModal";
 import { TopBar } from "../components/TopBar";
 import { PaymentCredit } from "../components/PaymentCredit";
+import { SuspendedTransactionService } from "../services/SuspendedTransactionService";
 import { SkeletonBalance, SkeletonList } from "../components/Skeleton";
 import { paymentCreditAvailable } from "../utils/paymentCredit";
 
@@ -45,6 +46,7 @@ export const SupplierProfilePage = () => {
   const [supplierData, setSupplierData] = useState(selectedSupplier);
   const [history, setHistory] = useState([]);
   const [allocations, setAllocations] = useState([]);
+  const [plannedCredit, setPlannedCredit] = useState(0); // credit that suspended invoices plan to use
   const [loadedId, setLoadedId] = useState(null); // which contact's history has finished loading
   const historyLoaded = loadedId === selectedSupplier?.id;
   const [expandedOldTx, setExpandedOldTx] = useState(null);
@@ -59,6 +61,9 @@ export const SupplierProfilePage = () => {
   // Load history + allocations together
   useEffect(() => {
     if (selectedSupplier?.id) {
+      SuspendedTransactionService.getSuspendedTransactions()
+        .then(rows => setPlannedCredit((rows || []).filter(row => row.contactId === selectedSupplier.id).reduce((sum, row) => sum + (Number(row.pendingCreditAmount) || 0), 0)))
+        .catch(() => setPlannedCredit(0));
       SupplierService.getById(selectedSupplier.id).then(setSupplierData);
       Promise.all([
         TransactionService.getHistory(selectedSupplier.id).then(res => normalizeList(res)).catch(() => []),
@@ -235,8 +240,8 @@ export const SupplierProfilePage = () => {
       <div style={{ paddingTop: 'calc(env(safe-area-inset-top) + 4.5rem)' }} className="p-4 max-w-lg mx-auto space-y-5">
         <SupplierHeader supplier={supplierData} daysSinceLastActive={daysSinceLastActive} onEdit={() => { if (!blockIfReadOnly()) setIsEditModalOpen(true); }} />
         {!historyLoaded ? <SkeletonBalance /> : <>
-        <BalanceCard unpaidInvoices={unpaidInvoicesTotal} availableCredit={availableCredit} lastPayment={lastPayment} currency={currency} />
-        <PaymentCredit history={history} allocations={allocations} invoices={outstandingInvoices} currency={currency} readOnly={readOnly} isSupplier onSaved={async () => {
+        <BalanceCard unpaidInvoices={unpaidInvoicesTotal} availableCredit={availableCredit} plannedCredit={plannedCredit} lastPayment={lastPayment} currency={currency} />
+        <PaymentCredit onView={setViewingTransaction} history={history} allocations={allocations} invoices={outstandingInvoices} currency={currency} readOnly={readOnly} isSupplier onSaved={async () => {
           const [rows, updatedAllocations] = await Promise.all([TransactionService.getHistory(supplierData.id), AllocationService.getByContact(supplierData.id)]);
           setHistory(normalizeList(rows));
           setAllocations(updatedAllocations);

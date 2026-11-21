@@ -1,11 +1,10 @@
 import { CorrectionHistory } from "../../../components/CorrectionHistory";
-import { FileText, Ban, Smartphone, CreditCard, Banknote, Share2, Edit3, X, Link2, WalletCards } from "lucide-react";
+import { FileText, Ban, Smartphone, CreditCard, Banknote, Share2, Edit3, X } from "lucide-react";
 import { formatCurrency, formatDate } from "../../../utils/helpers";
 import { openWhatsApp } from "../../../utils/communication";
 import { txDate, isActive, purchaseLabel } from "../utils/helpers";
 import { paymentCreditAvailable } from "../../../utils/paymentCredit";
-import { allocationKind } from "../../../utils/moneyTrail";
-import { MoneyTrail, ReopenedPayments, CancelledNote } from "../../../components/MoneyTrail";
+import { MoneyTrail, InvoiceTimeline, CancelledNote } from "../../../components/MoneyTrail";
 
 export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCancel, onPayment, currency, history, allocations, readOnly, onCorrectionUndone, onViewTransaction }) => {
   if (!tx) return null;
@@ -37,9 +36,6 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
         return a.sale_id === tx.id && payment && ['supplier_payment', 'purchase'].includes(payment.type) && isActive(payment) && !payment.replacedByTransactionId;
       })
     : [];
-  const kindOf = a => allocationKind(a, history || [], allocations || []);
-  const creditAllocs = appliedToThisPurchase.filter(a => kindOf(a) === "credit");
-  const regularAllocs = appliedToThisPurchase.filter(a => kindOf(a) !== "credit");
   const appliedByThisPayment = isPayment
     ? (Array.isArray(allocations) ? allocations : []).filter(a => a.payment_id === tx.id)
     : [];
@@ -141,37 +137,6 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
           </div>
           <div className="border-t-2 border-dashed border-gray-300 dark:border-gray-700" />
           <MoneyTrail source={tx} history={history || []} allocations={allocations || []} currency={currency} onView={onViewTransaction} />
-          {!isPayment && (invoicePayments.length > 0 || regularAllocs.length > 0) && (
-            <div className="bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/30 rounded-xl p-3 space-y-1.5">
-              <p className="text-[10px] font-bold text-green-700 dark:text-green-400 uppercase flex items-center gap-1"><Link2 size={11} /> Payments applied to this purchase</p>
-              {invoicePayments.map(payment => (
-                <div key={payment.id} className="flex justify-between gap-2 text-xs">
-                  <span className="min-w-0 break-words">{invoicePaymentDetails(payment)}</span>
-                  <strong>{formatCurrency(payment.amount, currency)}</strong>
-                </div>
-              ))}
-              {regularAllocs.map((a, i) => {
-                const p = payById(a.payment_id);
-                return (
-                  <div key={i} className="flex justify-between text-xs">
-                    <span className="min-w-0 break-words text-gray-600 dark:text-gray-300">{[formatDate(txDate(p)), p.paymentMethod, p.reference].filter(Boolean).join(" · ")}{kindOf(a) === "mixed" && " · payment + later credit"}</span>
-                    <span className="font-semibold text-green-700 dark:text-green-400">-{formatCurrency(parseFloat(a.amount) || 0, currency)}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {!isPayment && creditAllocs.length > 0 && (
-            <div className="space-y-1.5 rounded-xl border border-indigo-100 bg-indigo-50 p-3 dark:border-indigo-900 dark:bg-indigo-950/20">
-              <p className="flex items-center gap-1 text-[10px] font-bold uppercase text-indigo-700 dark:text-indigo-300"><WalletCards size={11}/> Supplier credit applied</p>
-              {creditAllocs.map((allocation, index) => {
-                const payment = payById(allocation.payment_id);
-                const sourceReference = payment?.reference || (payment ? `${payment.type === 'purchase' ? purchaseLabel(payment) : `PAY-${payment.id.slice(-6).toUpperCase()}`}` : "Supplier credit");
-                return <div key={index} className="flex justify-between gap-3 text-xs"><span className="min-w-0 break-words text-gray-600 dark:text-gray-300">{payment ? formatDate(payment.received_at || txDate(payment)) : "Credit source"} · {sourceReference}</span><strong className="text-indigo-700 dark:text-indigo-300">-{formatCurrency(parseFloat(allocation.amount) || 0, currency)}</strong></div>;
-              })}
-            </div>
-          )}
-          {!isPayment && <ReopenedPayments invoice={tx} history={history || []} allocations={allocations || []} currency={currency} onView={onViewTransaction} />}
           {!isPayment && (items.length > 0 ? (
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 divide-y divide-dashed divide-gray-200 dark:divide-gray-800">
               <div className="p-3 pb-2"><p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Items ({items.length})</p></div>
@@ -222,6 +187,7 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
               </>
             )}
           </div>
+          {!isPayment && <InvoiceTimeline invoice={tx} history={history || []} allocations={allocations || []} currency={currency} onView={onViewTransaction} isSupplier />}
           <CorrectionHistory key={tx.id} transaction={tx} history={history} allocations={allocations} currency={currency} readOnly={readOnly} onUndone={onCorrectionUndone} />
           {isRefund && <p className="text-sm">Original payment or invoice #{tx.credit_source_id.slice(-6).toUpperCase()}</p>}
           {tx.note && (

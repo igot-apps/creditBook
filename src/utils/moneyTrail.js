@@ -127,3 +127,65 @@ export function historySummary(tx, history, allocations) {
   if (trail.left > 0.009) parts.push({ label: "Credit left", amount: trail.left, tone: "credit" });
   return parts;
 }
+
+/**
+ * Chronological life cycle of one invoice with the balance after each step.
+ * Payments later cancelled are shown where they happened and added back when
+ * cancelled, so the running balance always ends at the real amount due.
+ */
+export function invoiceTimeline(invoice, history, allocations) {
+  const events = [];
+  const total = money(invoice.amount);
+  const discount = money(invoice.discount);
+  events.push({ type: "created", at: createdAt(invoice), amount: total, discount });
+
+  const previous = byId(history, correctsId(invoice));
+  if (previous) {
+    events.push({ type: "corrected", at: invoice.corrected_at || createdAt(invoice), target: previous, from: money(previous.amount), to: total, reason: invoice.correction_reason || cancelReason(previous) });
+  }
+
+  // Money paid while creating / editing the invoice itself
+  const inline = Array.isArray(invoice.invoice_payments) ? invoice.invoice_payments : [];
+  const inlineSum = inline.reduce((sum, p) => sum + money(p.amount), 0);
+  const earlier = money(invoice.paid) - inlineSum;
+  if (earlier > 0.009) events.push({ type: "paid", at: createdAt(invoice), amount: earlier, method: invoice.payment_method || invoice.paymentMethod });
+  inline.forEach(p => events.push({ type: "paid", at: p.receivedAt || createdAt(invoice), amount: money(p.amount), method: p.method, reference: p.reference }));
+
+  // Later payments, credit and forgiveness applied through allocations
+  allocations.filter(a => a.sale_id === invoice.id).forEach(row => {
+    const source = byId(history, row.payment_id);
+    if (!source) return;
+    const live = isLive(source);
+    if (!live && source.status !== "cancelled") return;
+    const replacement = !live ? byId(history, replacedById(source)) : null;
+    if (replacement && allocations.some(a => a.payment_id === replacement.id && a.sale_id === invoice.id)) return; // moved by a correction
+    const kind = isWriteOff(source) ? "write_off" : allocationKind(row, history, allocations);
+    events.push({ type: "applied", at: row.created_at, amount: money(row.amount), source, kind, cancelledLater: !live });
+    if (!live) events.push({ type: "reopened", at: cancelledAt(source), amount: money(row.amount), source, reason: cancelReason(source) });
+  });
+
+  if (invoice.status === "cancelled") {
+    const next = byId(history, replacedById(invoice));
+    events.push({ type: next ? "replaced" : "cancelled", at: cancelledAt(invoice) || next?.corrected_at || null, target: next, reason: cancelReason(invoice) });
+  }
+
+  // Dated events in order; undated ones (old records) stay at the end, never given an invented date.
+  const order = { created: 0, corrected: 1, paid: 2, applied: 3, reopened: 4, replaced: 5, cancelled: 5 };
+  events.sort((a, b) => {
+    if (a.type === "created") return -1;
+    if (b.type === "created") return 1;
+    if (!a.at || !b.at) return (a.at ? 0 : 1) - (b.at ? 0 : 1) || order[a.type] - order[b.type];
+    return new Date(a.at) - new Date(b.at) || order[a.type] - order[b.type];
+  });
+
+  let balance = total;
+  let extra = 0;
+  events.forEach(event => {
+    if (event.type === "paid" || event.type === "applied") balance -= event.amount;
+    if (event.type === "reopened") balance += event.amount;
+    if (balance < 0) { extra += -balance; balance = 0; }
+    event.balance = balance;
+  });
+  const active = isLive(invoice);
+  return { events, due: active ? balance : 0, extra, active };
+}

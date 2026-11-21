@@ -10,7 +10,7 @@ const number = tx => `#${tx.id.slice(-6).toUpperCase()}`;
 const sourceReference = (tx, invoiceType) => tx.type === invoiceType ? invoiceReference(tx) : `PAY-${tx.id.slice(-6).toUpperCase()}`;
 const fieldClass = "mt-1 block w-full rounded-xl border border-gray-300 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-900";
 
-export function PaymentCredit({ history, allocations, invoices, currency, isSupplier = false, readOnly, onSaved }) {
+export function PaymentCredit({ history, allocations, invoices, currency, isSupplier = false, readOnly, onSaved, onView }) {
   const dialog = useRef(null);
   const titleId = useId();
   const operationId = useRef(null);
@@ -90,7 +90,9 @@ export function PaymentCredit({ history, allocations, invoices, currency, isSupp
       {sources.map(tx => (
         <div key={tx.id} className="space-y-2 border-t border-gray-200 pt-3 text-sm dark:border-gray-700">
           <div className="flex justify-between gap-3">
-            <span>{sourceReference(tx, invoiceType)}</span>
+            {onView
+              ? <button type="button" onClick={() => onView(tx)} className="text-left font-semibold text-indigo-700 underline decoration-indigo-300 underline-offset-2 dark:text-indigo-300">{sourceReference(tx, invoiceType)} · see where it went</button>
+              : <span>{sourceReference(tx, invoiceType)}</span>}
             <strong>{formatCurrency(tx.available, currency)}</strong>
           </div>
           <p className="break-words text-xs text-gray-500 dark:text-gray-400">
