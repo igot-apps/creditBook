@@ -130,7 +130,7 @@ export const VisibilityManagerPage = () => {
         const index = productIds.indexOf(product.id);
         return index >= 0 ? { ...product, units: savedUnits[index] } : product;
       }));
-      showToast(`✅ Updated ${selectedUnits.size} units`);
+      showToast(`✅ Updated ${selectedUnits.size} ${selectedUnits.size === 1 ? "variant" : "variants"}`);
     } catch (error) {
       console.error("Bulk update failed", error);
       setProducts(previousProducts);
@@ -163,7 +163,7 @@ export const VisibilityManagerPage = () => {
               <input 
                 value={searchQuery} 
                 onChange={e => setSearchQuery(e.target.value)} 
-                placeholder="Search products or units..." 
+                placeholder="Search products or variants..." 
                 className="w-full pl-9 pr-8 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm"
               />
               {searchQuery && (
@@ -212,7 +212,7 @@ export const VisibilityManagerPage = () => {
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           {processedProducts.length === 0 ? (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-              <p className="text-lg font-medium">No units found</p>
+              <p className="text-lg font-medium">No variants found</p>
               <p className="text-sm mt-1">Try adjusting your search or filters.</p>
             </div>
           ) : (

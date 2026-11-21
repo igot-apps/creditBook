@@ -33,11 +33,11 @@ export const CreateProductModal = ({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Unit</label>
+              <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Variant</label>
               <input
                 value={product.unit}
                 onChange={e => onChange({ ...product, unit: e.target.value })}
-                placeholder="e.g., Bag, Kg"
+                placeholder="e.g., NKT Carton, 10 kg"
                 className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm"
               />
             </div>

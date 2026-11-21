@@ -471,7 +471,7 @@ export const ProductPickerModal = ({
             <div className="sticky top-0 bg-white dark:bg-gray-900 p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center z-10">
               <div>
                 <h3 id="product-types-heading" className="font-bold text-lg text-gray-900 dark:text-white">{multiUnitProduct.name}</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Select quantities for each unit</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Choose quantity for each variant</p>
               </div>
               <button onClick={() => setMultiUnitProduct(null)} disabled={isSavingType} aria-label="Close product types" className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full disabled:opacity-50">
                 <X size={18} className="text-gray-600 dark:text-gray-300" />
@@ -515,7 +515,7 @@ export const ProductPickerModal = ({
                       <div className="min-w-0">
                         <p className="break-words text-sm font-bold text-gray-900 dark:text-white">{unit.name}</p>
                         <p className={`text-xs font-semibold ${priceType === "purchase" ? "text-indigo-600 dark:text-indigo-400" : "text-green-600 dark:text-green-400"}`}>
-                          {formatCurrency(price, currency)} per unit
+                          {formatCurrency(price, currency)} each
                         </p>
                       </div>
                       <div className={`flex shrink-0 items-center gap-2 rounded-lg border p-1 ${

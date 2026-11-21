@@ -54,7 +54,7 @@ export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProd
     
     const validUnits = units.filter(u => u.name.trim());
     if (validUnits.length === 0) {
-      alert("At least one unit name is required");
+      alert("Add at least one variant");
       return;
     }
 
@@ -119,9 +119,9 @@ export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProd
           {/* Units Section */}
           <div>
             <div className="flex justify-between items-center mb-2">
-              <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Pricing Units</label>
+              <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Variants &amp; prices<span className="block normal-case font-normal">Size, brand or pack, each with its own price</span></label>
               <button onClick={addUnit} className="text-xs text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1 hover:underline">
-                <Plus size={14} /> Add Unit
+                <Plus size={14} /> Add Variant
               </button>
             </div>
             
@@ -130,7 +130,7 @@ export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProd
                 <div key={unit.id} className="bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl border border-gray-200 dark:border-gray-700 space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase">
-                      {index === 0 ? "Primary Unit" : `Unit ${index + 1}`}
+                      {index === 0 ? "Main variant" : `Variant ${index + 1}`}
                     </span>
                     {units.length > 1 && (
                       <button onClick={() => removeUnit(unit.id)} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-1 rounded transition">
@@ -142,7 +142,7 @@ export const AddProductModal = ({ isOpen, onClose, onSave, initialName, editProd
                   <input 
                     value={unit.name} 
                     onChange={e => updateUnit(unit.id, 'name', e.target.value)} 
-                    placeholder="Unit Name (e.g., Carton, Kg, Bottle)" 
+                    placeholder="Variant (e.g., NKT Carton, 10 kg, ½ Sack)" 
                     className="w-full px-2 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 dark:text-white"
                   />
                   

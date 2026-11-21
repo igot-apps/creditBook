@@ -152,7 +152,7 @@ export const ReceiptModal = ({ tx, supplier, currentStore, onClose, onFix, onCan
                       </p>
                       <p className="font-bold text-sm text-gray-900 dark:text-white">{formatCurrency(qty * price, currency)}</p>
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{item.isQuickInvoice ? "Quick invoice — individual items not listed" : `${qty} ${item.unitName || "unit"} × ${formatCurrency(price, currency)}`}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{item.isQuickInvoice ? "Quick invoice — individual items not listed" : `${qty} ${item.unitName || "item"} × ${formatCurrency(price, currency)}`}</p>
                     {item.note && <p className="mt-1 text-xs italic text-amber-700 dark:text-amber-300">Note: {item.note}</p>}
                   </div>
                 );
