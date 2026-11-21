@@ -241,17 +241,12 @@ export const HomePage = () => {
                       <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
                         {tx.items?.length || 0} {(tx.items?.length || 0) === 1 ? 'item' : 'items'} • {tx.type === 'sale' ? formatDate(tx.createdAt) : getTimeAgo(tx.createdAt || tx.created_at)}
                       </p>
-                      {tx.type === 'sale' && (
+                      {(tx.type === 'sale' || tx.type === 'purchase') && (
                         <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-gray-600 dark:text-gray-300">
+                          <span>Total {formatCurrency(tx.amount, currency)}</span>
                           <span>Paid {formatCurrency(tx.paid, currency)}</span>
-                          {(Number(tx.pendingCreditAmount) || 0) > 0 && <span className="font-semibold text-indigo-600 dark:text-indigo-400">Credit pending {formatCurrency(tx.pendingCreditAmount, currency)}</span>}
-                          <span className="font-semibold">Remaining {formatCurrency(Math.max(0, (Number(tx.amount) || 0) - (Number(tx.paid) || 0) - (Number(tx.pendingCreditAmount) || 0)), currency)}</span>
-                        </p>
-                      )}
-                      {tx.type === 'purchase' && (Number(tx.pendingCreditAmount) || 0) > 0 && (
-                        <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-gray-600 dark:text-gray-300">
-                          <span className="font-semibold text-indigo-600 dark:text-indigo-400">Supplier credit pending {formatCurrency(tx.pendingCreditAmount, currency)}</span>
-                          <span className="font-semibold">Remaining {formatCurrency(Math.max(0, (Number(tx.amount) || 0) - (Number(tx.paid) || 0) - (Number(tx.pendingCreditAmount) || 0)), currency)}</span>
+                          {(Number(tx.pendingCreditAmount) || 0) > 0 && <span className="text-indigo-600 dark:text-indigo-400">Credit {formatCurrency(tx.pendingCreditAmount, currency)}</span>}
+                          <span className="font-semibold text-gray-900 dark:text-white">Remaining {formatCurrency(Math.max(0, (Number(tx.amount) || 0) - (Number(tx.paid) || 0) - (Number(tx.pendingCreditAmount) || 0)), currency)}</span>
                         </p>
                       )}
                     </div>
